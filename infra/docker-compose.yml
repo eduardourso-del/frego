@@ -1,0 +1,15 @@
+# Local Docker Postgres alternative to Neon (optional)
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: frego
+      POSTGRES_PASSWORD: frego
+      POSTGRES_DB: frego
+    volumes:
+      - frego_pg:/var/lib/postgresql/data
+
+volumes:
+  frego_pg:

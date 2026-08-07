@@ -1,0 +1,20 @@
+# Keep Vercel uploads small when deploying from monorepo root.
+apps/mobile
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/.dart_tool
+**/build
+design_handoff_frego
+.git
+**/*.md
+**/.env
+**/.env.*
+!**/.env.example
+infra
+scripts
+services/api/dist
+db/prisma/migrations
+**/*.log
+**/.DS_Store

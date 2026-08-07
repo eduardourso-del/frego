@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum BusinessStatus {
+  pending
+  trial
+  active
+  past_due
+  suspended
+}
+
+enum PlanTier {
+  trial
+  starter
+  growth
+  enterprise
+}
+
+enum TeamRole {
+  owner
+  manager
+  employee
+}
+
+enum InviteStatus {
+  pending
+  active
+  disabled
+}
+
+enum CampaignType {
+  stamps
+  spend
+  visits
+  birthday
+}
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  archived
+}
+
+enum TransactionType {
+  stamp
+  redeem
+}
+
+enum WhatsAppConnectionStatus {
+  connected
+  disconnected
+  error
+}
+
+// ─── Platform ────────────────────────────────────────────────────────────────
+
+/// Operadores Frego (aprovam novos estabelecimentos).
+model PlatformAdmin {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  firebaseUid String   @unique @map("firebase_uid")
+  displayName String?  @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("platform_admins")
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  tier        PlanTier @unique
+  name        String
+  mrrCents    Int      @default(0) @map("mrr_cents")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  billingAccounts BillingAccount[]
+
+  @@map("plans")
+}
+
+model BillingAccount {
+  id         String         @id @default(cuid())
+  businessId String         @unique @map("business_id")
+  planId     String         @map("plan_id")
+  status     BusinessStatus @default(trial)
+  mrrCents   Int            @default(0) @map("mrr_cents")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan     Plan     @relation(fields: [planId], references: [id])
+
+  @@map("billing_accounts")
+}
+
+// ─── Tenant ──────────────────────────────────────────────────────────────────
+
+model Business {
+  id        String         @id @default(cuid())
+  name      String
+  /// café | restaurant | beauty | retail | pet
+  type      String
+  status    BusinessStatus @default(trial)
+  logoUrl   String?        @map("logo_url")
+  /// Imagem de capa (hero) da página pública e detalhe no app.
+  heroImageUrl String?       @map("hero_image_url")
+  /// Hex da cor primária da marca (ex. #3B5BDB). Painel + cartões no app do cliente.
+  primaryColor   String  @default("#3B5BDB") @map("primary_color")
+  primaryColorDark String @default("#2F49C4") @map("primary_color_dark")
+  slogan         String? @map("slogan")
+  /// Página / slug público (ex. bloom-coffee)
+  slug           String? @unique
+  /// Taxa padrão da loja: pontos ganhos por R$ 1,00 no acúmulo (pool).
+  pointsPerReal  Int     @default(1) @map("points_per_real")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  locations    Location[]
+  teamMembers  TeamMember[]
+  memberships  Membership[]
+  campaigns    Campaign[]
+  transactions Transaction[]
+  billing      BillingAccount?
+  whatsapp     BusinessWhatsAppConnection?
+  whatsappWebhookEvents WhatsAppWebhookEvent[]
+
+  @@map("businesses")
+}
+
+model Location {
+  id         String   @id @default(cuid())
+  businessId String   @map("business_id")
+  name       String
+  address    String?
+  isOpen     Boolean  @default(true) @map("is_open")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  business           Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  teamMembers        TeamMember[]
+  campaignLocations  CampaignLocation[]
+  transactions       Transaction[]
+
+  @@index([businessId])
+  @@map("locations")
+}
+
+model TeamMember {
+  id          String       @id @default(cuid())
+  businessId  String       @map("business_id")
+  locationId  String?      @map("location_id")
+  firebaseUid String       @map("firebase_uid")
+  /// Login do staff: e-mail (Firebase Email/Password)
+  email       String?      @map("email")
+  /// Opcional — staff não usa telefone como conta
+  phoneE164   String?      @map("phone_e164")
+  displayName String?      @map("display_name")
+  role        TeamRole     @default(employee)
+  status      InviteStatus @default(pending)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@unique([businessId, firebaseUid])
+  @@index([firebaseUid])
+  @@index([email])
+  @@index([phoneE164])
+  @@map("team_members")
+}
+
+// ─── Global customer identity ────────────────────────────────────────────────
+
+/// Platform-level person. Phone is the account. Never scoped to a business.
+model Customer {
+  id          String    @id @default(cuid())
+  phoneE164   String    @unique @map("phone_e164")
+  /// Últimos 4 dígitos — busca rápida no balcão (escopo do tenant na API)
+  phoneLast4  String?   @map("phone_last4")
+  displayName String?   @map("display_name")
+  birthday    DateTime? @db.Date
+  firebaseUid String?   @unique @map("firebase_uid")
+  /// true depois que o cliente conclui o fluxo de perfil no app.
+  onboardingCompleted Boolean @default(false) @map("onboarding_completed")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  memberships  Membership[]
+  transactions Transaction[] @relation("CustomerActorTransactions")
+
+  @@index([phoneLast4])
+  @@map("customers")
+}
+
+/// Customer × business association. Stamps/transactions live here, not on Customer.
+model Membership {
+  id           String   @id @default(cuid())
+  customerId   String   @map("customer_id")
+  businessId   String   @map("business_id")
+  isVip        Boolean  @default(false) @map("is_vip")
+  /// Cliente marcou a loja como favorita no app.
+  isFavorite   Boolean  @default(false) @map("is_favorite")
+  associatedAt DateTime @default(now()) @map("associated_at")
+
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([customerId, businessId])
+  @@index([businessId])
+  @@index([customerId, isFavorite])
+  @@map("memberships")
+}
+
+// ─── Campaigns & rewards ─────────────────────────────────────────────────────
+
+model Campaign {
+  id           String         @id @default(cuid())
+  businessId   String         @map("business_id")
+  name         String
+  type         CampaignType   @default(stamps)
+  status       CampaignStatus @default(draft)
+  /// Meta para recompensa: carimbos necessários OU pontos necessários (spend).
+  stampsNeeded Int?           @map("stamps_needed")
+  /// Spend: pontos ganhos por R$ 1,00 (ex. 1 = R$1 → 1 pt).
+  pointsPerReal Int?          @map("points_per_real")
+  rewardTitle  String?        @map("reward_title")
+  rewardDescription String?   @map("reward_description")
+  /// Foto do prêmio (produto) — aparece no app e no balcão.
+  rewardImageUrl String?      @map("reward_image_url")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  business    Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  locations   CampaignLocation[]
+  transactions Transaction[]
+
+  @@index([businessId, status])
+  @@map("campaigns")
+}
+
+model CampaignLocation {
+  campaignId String @map("campaign_id")
+  locationId String @map("location_id")
+
+  campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([campaignId, locationId])
+  @@map("campaign_locations")
+}
+
+// ─── Immutable ledger ────────────────────────────────────────────────────────
+
+/// Append-only. Balances/progress are ALWAYS derived from this table.
+model Transaction {
+  id                String          @id @default(cuid())
+  businessId        String          @map("business_id")
+  membershipId      String          @map("membership_id")
+  campaignId        String?         @map("campaign_id")
+  locationId        String          @map("location_id")
+  /// Staff no acúmulo; null quando o cliente resgata no app.
+  actorTeamMemberId String?         @map("actor_team_member_id")
+  /// Cliente no resgate pelo app.
+  actorCustomerId   String?         @map("actor_customer_id")
+  type              TransactionType
+  /// Carimbos ganhos, pontos ganhos, ou quantidade de resgates.
+  quantity          Int             @default(1)
+  /// Earn: 'stamps' | 'points' (pool). Null em txs legadas / redeems.
+  unitKind          String?         @map("unit_kind")
+  /// Spend: valor cobrado em centavos (R$ 12,50 → 1250).
+  amountCents       Int?            @map("amount_cents")
+  metadata          Json?
+  createdAt         DateTime        @default(now()) @map("created_at")
+
+  business        Business    @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  membership      Membership  @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  campaign        Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  location        Location    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  actorTeamMember TeamMember? @relation(fields: [actorTeamMemberId], references: [id], onDelete: Restrict)
+  actorCustomer   Customer?   @relation("CustomerActorTransactions", fields: [actorCustomerId], references: [id], onDelete: Restrict)
+
+  @@index([businessId, createdAt])
+  @@index([membershipId, campaignId, type])
+  @@index([membershipId, type, unitKind])
+  @@index([locationId, createdAt])
+  @@map("transactions")
+}
+
+// ─── WhatsApp (per-business Cloud API) ───────────────────────────────────────
+
+/// One official WABA phone per business — never a shared platform number.
+model BusinessWhatsAppConnection {
+  id                 String                   @id @default(cuid())
+  businessId         String                   @unique @map("business_id")
+  metaBusinessId     String?                  @map("meta_business_id")
+  wabaId             String                   @map("waba_id")
+  phoneNumberId      String                   @unique @map("phone_number_id")
+  displayPhoneNumber String?                  @map("display_phone_number")
+  verifiedName       String?                  @map("verified_name")
+  qualityRating      String?                  @map("quality_rating")
+  messagingLimitTier String?                 @map("messaging_limit_tier")
+  /// AES-GCM ciphertext of the access token (base64).
+  tokenCiphertext    String                   @map("token_ciphertext")
+  tokenKeyVersion    Int                      @default(1) @map("token_key_version")
+  templateEarnName   String                   @default("frego_earn_summary") @map("template_earn_name")
+  templateEarnLang   String                   @default("pt_BR") @map("template_earn_lang")
+  status             WhatsAppConnectionStatus @default(connected)
+  webhookSubscribedAt DateTime?               @map("webhook_subscribed_at")
+  connectedAt        DateTime                 @default(now()) @map("connected_at")
+  lastError          String?                  @map("last_error")
+  createdAt          DateTime                 @default(now()) @map("created_at")
+  updatedAt          DateTime                 @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([wabaId])
+  @@map("business_whatsapp_connections")
+}
+
+/// Idempotent ingest of Meta webhook deliveries / template updates.
+model WhatsAppWebhookEvent {
+  id           String   @id @default(cuid())
+  businessId   String?  @map("business_id")
+  eventKey     String   @unique @map("event_key")
+  phoneNumberId String? @map("phone_number_id")
+  eventType    String   @map("event_type")
+  payload      Json
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  business Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([phoneNumberId])
+  @@map("whatsapp_webhook_events")
+}

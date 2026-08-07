@@ -1,0 +1,505 @@
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { prisma } from '@frego/db';
+import { requireAuth, requireCustomerAuth } from '../plugins/auth.js';
+import {
+  aggregateCustomerStats,
+  progressFromWallet,
+} from '../lib/customer-stats.js';
+import { deriveWallet } from '../lib/wallet.js';
+import { createVoucherMeta, voucherFromMetadata } from '../lib/voucher.js';
+
+const redeemBody = z.object({
+  businessId: z.string().min(1),
+  campaignId: z.string().min(1),
+  quantity: z.number().int().positive().max(10).optional(),
+});
+
+const updateCustomerBody = z.object({
+  displayName: z.string().min(1).max(80).optional(),
+  birthday: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
+    .nullable()
+    .optional(),
+  /** Marca o onboarding do app como concluído. */
+  onboardingCompleted: z.boolean().optional(),
+});
+
+export const meRoutes: FastifyPluginAsync = async (app) => {
+  /** Lojas em que o staff autenticado é membro ativo. */
+  app.get('/me/businesses', async (request) => {
+    const auth = requireAuth(request);
+
+    const member = await prisma.teamMember.findUnique({
+      where: { id: auth.teamMemberId },
+    });
+
+    const members = await prisma.teamMember.findMany({
+      where: {
+        status: 'active',
+        OR: [
+          { firebaseUid: auth.firebaseUid },
+          ...(member?.email ? [{ email: member.email }] : []),
+        ],
+      },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            heroImageUrl: true,
+            primaryColor: true,
+            primaryColorDark: true,
+            slogan: true,
+            slug: true,
+            type: true,
+            status: true,
+            pointsPerReal: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const seen = new Set<string>();
+    const businesses = [];
+    for (const m of members) {
+      if (seen.has(m.businessId)) continue;
+      seen.add(m.businessId);
+      businesses.push({
+        ...m.business,
+        role: m.role,
+        teamMemberId: m.id,
+      });
+    }
+
+    return {
+      businesses,
+      currentBusinessId: auth.businessId,
+    };
+  });
+
+  /** Perfil do cliente autenticado (app). Telefone OTP já vincula/mescla o Customer. */
+  app.get('/me/customer', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const customer = await prisma.customer.findUniqueOrThrow({
+      where: { id: auth.customerId },
+      select: {
+        id: true,
+        displayName: true,
+        phoneE164: true,
+        birthday: true,
+        onboardingCompleted: true,
+        createdAt: true,
+      },
+    });
+    const membershipCount = await prisma.membership.count({
+      where: { customerId: auth.customerId },
+    });
+    return {
+      customer,
+      membershipCount,
+      needsOnboarding: !customer.onboardingCompleted,
+      linkedByPhone: true,
+    };
+  });
+
+  /** Completa / atualiza perfil após o OTP. */
+  app.patch('/me/customer', async (request, reply) => {
+    const auth = requireCustomerAuth(request);
+    const body = updateCustomerBody.parse(request.body);
+    if (
+      body.displayName === undefined &&
+      body.birthday === undefined &&
+      body.onboardingCompleted === undefined
+    ) {
+      return reply.code(400).send({ error: 'NOTHING_TO_UPDATE' });
+    }
+
+    const customer = await prisma.customer.update({
+      where: { id: auth.customerId },
+      data: {
+        ...(body.displayName !== undefined
+          ? { displayName: body.displayName.trim() }
+          : {}),
+        ...(body.birthday !== undefined
+          ? {
+              birthday: body.birthday ? new Date(body.birthday) : null,
+            }
+          : {}),
+        ...(body.onboardingCompleted !== undefined
+          ? { onboardingCompleted: body.onboardingCompleted }
+          : {}),
+      },
+      select: {
+        id: true,
+        displayName: true,
+        phoneE164: true,
+        birthday: true,
+        onboardingCompleted: true,
+      },
+    });
+
+    const membershipCount = await prisma.membership.count({
+      where: { customerId: auth.customerId },
+    });
+
+    return {
+      customer,
+      membershipCount,
+      needsOnboarding: !customer.onboardingCompleted,
+    };
+  });
+
+  /** Memberships do cliente (lojas) + pools de carimbos/pontos. */
+  app.get('/me/memberships', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const memberships = await prisma.membership.findMany({
+      where: { customerId: auth.customerId },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            heroImageUrl: true,
+            primaryColor: true,
+            primaryColorDark: true,
+            slogan: true,
+            pointsPerReal: true,
+            status: true,
+            type: true,
+            locations: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                isOpen: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+      },
+      orderBy: { associatedAt: 'desc' },
+    });
+
+    const withPools = await Promise.all(
+      memberships.map(async (m) => {
+        const wallet = await deriveWallet(m.id, m.businessId);
+        const redeemable = wallet.campaigns.filter((c) => c.canRedeem).length;
+        const progress = progressFromWallet(wallet);
+        const birthday = wallet.campaigns.find((c) => c.type === 'birthday');
+        return {
+          id: m.id,
+          businessId: m.businessId,
+          isVip: m.isVip,
+          isFavorite: m.isFavorite,
+          associatedAt: m.associatedAt,
+          business: m.business,
+          pools: wallet.pools,
+          activeCampaigns: wallet.campaigns.length,
+          redeemableCampaigns: redeemable,
+          progress,
+          birthday: birthday
+            ? {
+                canRedeem: birthday.canRedeem,
+                daysUntilBirthday: birthday.daysUntilBirthday ?? null,
+                lockedReason: birthday.lockedReason ?? null,
+                rewardTitle: birthday.rewardTitle,
+              }
+            : null,
+        };
+      }),
+    );
+
+    withPools.sort((a, b) => {
+      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+      if (b.redeemableCampaigns !== a.redeemableCampaigns) {
+        return b.redeemableCampaigns - a.redeemableCampaigns;
+      }
+      return (
+        new Date(b.associatedAt).getTime() - new Date(a.associatedAt).getTime()
+      );
+    });
+
+    return { memberships: withPools };
+  });
+
+  /** Marca / desmarca loja favorita do cliente. */
+  app.patch('/me/memberships/:businessId/favorite', async (request, reply) => {
+    const auth = requireCustomerAuth(request);
+    const { businessId } = request.params as { businessId: string };
+    const body = z.object({ isFavorite: z.boolean() }).parse(request.body);
+
+    const membership = await prisma.membership.findFirst({
+      where: { customerId: auth.customerId, businessId },
+    });
+    if (!membership) {
+      return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
+    }
+
+    const updated = await prisma.membership.update({
+      where: { id: membership.id },
+      data: { isFavorite: body.isFavorite },
+      select: {
+        id: true,
+        businessId: true,
+        isFavorite: true,
+      },
+    });
+
+    return updated;
+  });
+
+  /**
+   * Resumo de uso do cliente (todas as lojas).
+   * Visitas = dias únicos com alguma transação.
+   */
+  app.get('/me/stats', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const stats = await aggregateCustomerStats(auth.customerId);
+    return {
+      shops: stats.shops,
+      visits: stats.visits,
+      lastVisitAt: stats.lastVisitAt,
+      stampsEarned: stats.stampsEarned,
+      pointsEarned: stats.pointsEarned,
+      redeems: stats.redeems,
+      spendCents: stats.spendCents,
+      redeemableNow: stats.redeemableNow,
+      nextReward: stats.nextReward,
+    };
+  });
+
+  /**
+   * Carteira do cliente em uma loja.
+   * Query: businessId (obrigatório se tiver mais de um membership).
+   */
+  app.get('/me/wallet', async (request, reply) => {
+    const auth = requireCustomerAuth(request);
+    const query = request.query as { businessId?: string };
+
+    const memberships = await prisma.membership.findMany({
+      where: { customerId: auth.customerId },
+      include: {
+        business: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            heroImageUrl: true,
+            primaryColor: true,
+            primaryColorDark: true,
+            slogan: true,
+            pointsPerReal: true,
+            type: true,
+            locations: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                isOpen: true,
+              },
+              orderBy: { createdAt: 'asc' },
+            },
+          },
+        },
+      },
+      orderBy: { associatedAt: 'desc' },
+    });
+
+    if (memberships.length === 0) {
+      return reply.code(404).send({ error: 'NO_MEMBERSHIP' });
+    }
+
+    let membership = query.businessId
+      ? memberships.find((m) => m.businessId === query.businessId)
+      : memberships[0];
+
+    if (!membership) {
+      return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
+    }
+
+    const wallet = await deriveWallet(membership.id, membership.businessId);
+
+    return {
+      business: membership.business,
+      membership: {
+        id: membership.id,
+        isVip: membership.isVip,
+        isFavorite: membership.isFavorite,
+      },
+      wallet,
+      pools: wallet.pools,
+      campaigns: wallet.campaigns,
+      memberships: memberships.map((m) => ({
+        id: m.id,
+        businessId: m.businessId,
+        name: m.business.name,
+        logoUrl: m.business.logoUrl,
+        isFavorite: m.isFavorite,
+      })),
+    };
+  });
+
+  /** Cliente escolhe campanha e resgata do pool. */
+  app.post('/me/redeem', async (request, reply) => {
+    const auth = requireCustomerAuth(request);
+    const body = redeemBody.parse(request.body);
+    const quantity = body.quantity ?? 1;
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        customerId: auth.customerId,
+        businessId: body.businessId,
+      },
+    });
+    if (!membership) {
+      return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
+    }
+
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        id: body.campaignId,
+        businessId: body.businessId,
+        status: 'active',
+        type: { in: ['stamps', 'spend', 'birthday'] },
+      },
+    });
+    if (!campaign) {
+      return reply.code(400).send({ error: 'INVALID_CAMPAIGN' });
+    }
+
+    if (campaign.type === 'birthday' && quantity !== 1) {
+      return reply.code(400).send({ error: 'BIRTHDAY_QUANTITY_MUST_BE_ONE' });
+    }
+
+    const wallet = await deriveWallet(membership.id, body.businessId);
+    const entry = wallet.campaigns.find((c) => c.campaignId === campaign.id);
+    if (!entry || entry.rewardsAvailable < quantity || !entry.canRedeem) {
+      return reply.code(409).send({
+        error:
+          entry?.lockedReason === 'no_birthday'
+            ? 'BIRTHDAY_REQUIRED'
+            : entry?.lockedReason === 'already_redeemed'
+              ? 'BIRTHDAY_ALREADY_REDEEMED'
+              : entry?.lockedReason === 'outside_window'
+                ? 'BIRTHDAY_OUTSIDE_WINDOW'
+                : 'NO_REWARD_AVAILABLE',
+        lockedReason: entry?.lockedReason ?? null,
+        unlocksAt: entry?.unlocksAt ?? null,
+        wallet,
+        pools: wallet.pools,
+      });
+    }
+
+    const location =
+      (await prisma.location.findFirst({
+        where: { businessId: body.businessId, isOpen: true },
+        orderBy: { createdAt: 'asc' },
+      })) ??
+      (await prisma.location.findFirst({
+        where: { businessId: body.businessId },
+        orderBy: { createdAt: 'asc' },
+      }));
+    if (!location) {
+      return reply.code(400).send({ error: 'NO_LOCATION' });
+    }
+
+    const voucher = createVoucherMeta();
+
+    const tx = await prisma.transaction.create({
+      data: {
+        businessId: body.businessId,
+        membershipId: membership.id,
+        campaignId: campaign.id,
+        locationId: location.id,
+        actorTeamMemberId: null,
+        actorCustomerId: auth.customerId,
+        type: 'redeem',
+        quantity,
+        unitKind: null,
+        metadata: voucher,
+      },
+    });
+
+    const next = await deriveWallet(membership.id, body.businessId);
+    const rewardTitle = campaign.rewardTitle ?? campaign.name;
+
+    return reply.code(201).send({
+      transaction: tx,
+      voucherCode: voucher.voucherCode,
+      voucherDisplay: voucher.voucherDisplay,
+      rewardTitle,
+      campaignName: campaign.name,
+      businessId: body.businessId,
+      wallet: next,
+      pools: next.pools,
+      campaigns: next.campaigns,
+      message: `Resgatou: ${rewardTitle}`,
+    });
+  });
+
+  /**
+   * Histórico do cliente (todas as lojas).
+   * Query: `limit` (default 50, max 100).
+   */
+  app.get('/me/history', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const query = request.query as { limit?: string };
+    const limit = Math.min(
+      Math.max(Number.parseInt(query.limit ?? '50', 10) || 50, 1),
+      100,
+    );
+
+    const memberships = await prisma.membership.findMany({
+      where: { customerId: auth.customerId },
+      select: { id: true },
+    });
+    const membershipIds = memberships.map((m) => m.id);
+    if (membershipIds.length === 0) {
+      return { items: [] };
+    }
+
+    const txs = await prisma.transaction.findMany({
+      where: { membershipId: { in: membershipIds } },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      include: {
+        business: {
+          select: { id: true, name: true, logoUrl: true, primaryColor: true },
+        },
+        campaign: {
+          select: { name: true, rewardTitle: true, type: true },
+        },
+        location: { select: { name: true } },
+        actorTeamMember: { select: { displayName: true } },
+      },
+    });
+
+    const items = txs.map((tx) => {
+      const voucher = voucherFromMetadata(tx.metadata);
+      return {
+        id: tx.id,
+        type: tx.type,
+        quantity: tx.quantity,
+        unitKind: tx.unitKind,
+        amountCents: tx.amountCents,
+        createdAt: tx.createdAt,
+        business: tx.business,
+        campaign: tx.campaign,
+        location: tx.location,
+        actorName: tx.actorTeamMember?.displayName ?? null,
+        voucherCode: voucher?.voucherCode ?? null,
+        voucherDisplay: voucher?.voucherDisplay ?? null,
+        rewardTitle:
+          tx.campaign?.rewardTitle ?? tx.campaign?.name ?? null,
+      };
+    });
+
+    return { items };
+  });
+};

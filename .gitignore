@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Flutter
+apps/mobile/.dart_tool/
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+apps/mobile/.packages
+apps/mobile/build/
+apps/mobile/.pub-cache/
+apps/mobile/ios/Pods/
+apps/mobile/ios/.symlinks/
+apps/mobile/android/.gradle/
+apps/mobile/android/local.properties
+
+# Prisma
+db/prisma/*.db
+db/prisma/*.db-journal
+
+# Logs / coverage
+*.log
+coverage/
+.turbo/
+
+# Firebase
+*-firebase-adminsdk-*.json
+serviceAccount*.json
+
+# Misc
+.vercel
+.firebase
+
+# Secrets
+secrets/
+**/GoogleService-Info.plist
+**/google-services.json
+.env*

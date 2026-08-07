@@ -1,0 +1,17 @@
+{
+  "projectId": "voltei-e9d6d",
+  "authDomain": "voltei-e9d6d.firebaseapp.com",
+  "storageBucket": "voltei-e9d6d.firebasestorage.app",
+  "messagingSenderId": "258859601466",
+  "apiKeyWeb": "AIzaSyCcrc3gu7Q0c50IZA5hRUfSXheyZFgybVw",
+  "apps": {
+    "webEstablishment": "1:258859601466:web:246b84233b07f19918af03",
+    "webAdmin": "1:258859601466:web:e4728bae14a2e2f618af03",
+    "ios": "1:258859601466:ios:2e297bbdfa1c5df218af03",
+    "android": "1:258859601466:android:5d6f1132b2ae9f9318af03"
+  },
+  "testPhones": {
+    "+5511987654321": "123456",
+    "+5511999990001": "123456"
+  }
+}

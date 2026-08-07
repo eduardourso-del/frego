@@ -1,0 +1,77 @@
+:root {
+  /* Primary */
+  --color-primary-50: #eef1fd;
+  --color-primary-200: #c7d2f7;
+  --color-primary-500: #3b5bdb;
+  --color-primary-600: #2f49c4;
+  --color-primary-800: #1e2f8a;
+
+  /* Neutral light */
+  --color-bg: #f7f8fa;
+  --color-neutral-100: #f1f3f6;
+  --color-neutral-200: #e4e7ec;
+  --color-hairline: #eef0f3;
+  --color-neutral-400: #9aa0aa;
+  --color-neutral-500: #6b7280;
+  --color-neutral-700: #3f444f;
+  --color-ink: #16181d;
+  --color-card: #ffffff;
+
+  /* Semantic */
+  --color-success: #1f9d6b;
+  --color-success-bg: #e6f6ee;
+  --color-warning: #e8920c;
+  --color-warning-bg: #fdf2e0;
+  --color-danger: #df4138;
+  --color-danger-bg: #fdeceb;
+
+  /* Loyalty unit kinds (produto) */
+  --color-stamps: #0f766e;
+  --color-stamps-bg: #f0fdfa;
+  --color-stamps-ring: #99f6e4;
+  --color-points: #b45309;
+  --color-points-bg: #fffbeb;
+  --color-points-ring: #fde68a;
+
+  /* Spacing (8pt) */
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-pill: 999px;
+
+  /* Type */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Shadow */
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 4px 16px rgba(16, 24, 40, 0.03);
+  --shadow-raised: 0 16px 40px rgba(16, 24, 40, 0.1);
+  --shadow-focus: 0 0 0 3px rgba(59, 91, 219, 0.14);
+  --shadow-cta: 0 10px 24px -8px rgba(59, 91, 219, 0.45);
+  --shadow-sheet: 0 -12px 40px rgba(16, 24, 40, 0.14);
+}
+
+.dark {
+  --color-bg: #0c0d10;
+  --color-card: #15171c;
+  --color-raised: #1d2026;
+  --color-hairline: #2a2e37;
+  --color-neutral-200: #2a2e37;
+  --color-primary-500: #5b78e8;
+  --color-ink: #e8eaed;
+  --color-neutral-500: #9aa0aa;
+  --color-neutral-400: #5b616b;
+  --color-success: #2bb37e;
+  --color-warning: #f0a52c;
+  --color-danger: #f0584f;
+}

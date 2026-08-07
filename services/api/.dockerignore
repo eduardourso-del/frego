@@ -1,0 +1,13 @@
+# Dependencies
+node_modules
+# Compiled output
+dist
+# Flutter tool generates files that should not be committed
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Environment
+.env
+.env.*
+!.env.example

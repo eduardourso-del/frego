@@ -1,0 +1,21 @@
+{
+  "name": "frego",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @frego/api dev",
+    "dev:admin": "pnpm --filter @frego/web-admin dev",
+    "dev:establishment": "pnpm --filter @frego/web-establishment dev",
+    "build": "pnpm -r --filter './packages/*' --filter './services/*' --filter './apps/web-*' build",
+    "db:generate": "pnpm --filter @frego/db generate",
+    "db:migrate": "pnpm --filter @frego/db migrate:dev",
+    "db:push": "pnpm --filter @frego/db push",
+    "db:studio": "pnpm --filter @frego/db studio",
+    "db:seed": "pnpm --filter @frego/db seed",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
