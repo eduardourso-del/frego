@@ -6,24 +6,43 @@
   --color-foreground: var(--color-ink);
   --color-primary: var(--color-primary-500);
   --color-primary-50: var(--color-primary-50);
+  --color-primary-100: var(--color-primary-100);
   --color-primary-200: var(--color-primary-200);
   --color-primary-500: var(--color-primary-500);
   --color-primary-600: var(--color-primary-600);
   --color-primary-800: var(--color-primary-800);
+  --color-on-primary: var(--color-on-primary);
   --color-card: var(--color-card);
   --color-hairline: var(--color-hairline);
+  --color-control: var(--color-control);
   --color-muted: var(--color-neutral-500);
   --color-faint: var(--color-neutral-400);
   --color-track: var(--color-neutral-100);
   --color-border: var(--color-neutral-200);
   --color-success: var(--color-success);
+  --color-success-bg: var(--color-success-bg);
+  --color-success-fill: var(--color-success-fill);
   --color-danger: var(--color-danger);
+  --color-danger-bg: var(--color-danger-bg);
+  --color-danger-fill: var(--color-danger-fill);
+  --color-info: var(--color-info);
+  --color-info-bg: var(--color-info-bg);
+  --color-points: var(--color-points);
+  --color-points-bg: var(--color-points-bg);
+  --color-points-ring: var(--color-points-ring);
+  --color-stamps: var(--color-stamps);
+  --color-stamps-bg: var(--color-stamps-bg);
+  --color-stamps-ring: var(--color-stamps-ring);
+  --color-cashback: var(--color-cashback);
+  --color-cashback-bg: var(--color-cashback-bg);
+  --color-cashback-ring: var(--color-cashback-ring);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+  --radius-pill: var(--radius-pill);
 }
 
 html {
@@ -31,13 +50,11 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(1200px 480px at 10% -10%, rgba(59, 91, 219, 0.06), transparent 55%),
-    radial-gradient(900px 420px at 100% 0%, rgba(15, 118, 110, 0.04), transparent 50%),
-    var(--color-bg);
-  background-attachment: fixed;
+  background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -62,11 +79,6 @@ body {
   textarea {
     font-size: 16px;
   }
-}
-
-*:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
 }
 
 ::selection {

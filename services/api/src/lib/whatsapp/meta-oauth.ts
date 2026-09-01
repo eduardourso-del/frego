@@ -25,6 +25,8 @@ export async function exchangeEmbeddedSignupCode(
     });
   }
 
+  // Embedded Signup via FB.login returns the code to a JS callback — Meta does
+  // not bind a redirect_uri to that code. Sending redirect_uri causes 36008.
   const url = new URL(`${graphBase()}/oauth/access_token`);
   url.searchParams.set('client_id', appId);
   url.searchParams.set('client_secret', appSecret);
@@ -61,11 +63,16 @@ export type SharedWabaPhone = {
 };
 
 /**
- * After Embedded Signup, resolve the granted WABA + first phone number
+ * After Embedded Signup, resolve the granted WABA + phone number
  * using the user/system token from code exchange.
+ * Prefer session asset IDs when Meta returned them.
  */
 export async function fetchSharedWabaPhone(
   accessToken: string,
+  opts?: {
+    preferredPhoneNumberId?: string | null;
+    preferredWabaId?: string | null;
+  },
 ): Promise<SharedWabaPhone> {
   // debug_token → granular scopes / granular_scopes for whatsapp
   const appId = process.env.META_APP_ID?.trim();
@@ -96,7 +103,11 @@ export async function fetchSharedWabaPhone(
     )?.target_ids ?? [];
 
   // Fallback: list businesses → owned WABAs
-  let wabaId: string | undefined = wabaIds[0];
+  let wabaId: string | undefined =
+    opts?.preferredWabaId &&
+    (!wabaIds.length || wabaIds.includes(opts.preferredWabaId))
+      ? opts.preferredWabaId
+      : wabaIds[0];
   let metaBusinessId: string | null = null;
 
   if (!wabaId) {
@@ -155,7 +166,12 @@ export async function fetchSharedWabaPhone(
     }>;
     error?: { message?: string };
   };
-  const phone = phonesBody.data?.[0];
+  const phones = phonesBody.data ?? [];
+  const preferredPhoneNumberId = opts?.preferredPhoneNumberId;
+  const phone =
+    (preferredPhoneNumberId
+      ? phones.find((p) => p.id === preferredPhoneNumberId)
+      : undefined) ?? phones[0];
   if (!phone) {
     throw Object.assign(
       new Error(phonesBody.error?.message ?? 'META_NO_PHONE_ON_WABA'),
@@ -174,6 +190,75 @@ export async function fetchSharedWabaPhone(
   };
 }
 
+/** Detect Cloud API + WhatsApp Business app coexistence on a phone. */
+export async function fetchPhoneCoexistenceFlags(
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<{ isOnBizApp: boolean; platformType: string | null }> {
+  try {
+    const res = await fetch(
+      `${graphBase()}/${phoneNumberId}?fields=is_on_biz_app,platform_type&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const body = (await res.json()) as {
+      is_on_biz_app?: boolean;
+      platform_type?: string;
+    };
+    return {
+      isOnBizApp: Boolean(body.is_on_biz_app),
+      platformType: body.platform_type ?? null,
+    };
+  } catch {
+    return { isOnBizApp: false, platformType: null };
+  }
+}
+
+export type SmbAppDataSyncResult = {
+  ok: boolean;
+  requestId?: string;
+  error?: string;
+};
+
+/**
+ * Start SMB App Data sync (contacts or history). Required within 24h of
+ * coexistence onboarding or Meta forces offboarding.
+ * @see https://developers.facebook.com/docs/whatsapp/embedded-signup/custom-flows/onboarding-business-app-users/
+ */
+export async function initiateSmbAppDataSync(
+  phoneNumberId: string,
+  accessToken: string,
+  syncType: 'smb_app_state_sync' | 'history',
+): Promise<SmbAppDataSyncResult> {
+  try {
+    const res = await fetch(`${graphBase()}/${phoneNumberId}/smb_app_data`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        sync_type: syncType,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      request_id?: string;
+      error?: { message?: string };
+    };
+    if (!res.ok || body.error) {
+      return {
+        ok: false,
+        error: body.error?.message ?? `smb_sync_failed_${res.status}`,
+      };
+    }
+    return { ok: true, requestId: body.request_id };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'smb_sync_failed',
+    };
+  }
+}
+
 /** Best-effort subscribe WABA to app webhooks. */
 export async function subscribeWabaWebhooks(
   wabaId: string,
@@ -187,5 +272,49 @@ export async function subscribeWabaWebhooks(
     return res.ok;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Register the business phone on Cloud API.
+ * Without this, sends often fail with (#133010) Account not registered.
+ * @see https://developers.facebook.com/docs/whatsapp/cloud-api/reference/registration/
+ */
+export async function registerCloudApiPhone(
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const pin =
+    process.env.WHATSAPP_REGISTER_PIN?.trim() ||
+    String(Math.floor(100000 + Math.random() * 900000));
+
+  try {
+    const res = await fetch(`${graphBase()}/${phoneNumberId}/register`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        pin,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      success?: boolean;
+      error?: { message?: string; code?: number };
+    };
+    if (!res.ok || body.error) {
+      return {
+        ok: false,
+        error: body.error?.message ?? `register_failed_${res.status}`,
+      };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'register_failed',
+    };
   }
 }

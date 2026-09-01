@@ -1,6 +1,6 @@
 {
   "name": "@frego/tokens",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -8,14 +8,18 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./src/index.ts",
+      "default": "./dist/index.js"
     },
     "./css": "./css/tokens.css",
-    "./tailwind": "./tailwind.preset.js"
+    "./tailwind": "./tailwind.preset.js",
+    "./tokens.json": "./tokens.json",
+    "./assets/*": "./assets/*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sync-brand": "node ./scripts/copy-brand.mjs"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

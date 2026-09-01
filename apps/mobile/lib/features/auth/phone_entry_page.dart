@@ -111,23 +111,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
           children: [
             if (widget.isRoot) ...[
               const SizedBox(height: 24),
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: FregoColors.primary500,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'V',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              const FregoWordmark(height: 28),
               const SizedBox(height: 24),
             ],
             const Text(

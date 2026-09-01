@@ -42,8 +42,8 @@ export function PendingGate({ children }: { children: ReactNode }) {
             <strong className="font-semibold text-[var(--color-ink)]">
               {business.name}
             </strong>{' '}
-            foi cadastrado e está na fila da equipe Frego. Depois da aprovação,
-            configure campanhas e o balcão libera.
+            já está na fila da equipe Frego. Depois da aprovação, você configura
+            as campanhas e o balcão é liberado.
           </p>
         </Card>
       </div>

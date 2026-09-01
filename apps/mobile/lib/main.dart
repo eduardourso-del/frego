@@ -40,13 +40,15 @@ class FregoApp extends StatelessWidget {
       darkTheme: FregoTheme.light(forWeb: kIsWeb),
       themeMode: ThemeMode.light,
       builder: (context, child) {
+        final bodyStyle = Theme.of(context).textTheme.bodyMedium!.copyWith(
+              color: FregoColors.ink,
+              decoration: TextDecoration.none,
+              inherit: false,
+            );
         return CupertinoTheme(
           data: FregoTheme.cupertino(Brightness.light),
-          child: DefaultTextStyle.merge(
-            style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                  color: FregoColors.ink,
-                  decoration: TextDecoration.none,
-                ),
+          child: DefaultTextStyle(
+            style: bodyStyle,
             child: child ?? const SizedBox.shrink(),
           ),
         );

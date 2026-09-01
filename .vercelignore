@@ -1,5 +1,6 @@
 # Keep Vercel uploads small when deploying from monorepo root.
 apps/mobile
+apps/pdv
 **/node_modules
 **/.next
 **/.turbo

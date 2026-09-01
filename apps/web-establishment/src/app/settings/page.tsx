@@ -8,30 +8,41 @@ import {
   LogoCropDialog,
 } from '@/components/logo-crop-dialog';
 import { WhatsAppSettingsCard } from '@/components/whatsapp-settings-card';
+import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
-
-const TYPES = [
-  { value: 'café', label: 'Café' },
-  { value: 'restaurant', label: 'Restaurante' },
-  { value: 'beauty', label: 'Beleza' },
-  { value: 'retail', label: 'Varejo' },
-  { value: 'pet', label: 'Pet' },
-];
+import { BusinessTypePicker } from '@/components/business-type-picker';
 
 const HERO_ASPECT = 16 / 9;
 
+type LocationDraft = {
+  id: string;
+  name: string;
+  address: string;
+};
+
 export default function SettingsPage() {
-  const { business, loading, updateBusiness } = useBusiness();
+  const { business, loading, updateBusiness, authHeaders } = useBusiness();
   const [name, setName] = useState('');
   const [type, setType] = useState('café');
   const [slogan, setSlogan] = useState('');
   const [slug, setSlug] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState('');
-  const [primaryColor, setPrimaryColor] = useState('#3B5BDB');
-  const [primaryColorDark, setPrimaryColorDark] = useState('#2F49C4');
+  const [primaryColor, setPrimaryColor] = useState('#24479C');
+  const [primaryColorDark, setPrimaryColorDark] = useState('#1B3781');
   const [pointsPerReal, setPointsPerReal] = useState(1);
+  const [cashbackMaxEnabled, setCashbackMaxEnabled] = useState(false);
+  const [cashbackMaxReais, setCashbackMaxReais] = useState(10);
+  const [cashbackMinEnabled, setCashbackMinEnabled] = useState(false);
+  const [cashbackMinReais, setCashbackMinReais] = useState(20);
+  const [stampsExpireEnabled, setStampsExpireEnabled] = useState(false);
+  const [stampsExpireDays, setStampsExpireDays] = useState(90);
+  const [pointsExpireEnabled, setPointsExpireEnabled] = useState(false);
+  const [pointsExpireDays, setPointsExpireDays] = useState(90);
+  const [cashbackExpireEnabled, setCashbackExpireEnabled] = useState(false);
+  const [cashbackExpireDays, setCashbackExpireDays] = useState(90);
+  const [locations, setLocations] = useState<LocationDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -50,13 +61,72 @@ export default function SettingsPage() {
     setPrimaryColor(business.primaryColor);
     setPrimaryColorDark(business.primaryColorDark);
     setPointsPerReal(business.pointsPerReal ?? 1);
+    const maxCents = business.cashbackMaxCents ?? null;
+    setCashbackMaxEnabled(maxCents != null);
+    setCashbackMaxReais(maxCents != null ? Math.round(maxCents / 100) : 10);
+    const minCents = business.cashbackMinPurchaseCents ?? null;
+    setCashbackMinEnabled(minCents != null);
+    setCashbackMinReais(minCents != null ? Math.round(minCents / 100) : 20);
+    const stampsDays = business.stampsExpireDays ?? null;
+    setStampsExpireEnabled(stampsDays != null);
+    setStampsExpireDays(stampsDays ?? 90);
+    const pointsDays = business.pointsExpireDays ?? null;
+    setPointsExpireEnabled(pointsDays != null);
+    setPointsExpireDays(pointsDays ?? 90);
+    const cashbackDays = business.cashbackExpireDays ?? null;
+    setCashbackExpireEnabled(cashbackDays != null);
+    setCashbackExpireDays(cashbackDays ?? 90);
   }, [business]);
 
+  useEffect(() => {
+    if (!business?.id) {
+      setLocations([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${API_URL}/business/locations`, { headers });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          locations?: Array<{
+            id: string;
+            name: string;
+            address: string | null;
+          }>;
+        };
+        if (cancelled) return;
+        setLocations(
+          (json.locations ?? []).map((loc) => ({
+            id: loc.id,
+            name: loc.name,
+            address: loc.address ?? '',
+          })),
+        );
+      } catch {
+        /* ignore — form still works for brand fields */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [business?.id, authHeaders]);
   useEffect(() => {
     return () => {
       if (cropSrc?.startsWith('blob:')) URL.revokeObjectURL(cropSrc);
     };
   }, [cropSrc]);
+
+  function setLocationField(
+    id: string,
+    field: 'name' | 'address',
+    value: string,
+  ) {
+    setLocations((prev) =>
+      prev.map((loc) => (loc.id === id ? { ...loc, [field]: value } : loc)),
+    );
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -64,6 +134,17 @@ export default function SettingsPage() {
     setError(null);
     setToast(null);
     try {
+      for (const loc of locations) {
+        const trimmedName = loc.name.trim();
+        const trimmedAddress = loc.address.trim();
+        if (trimmedName.length < 2) {
+          throw new Error('O nome da unidade precisa ter pelo menos 2 caracteres.');
+        }
+        if (trimmedAddress.length < 5) {
+          throw new Error('O endereço precisa ter pelo menos 5 caracteres.');
+        }
+      }
+
       await updateBusiness({
         name,
         type,
@@ -74,10 +155,54 @@ export default function SettingsPage() {
         primaryColor,
         primaryColorDark,
         pointsPerReal,
+        cashbackMaxCents: cashbackMaxEnabled
+          ? Math.max(100, Math.round(cashbackMaxReais || 1) * 100)
+          : null,
+        cashbackMinPurchaseCents: cashbackMinEnabled
+          ? Math.max(100, Math.round(cashbackMinReais || 1) * 100)
+          : null,
+        stampsExpireDays: stampsExpireEnabled
+          ? Math.max(1, Math.min(3650, stampsExpireDays || 1))
+          : null,
+        pointsExpireDays: pointsExpireEnabled
+          ? Math.max(1, Math.min(3650, pointsExpireDays || 1))
+          : null,
+        cashbackExpireDays: cashbackExpireEnabled
+          ? Math.max(1, Math.min(3650, cashbackExpireDays || 1))
+          : null,
       });
-      setToast('Perfil da loja salvo');
+
+      if (locations.length > 0) {
+        const headers = {
+          ...(await authHeaders()),
+          'Content-Type': 'application/json',
+        };
+        await Promise.all(
+          locations.map(async (loc) => {
+            const res = await fetch(
+              `${API_URL}/business/locations/${encodeURIComponent(loc.id)}`,
+              {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({
+                  name: loc.name.trim(),
+                  address: loc.address.trim(),
+                }),
+              },
+            );
+            if (!res.ok) {
+              const json = (await res.json().catch(() => null)) as {
+                error?: string;
+              } | null;
+              throw new Error(json?.error ?? 'Não foi possível salvar o endereço.');
+            }
+          }),
+        );
+      }
+
+      setToast('Perfil da loja salvo.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao salvar');
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
     } finally {
       setBusy(false);
     }
@@ -86,11 +211,11 @@ export default function SettingsPage() {
   function openImagePicker(file: File | undefined, kind: 'logo' | 'hero') {
     if (!file || !business?.id) return;
     if (!file.type.startsWith('image/')) {
-      setError('Selecione uma imagem (JPG, PNG ou WebP)');
+      setError('Selecione uma imagem (JPG, PNG ou WebP).');
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('Imagem até 5 MB');
+      setError('A imagem pode ter no máximo 5 MB.');
       return;
     }
     setError(null);
@@ -111,9 +236,9 @@ export default function SettingsPage() {
       if (cropSrc?.startsWith('blob:')) URL.revokeObjectURL(cropSrc);
       setCropSrc(null);
       setCropKind(null);
-      setToast('Logo atualizado — aparece no menu e no cartão');
+      setToast('Logo atualizado — aparece no menu e no cartão.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no upload');
+      setError(err instanceof Error ? err.message : 'Não foi possível enviar.');
       throw err;
     } finally {
       setUploading(false);
@@ -131,9 +256,9 @@ export default function SettingsPage() {
       if (cropSrc?.startsWith('blob:')) URL.revokeObjectURL(cropSrc);
       setCropSrc(null);
       setCropKind(null);
-      setToast('Capa atualizada — aparece na página pública e no app');
+      setToast('Capa atualizada — aparece na página pública e no aplicativo.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no upload');
+      setError(err instanceof Error ? err.message : 'Não foi possível enviar.');
       throw err;
     } finally {
       setUploading(false);
@@ -147,7 +272,7 @@ export default function SettingsPage() {
       await updateBusiness({ logoUrl: null });
       setToast('Logo removido');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover');
+      setError(err instanceof Error ? err.message : 'Não foi possível remover.');
     }
   }
 
@@ -158,7 +283,7 @@ export default function SettingsPage() {
       await updateBusiness({ heroImageUrl: null });
       setToast('Capa removida');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao remover');
+      setError(err instanceof Error ? err.message : 'Não foi possível remover.');
     }
   }
 
@@ -187,8 +312,8 @@ export default function SettingsPage() {
           Configurações
         </h1>
         <p className="mb-6 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Perfil da loja: logo, cores e texto. O logo aparece no menu lateral e
-          nos cartões do cliente.
+          Perfil da loja: logo, cores, texto e endereço. O logo aparece no menu
+          e nos cartões do cliente.
         </p>
         {loading && !business ? (
           <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
@@ -336,27 +461,7 @@ export default function SettingsPage() {
               />
             </label>
 
-            <fieldset>
-              <legend className="text-[13px] font-semibold uppercase tracking-[0.04em]">
-                Tipo
-              </legend>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {TYPES.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    onClick={() => setType(t.value)}
-                    className={`min-h-9 rounded-full px-3.5 text-[13px] font-semibold transition-colors ${
-                      type === t.value
-                        ? 'bg-[var(--color-primary-500)] text-white shadow-[var(--shadow-cta)]'
-                        : 'bg-[var(--color-bg)] text-[var(--color-neutral-600)] ring-1 ring-[var(--color-hairline)]'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
+            <BusinessTypePicker value={type} onChange={setType} />
 
             <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
               Slogan
@@ -367,6 +472,65 @@ export default function SettingsPage() {
                 placeholder="Café que faz voltar"
               />
             </label>
+
+            <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                Unidade e endereço
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                Aparece no app do cliente e na página pública da loja.
+              </p>
+              {locations.length === 0 ? (
+                <p className="mt-4 text-[14px] text-[var(--color-neutral-500)]">
+                  Nenhuma unidade encontrada para esta loja.
+                </p>
+              ) : (
+                <div className="mt-4 flex flex-col gap-5">
+                  {locations.map((loc, index) => (
+                    <div
+                      key={loc.id}
+                      className={
+                        locations.length > 1
+                          ? 'border-t border-[var(--color-hairline)] pt-4 first:border-t-0 first:pt-0'
+                          : undefined
+                      }
+                    >
+                      {locations.length > 1 ? (
+                        <p className="mb-3 text-[12px] font-semibold text-[var(--color-neutral-400)]">
+                          Unidade {index + 1}
+                        </p>
+                      ) : null}
+                      <label className="block text-[13px] font-semibold uppercase tracking-[0.04em]">
+                        Nome da unidade
+                        <input
+                          value={loc.name}
+                          onChange={(e) =>
+                            setLocationField(loc.id, 'name', e.target.value)
+                          }
+                          className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                          placeholder="Ex.: Loja Jardins"
+                          required
+                          minLength={2}
+                        />
+                      </label>
+                      <label className="mt-3.5 block text-[13px] font-semibold uppercase tracking-[0.04em]">
+                        Endereço
+                        <input
+                          value={loc.address}
+                          onChange={(e) =>
+                            setLocationField(loc.id, 'address', e.target.value)
+                          }
+                          className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                          placeholder="Rua, número, bairro"
+                          required
+                          minLength={5}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
 
             <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
               Slug (página pública)
@@ -385,12 +549,12 @@ export default function SettingsPage() {
               <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-400)]">
                 {slug.trim()
                   ? `URL: /loja/${slug.trim()}`
-                  : 'Defina um slug para publicar a página'}
+                  : 'Defina o endereço da página (slug) para publicá-la'}
               </span>
             </label>
 
             <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
-              Pontos por R$ 1
+              R$ para 1 ponto
               <input
                 type="number"
                 min={1}
@@ -402,9 +566,182 @@ export default function SettingsPage() {
                 className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px]"
               />
               <span className="mt-1 block text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-400)]">
-                Taxa padrão do balcão ao registrar gasto (pool de pontos).
+                Quantos reais o cliente precisa gastar no balcão para ganhar 1
+                ponto. Ex.: 10 = R$ 10,00 → 1 ponto.
               </span>
             </label>
+
+            <div className="rounded-[14px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-cashback)]">
+              A porcentagem de cashback fica em cada campanha, em{' '}
+              <a href="/campaigns" className="font-semibold underline">
+                Campanhas
+              </a>
+              . Aqui ficam só o teto, a compra mínima e a validade do saldo.
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                  <input
+                    type="checkbox"
+                    checked={cashbackMaxEnabled}
+                    onChange={(e) => setCashbackMaxEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                  />
+                  Teto por compra
+                </label>
+                {cashbackMaxEnabled && (
+                  <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                    Máximo (R$)
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={cashbackMaxReais}
+                      onChange={(e) =>
+                        setCashbackMaxReais(
+                          Math.max(1, Number(e.target.value) || 1),
+                        )
+                      }
+                      className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                    />
+                  </label>
+                )}
+              </div>
+              <div>
+                <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                  <input
+                    type="checkbox"
+                    checked={cashbackMinEnabled}
+                    onChange={(e) => setCashbackMinEnabled(e.target.checked)}
+                    className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                  />
+                  Compra mínima
+                </label>
+                {cashbackMinEnabled && (
+                  <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                    Mínimo (R$)
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000}
+                      value={cashbackMinReais}
+                      onChange={(e) =>
+                        setCashbackMinReais(
+                          Math.max(1, Number(e.target.value) || 1),
+                        )
+                      }
+                      className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
+            <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                Validade de carimbos, pontos e cashback
+              </p>
+              <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                Define em quantos dias o saldo expira depois que o cliente
+                ganha. No resgate, o mais antigo é usado primeiro.
+              </p>
+
+              <div className="mt-4 flex flex-col gap-4">
+                <div>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={stampsExpireEnabled}
+                      onChange={(e) =>
+                        setStampsExpireEnabled(e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    />
+                    Carimbos expiram
+                  </label>
+                  {stampsExpireEnabled && (
+                    <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                      Dias após o ganho
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={stampsExpireDays}
+                        onChange={(e) =>
+                          setStampsExpireDays(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                        className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <div>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={pointsExpireEnabled}
+                      onChange={(e) =>
+                        setPointsExpireEnabled(e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    />
+                    Pontos expiram
+                  </label>
+                  {pointsExpireEnabled && (
+                    <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                      Dias após o ganho
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={pointsExpireDays}
+                        onChange={(e) =>
+                          setPointsExpireDays(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                        className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                      />
+                    </label>
+                  )}
+                </div>
+
+                <div>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={cashbackExpireEnabled}
+                      onChange={(e) =>
+                        setCashbackExpireEnabled(e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    />
+                    Cashback expira
+                  </label>
+                  {cashbackExpireEnabled && (
+                    <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                      Dias após o ganho
+                      <input
+                        type="number"
+                        min={1}
+                        max={3650}
+                        value={cashbackExpireDays}
+                        onChange={(e) =>
+                          setCashbackExpireDays(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                        className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px] font-normal normal-case tracking-normal text-[var(--color-ink)]"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            </section>
 
             <div className="grid grid-cols-2 gap-3">
               <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">

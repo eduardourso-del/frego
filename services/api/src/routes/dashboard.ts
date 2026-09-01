@@ -1,44 +1,18 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
-
-const rangeQuery = z.object({
-  range: z.enum(['today', '7d', '30d']).default('today'),
-});
-
-type RangeKey = 'today' | '7d' | '30d';
-
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function addDays(d: Date, n: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
-
-function rangeWindow(range: RangeKey, now = new Date()) {
-  const to = now;
-  const todayStart = startOfDay(now);
-  if (range === 'today') {
-    return {
-      from: todayStart,
-      to,
-      prevFrom: addDays(todayStart, -1),
-      prevTo: todayStart,
-    };
-  }
-  if (range === '7d') {
-    const from = addDays(todayStart, -6);
-    return { from, to, prevFrom: addDays(from, -7), prevTo: from };
-  }
-  const from = addDays(todayStart, -29);
-  return { from, to, prevFrom: addDays(from, -30), prevTo: from };
-}
+import {
+  AUDIENCE_PRESETS,
+  countMembershipsByRules,
+} from '../lib/audience.js';
+import { voucherFromMetadata } from '../lib/voucher.js';
+import { isCashbackUnit } from '../lib/customer-stats.js';
+import {
+  addDays,
+  periodQuerySchema,
+  resolvePeriod,
+  startOfDay,
+} from '../lib/period.js';
 
 function deltaPct(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
@@ -89,6 +63,10 @@ function buildMemberAggs(txs: TxRow[]) {
     agg.visitDays.add(dayKey(tx.createdAt));
     if (tx.createdAt > agg.lastVisitAt) agg.lastVisitAt = tx.createdAt;
 
+    if (isCashbackUnit(tx.unitKind)) {
+      continue;
+    }
+
     if (tx.type === 'redeem') {
       agg.redeems += tx.quantity;
     } else {
@@ -118,6 +96,9 @@ function summarizePeriod(txs: TxRow[], firstVisitByMember: Map<string, Date>) {
   let redeemers = 0;
 
   for (const tx of txs) {
+    if (isCashbackUnit(tx.unitKind)) {
+      continue;
+    }
     if (tx.type === 'redeem') redeems += tx.quantity;
     else {
       const kind =
@@ -192,8 +173,12 @@ function tierFor(agg: MemberAgg, isVip: boolean): 'vip' | 'regular' | 'new' {
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get('/dashboard', async (request) => {
     const auth = requireAuth(request);
-    const { range } = rangeQuery.parse(request.query);
-    const { from, to, prevFrom, prevTo } = rangeWindow(range);
+    const query = periodQuerySchema.parse(request.query);
+    const { key: range, from, toExclusive, prevFrom, prevTo } = resolvePeriod(
+      query,
+      { today: 'today', '7d': 7, '30d': 30 },
+      'today',
+    );
 
     const business = await prisma.business.findUniqueOrThrow({
       where: { id: auth.businessId },
@@ -215,6 +200,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       createdAt: true,
       amountCents: true,
       unitKind: true,
+      campaignId: true,
+      metadata: true,
     } as const;
 
     const [
@@ -229,7 +216,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       prisma.transaction.findMany({
         where: {
           businessId: auth.businessId,
-          createdAt: { gte: from, lt: to },
+          createdAt: { gte: from, lt: toExclusive },
         },
         select: txSelect,
       }),
@@ -238,7 +225,14 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           businessId: auth.businessId,
           createdAt: { gte: prevFrom, lt: prevTo },
         },
-        select: txSelect,
+        select: {
+          type: true,
+          quantity: true,
+          membershipId: true,
+          createdAt: true,
+          amountCents: true,
+          unitKind: true,
+        },
       }),
       prisma.transaction.findMany({
         where: {
@@ -248,7 +242,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
             lt: new Date(),
           },
         },
-        select: { type: true, quantity: true, createdAt: true },
+        select: { type: true, quantity: true, createdAt: true, unitKind: true },
       }),
       prisma.transaction.findMany({
         where: { businessId: auth.businessId },
@@ -261,14 +255,14 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
             },
           },
           location: { select: { name: true } },
-          campaign: { select: { rewardTitle: true, name: true } },
+          campaign: { select: { rewardTitle: true, name: true, type: true } },
         },
       }),
       prisma.campaign.findMany({
         where: {
           businessId: auth.businessId,
           status: 'active',
-          type: { in: ['stamps', 'spend'] },
+          type: { in: ['stamps', 'spend', 'cashback'] },
         },
         orderBy: { createdAt: 'asc' },
         select: {
@@ -278,6 +272,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           rewardTitle: true,
           stampsNeeded: true,
           pointsPerReal: true,
+          cashbackPercent: true,
+          audienceSegmentId: true,
         },
       }),
       prisma.transaction.groupBy({
@@ -362,6 +358,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       let redeems = 0;
       for (const tx of weekTxs) {
         if (dayKey(tx.createdAt) !== key) continue;
+        if (isCashbackUnit(tx.unitKind)) continue;
         if (tx.type === 'stamp') stamps += tx.quantity;
         else redeems += tx.quantity;
       }
@@ -383,8 +380,18 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         .join('')
         .slice(0, 2)
         .toUpperCase();
-      const text =
-        tx.type === 'redeem'
+      const money =
+        tx.quantity > 0
+          ? (tx.quantity / 100).toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })
+          : null;
+      const text = isCashbackUnit(tx.unitKind)
+        ? tx.type === 'redeem'
+          ? `${name} usou ${money ?? 'cashback'} no caixa`
+          : `${name} ganhou ${money ?? 'cashback'}`
+        : tx.type === 'redeem'
           ? `${name} resgatou ${tx.campaign?.rewardTitle ?? 'uma recompensa'}`
           : tx.amountCents
             ? `${name} acumulou pontos`
@@ -400,21 +407,106 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const inactiveBase = Math.max(0, totalMembers - current.customers);
+
+    // Campaign performance strip for dashboard
+    const campaignStats = new Map<
+      string,
+      { redeems: number; redeemers: Set<string>; used: number; total: number }
+    >();
+    for (const tx of currentTxs as Array<
+      TxRow & { campaignId?: string | null; metadata?: unknown }
+    >) {
+      if (tx.type !== 'redeem' || !tx.campaignId) continue;
+      let s = campaignStats.get(tx.campaignId);
+      if (!s) {
+        s = { redeems: 0, redeemers: new Set(), used: 0, total: 0 };
+        campaignStats.set(tx.campaignId, s);
+      }
+      s.redeemers.add(tx.membershipId);
+      if (isCashbackUnit(tx.unitKind)) {
+        s.redeems += 1;
+        continue;
+      }
+      s.redeems += tx.quantity;
+      const voucher = voucherFromMetadata(tx.metadata, {
+        createdAt: tx.createdAt,
+      });
+      if (voucher) {
+        s.total += 1;
+        if (voucher.status === 'used') s.used += 1;
+      }
+    }
+
+    const campaignPerf = activeCampaigns.map((c) => {
+      const s = campaignStats.get(c.id);
+      const fulfillPct =
+        c.type === 'cashback' || !s || s.total === 0
+          ? 0
+          : Math.round((s.used / s.total) * 100);
+      return {
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        rewardTitle: c.rewardTitle,
+        stampsNeeded: c.stampsNeeded,
+        pointsPerReal: c.pointsPerReal,
+        cashbackPercent: c.cashbackPercent,
+        audienceSegmentId: c.audienceSegmentId,
+        redeems: s?.redeems ?? 0,
+        redeemers: s?.redeemers.size ?? 0,
+        fulfillPct,
+      };
+    });
+    const topCampaign = [...campaignPerf].sort(
+      (a, b) => b.redeems - a.redeems || b.fulfillPct - a.fulfillPct,
+    )[0] ?? null;
+    const weakCampaign =
+      [...campaignPerf]
+        .filter((c) => c.type !== 'cashback')
+        .filter((c) => c.redeems > 0 || activeCampaigns.length > 0)
+        .sort((a, b) => a.fulfillPct - b.fulfillPct || a.redeems - b.redeems)[0] ??
+      null;
+
+    const audiencePresets = await Promise.all(
+      AUDIENCE_PRESETS.map(async (p) => ({
+        key: p.key,
+        name: p.name,
+        description: p.description,
+        rules: p.rules,
+        memberCount: await countMembershipsByRules(auth.businessId, p.rules),
+      })),
+    );
+    const atRiskCount =
+      audiencePresets.find((p) => p.key === 'at_risk')?.memberCount ?? 0;
+
     const insight =
-      current.customers === 0
+      atRiskCount > 0
         ? {
-            title: 'Comece a medir retorno',
-            body: 'Cada visita no balcão vira dado. Campanhas ativas dão motivo para o cliente voltar — e você vê o impacto aqui.',
+            title: `Alto valor: ${atRiskCount} sem visita há 30 dias`,
+            body: `${atRiskCount} clientes que mais gastam estão sumidos. Crie uma campanha só para eles e chame de volta.`,
+            href: `/reports#audiencias`,
+            cta: 'Ver audiência',
           }
-        : current.repeatRate >= 40
+        : current.customers === 0
           ? {
-              title: `${current.repeatRate}% voltaram no período`,
-              body: `${current.returning} de ${current.customers} clientes vieram mais de uma vez. Campanhas reforçam esse hábito — quem resgata tende a voltar de novo.`,
+              title: 'Comece a medir o retorno',
+              body: 'Cada visita no balcão vira dado. Campanhas ativas dão motivo para o cliente voltar — e você vê o impacto aqui.',
+              href: '/campaigns',
+              cta: 'Criar campanha',
             }
-          : {
-              title: 'Há espaço para trazer mais gente de volta',
-              body: `Só ${current.repeatRate}% voltaram (${current.returning} de ${current.customers}). Ative campanhas claras e incentive o app — o prêmio é o motivo da próxima visita.`,
-            };
+          : current.repeatRate >= 40
+            ? {
+                title: `${current.repeatRate}% voltaram no período`,
+                body: `${current.returning} de ${current.customers} clientes vieram mais de uma vez. Campanhas reforçam esse hábito: quem resgata tende a voltar.`,
+                href: '/reports',
+                cta: 'Ver relatórios',
+              }
+            : {
+                title: 'Há espaço para trazer mais gente de volta',
+                body: `Só ${current.repeatRate}% voltaram (${current.returning} de ${current.customers}). Ative campanhas claras e incentive o aplicativo — o prêmio é o motivo da próxima visita.`,
+                href: '/campaigns',
+                cta: 'Ver campanhas',
+              };
 
     return {
       range,
@@ -464,18 +556,30 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         inactive: inactiveBase,
       },
       insight,
+      audiencePresets,
+      audienceInsight: {
+        key: 'at_risk',
+        name: 'Em risco',
+        memberCount: atRiskCount,
+        href: '/customers?inactiveDaysMin=30&spendCentsMin=20000&windowDays=180',
+      },
+      topCampaign,
+      weakCampaign,
+      campaignPerf,
       topCustomers,
       weekSeries,
       live,
-      activeCampaigns,
-      activeCampaign: activeCampaigns[0]
+      activeCampaigns: campaignPerf,
+      activeCampaign: topCampaign
         ? {
-            id: activeCampaigns[0].id,
-            name: activeCampaigns[0].name,
-            type: activeCampaigns[0].type,
-            rewardTitle: activeCampaigns[0].rewardTitle,
-            stampsNeeded: activeCampaigns[0].stampsNeeded,
-            pointsPerReal: activeCampaigns[0].pointsPerReal,
+            id: topCampaign.id,
+            name: topCampaign.name,
+            type: topCampaign.type,
+            rewardTitle: topCampaign.rewardTitle,
+            stampsNeeded: topCampaign.stampsNeeded,
+            pointsPerReal: topCampaign.pointsPerReal,
+            redeems: topCampaign.redeems,
+            fulfillPct: topCampaign.fulfillPct,
           }
         : null,
     };

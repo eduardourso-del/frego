@@ -8,9 +8,10 @@ export type EarnNotifyInput = {
   businessId: string;
   businessName: string;
   toE164: string;
-  unitKind: 'stamps' | 'points';
+  unitKind: 'stamps' | 'points' | 'cashback';
   quantity: number;
   amountCents?: number | null;
+  cashbackCents?: number | null;
   wallet: WalletSnapshot;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 };
@@ -30,6 +31,13 @@ export async function notifyEarnWhatsAppForBusiness(
     return { sent: false, skipped: 'not_connected' };
   }
 
+  if (conn.templateEarnStatus !== 'approved') {
+    return {
+      sent: false,
+      skipped: `template_${conn.templateEarnStatus}`,
+    };
+  }
+
   let accessToken: string;
   try {
     accessToken = decryptToken(conn.tokenCiphertext, conn.tokenKeyVersion);
@@ -47,6 +55,7 @@ export async function notifyEarnWhatsAppForBusiness(
     unitKind: input.unitKind,
     quantity: input.quantity,
     amountCents: input.amountCents,
+    cashbackCents: input.cashbackCents,
     wallet: input.wallet,
   });
 

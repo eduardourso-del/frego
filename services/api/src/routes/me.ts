@@ -2,12 +2,18 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth, requireCustomerAuth } from '../plugins/auth.js';
+import { activeEarnKindsByBusinessIds } from '../lib/earn-kinds.js';
 import {
   aggregateCustomerStats,
   progressFromWallet,
 } from '../lib/customer-stats.js';
 import { deriveWallet } from '../lib/wallet.js';
 import { createVoucherMeta, voucherFromMetadata } from '../lib/voucher.js';
+import {
+  membershipMatchesAudience,
+  parseAudienceRules,
+  resolveMembershipRecognition,
+} from '../lib/audience.js';
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -57,6 +63,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             type: true,
             status: true,
             pointsPerReal: true,
+            cashbackPercent: true,
           },
         },
       },
@@ -64,14 +71,24 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const seen = new Set<string>();
-    const businesses = [];
+    const uniqueIds: string[] = [];
     for (const m of members) {
       if (seen.has(m.businessId)) continue;
       seen.add(m.businessId);
+      uniqueIds.push(m.businessId);
+    }
+    const earnKinds = await activeEarnKindsByBusinessIds(uniqueIds);
+
+    const businesses = [];
+    const pushed = new Set<string>();
+    for (const m of members) {
+      if (pushed.has(m.businessId)) continue;
+      pushed.add(m.businessId);
       businesses.push({
         ...m.business,
         role: m.role,
         teamMemberId: m.id,
+        activeEarnKinds: earnKinds.get(m.businessId) ?? [],
       });
     }
 
@@ -169,6 +186,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             primaryColorDark: true,
             slogan: true,
             pointsPerReal: true,
+            cashbackPercent: true,
+            stampsExpireDays: true,
+            pointsExpireDays: true,
             status: true,
             type: true,
             locations: {
@@ -188,7 +208,13 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
 
     const withPools = await Promise.all(
       memberships.map(async (m) => {
-        const wallet = await deriveWallet(m.id, m.businessId);
+        const baseWallet = await deriveWallet(m.id, m.businessId);
+        const { badges, campaigns } = await resolveMembershipRecognition(
+          m.id,
+          m.businessId,
+          baseWallet,
+        );
+        const wallet = { ...baseWallet, campaigns };
         const redeemable = wallet.campaigns.filter((c) => c.canRedeem).length;
         const progress = progressFromWallet(wallet);
         const birthday = wallet.campaigns.find((c) => c.type === 'birthday');
@@ -200,6 +226,11 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           associatedAt: m.associatedAt,
           business: m.business,
           pools: wallet.pools,
+          stampsExpireDays: wallet.stampsExpireDays,
+          pointsExpireDays: wallet.pointsExpireDays,
+          lots: wallet.lots,
+          campaigns: wallet.campaigns,
+          badges,
           activeCampaigns: wallet.campaigns.length,
           redeemableCampaigns: redeemable,
           progress,
@@ -269,6 +300,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       pointsEarned: stats.pointsEarned,
       redeems: stats.redeems,
       spendCents: stats.spendCents,
+      cashbackEarnedCents: stats.cashbackEarnedCents,
+      cashbackSpentCents: stats.cashbackSpentCents,
       redeemableNow: stats.redeemableNow,
       nextReward: stats.nextReward,
     };
@@ -295,6 +328,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             primaryColorDark: true,
             slogan: true,
             pointsPerReal: true,
+            cashbackPercent: true,
+            stampsExpireDays: true,
+            pointsExpireDays: true,
             type: true,
             locations: {
               select: {
@@ -323,7 +359,13 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
     }
 
-    const wallet = await deriveWallet(membership.id, membership.businessId);
+    const baseWallet = await deriveWallet(membership.id, membership.businessId);
+    const { badges, campaigns } = await resolveMembershipRecognition(
+      membership.id,
+      membership.businessId,
+      baseWallet,
+    );
+    const wallet = { ...baseWallet, campaigns };
 
     return {
       business: membership.business,
@@ -332,6 +374,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         isVip: membership.isVip,
         isFavorite: membership.isFavorite,
       },
+      badges,
       wallet,
       pools: wallet.pools,
       campaigns: wallet.campaigns,
@@ -368,9 +411,27 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         status: 'active',
         type: { in: ['stamps', 'spend', 'birthday'] },
       },
+      include: {
+        audienceSegment: { select: { id: true, rules: true } },
+      },
     });
     if (!campaign) {
       return reply.code(400).send({ error: 'INVALID_CAMPAIGN' });
+    }
+
+    if (campaign.audienceSegment) {
+      const rules = parseAudienceRules(campaign.audienceSegment.rules);
+      const eligible = await membershipMatchesAudience(
+        membership.id,
+        body.businessId,
+        rules,
+      );
+      if (!eligible) {
+        return reply.code(403).send({
+          error: 'AUDIENCE_NOT_ELIGIBLE',
+          audienceSegmentId: campaign.audienceSegment.id,
+        });
+      }
     }
 
     if (campaign.type === 'birthday' && quantity !== 1) {
@@ -388,7 +449,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
               ? 'BIRTHDAY_ALREADY_REDEEMED'
               : entry?.lockedReason === 'outside_window'
                 ? 'BIRTHDAY_OUTSIDE_WINDOW'
-                : 'NO_REWARD_AVAILABLE',
+                : entry?.lockedReason === 'audience'
+                  ? 'AUDIENCE_NOT_ELIGIBLE'
+                  : 'NO_REWARD_AVAILABLE',
         lockedReason: entry?.lockedReason ?? null,
         unlocksAt: entry?.unlocksAt ?? null,
         wallet,
@@ -433,6 +496,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       transaction: tx,
       voucherCode: voucher.voucherCode,
       voucherDisplay: voucher.voucherDisplay,
+      voucherExpiresAt: voucher.expiresAt,
+      voucherStatus: 'open' as const,
       rewardTitle,
       campaignName: campaign.name,
       businessId: body.businessId,
@@ -446,6 +511,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Histórico do cliente (todas as lojas).
    * Query: `limit` (default 50, max 100).
+   * Também devolve `lots`: saldo restante por lote (ganho + validade) em todas as lojas.
    */
   app.get('/me/history', async (request) => {
     const auth = requireCustomerAuth(request);
@@ -457,31 +523,104 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
 
     const memberships = await prisma.membership.findMany({
       where: { customerId: auth.customerId },
-      select: { id: true },
+      select: {
+        id: true,
+        businessId: true,
+        business: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            primaryColor: true,
+            stampsExpireDays: true,
+            pointsExpireDays: true,
+          },
+        },
+      },
     });
     const membershipIds = memberships.map((m) => m.id);
     if (membershipIds.length === 0) {
-      return { items: [] };
+      return { items: [], lots: [] };
     }
 
-    const txs = await prisma.transaction.findMany({
-      where: { membershipId: { in: membershipIds } },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: {
-        business: {
-          select: { id: true, name: true, logoUrl: true, primaryColor: true },
+    const [txs, wallets] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { membershipId: { in: membershipIds } },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        include: {
+          business: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              primaryColor: true,
+              stampsExpireDays: true,
+              pointsExpireDays: true,
+            },
+          },
+          campaign: {
+            select: { name: true, rewardTitle: true, type: true },
+          },
+          location: { select: { name: true } },
+          actorTeamMember: { select: { displayName: true } },
         },
-        campaign: {
-          select: { name: true, rewardTitle: true, type: true },
-        },
-        location: { select: { name: true } },
-        actorTeamMember: { select: { displayName: true } },
-      },
-    });
+      }),
+      Promise.all(
+        memberships.map(async (m) => ({
+          membership: m,
+          wallet: await deriveWallet(m.id, m.businessId),
+        })),
+      ),
+    ]);
+
+    const lots = wallets
+      .flatMap(({ membership, wallet }) =>
+        wallet.lots.map((lot) => ({
+          ...lot,
+          businessId: membership.businessId,
+          business: {
+            id: membership.business.id,
+            name: membership.business.name,
+            logoUrl: membership.business.logoUrl,
+            primaryColor: membership.business.primaryColor,
+          },
+        })),
+      )
+      .sort((a, b) => {
+        if (a.expiresAt == null && b.expiresAt == null) {
+          return a.earnedAt.localeCompare(b.earnedAt);
+        }
+        if (a.expiresAt == null) return 1;
+        if (b.expiresAt == null) return -1;
+        return a.expiresAt.localeCompare(b.expiresAt);
+      });
 
     const items = txs.map((tx) => {
-      const voucher = voucherFromMetadata(tx.metadata);
+      const voucher = voucherFromMetadata(tx.metadata, {
+        createdAt: tx.createdAt,
+      });
+      const expireDays =
+        tx.unitKind === 'points'
+          ? tx.business.pointsExpireDays
+          : tx.unitKind === 'stamps'
+            ? tx.business.stampsExpireDays
+            : tx.amountCents != null && tx.amountCents > 0
+              ? tx.business.pointsExpireDays
+              : tx.business.stampsExpireDays;
+      let expiresAt: string | null = null;
+      if (tx.type === 'stamp' && expireDays != null && expireDays > 0) {
+        const earned = new Date(tx.createdAt);
+        const day = new Date(
+          Date.UTC(
+            earned.getUTCFullYear(),
+            earned.getUTCMonth(),
+            earned.getUTCDate(),
+          ),
+        );
+        day.setUTCDate(day.getUTCDate() + expireDays);
+        expiresAt = day.toISOString().slice(0, 10);
+      }
       return {
         id: tx.id,
         type: tx.type,
@@ -489,17 +628,26 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         unitKind: tx.unitKind,
         amountCents: tx.amountCents,
         createdAt: tx.createdAt,
-        business: tx.business,
+        expiresAt,
+        business: {
+          id: tx.business.id,
+          name: tx.business.name,
+          logoUrl: tx.business.logoUrl,
+          primaryColor: tx.business.primaryColor,
+        },
         campaign: tx.campaign,
         location: tx.location,
         actorName: tx.actorTeamMember?.displayName ?? null,
         voucherCode: voucher?.voucherCode ?? null,
         voucherDisplay: voucher?.voucherDisplay ?? null,
+        voucherStatus: voucher?.status ?? null,
+        voucherUsedAt: voucher?.usedAt ?? null,
+        voucherExpiresAt: voucher?.expiresAt ?? null,
         rewardTitle:
           tx.campaign?.rewardTitle ?? tx.campaign?.name ?? null,
       };
     });
 
-    return { items };
+    return { items, lots };
   });
 };

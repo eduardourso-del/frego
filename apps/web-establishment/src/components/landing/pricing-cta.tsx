@@ -7,27 +7,24 @@ export function LandingPricingCta() {
   return (
     <section
       id="comecar"
-      className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-28"
+      className="px-5 py-14 sm:px-8 sm:py-20"
       aria-labelledby="cta-heading"
     >
-      <Reveal>
+      <Reveal className="mx-auto w-full max-w-6xl">
         <div
-          className="relative overflow-hidden rounded-[24px] px-6 py-14 text-center sm:px-12 sm:py-16"
-          style={{
-            background:
-              'linear-gradient(145deg, var(--color-primary-600) 0%, var(--color-primary-800) 100%)',
-          }}
+          className="relative w-full overflow-hidden rounded-[24px] px-6 py-14 text-center sm:px-12 sm:py-16"
+          style={{ background: 'var(--color-primary-800)' }}
         >
           <div
             className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl"
             aria-hidden
           />
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-white/70">
-            Nossa north star
+          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-white/70">
+            O que nos guia
           </p>
           <h2
             id="cta-heading"
-            className="mx-auto mt-3 max-w-xl text-[28px] font-semibold tracking-[-0.03em] text-white sm:text-[36px]"
+            className="mx-auto mt-4 max-w-xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-white sm:text-[36px]"
           >
             Todo cliente merece virar freguês.
           </h2>
@@ -38,20 +35,17 @@ export function LandingPricingCta() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/register"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-[14px] bg-white px-6 text-[15px] font-semibold text-[var(--color-primary-800)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-[8px] bg-[var(--color-card)] px-5 text-[14px] font-extrabold text-[var(--color-primary-800)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
             >
               Quero criar fregueses
             </Link>
             <Link
               href="/login"
-              className="inline-flex min-h-12 w-full items-center justify-center rounded-[14px] border border-white/30 px-6 text-[15px] font-semibold text-white transition-colors hover:bg-white/10 sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-[8px] border border-[color-mix(in_srgb,white_35%,transparent)] px-5 text-[14px] font-extrabold text-white transition-colors hover:bg-white/10 sm:w-auto"
             >
-              Já tenho conta — entrar
+              Já tenho conta
             </Link>
           </div>
-          <p className="mt-6 text-[12px] text-white/55">
-            Planos: [DADO A CONFIRMAR] · Sem comissão escondida por venda
-          </p>
         </div>
       </Reveal>
     </section>

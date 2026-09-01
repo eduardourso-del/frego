@@ -2,7 +2,10 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Cake, Coins, MapPin, Stamp } from 'lucide-react';
+import { FregoWordmark } from '@/components/brand';
+import { RemoteImg, BusinessLogo } from '@/components/remote-img';
+import { Banknote, Cake, Coins, MapPin, Stamp } from 'lucide-react';
+import { businessTypeLabel } from '@frego/tokens';
 import type {
   PublicShopCampaign,
   PublicShopPayload,
@@ -10,14 +13,23 @@ import type {
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
-function campaignHint(c: PublicShopCampaign): string {
+function campaignHint(
+  c: PublicShopCampaign,
+  reaisPerPoint = 1,
+): string {
   if (c.type === 'birthday') {
-    return 'Presente especial no mês do aniversário';
+    return 'Presente especial no aniversário — e nos 6 dias seguintes';
+  }
+  if (c.type === 'cashback') {
+    const pct = c.cashbackPercent ?? 0;
+    return pct > 0
+      ? `${pct}% de cashback nas compras — use o saldo no caixa`
+      : 'Parte do valor da compra volta em R$ para a próxima visita';
   }
   if (c.type === 'spend') {
     const pts = c.stampsNeeded ?? 0;
-    const rate = c.pointsPerReal ?? 1;
-    return `Acumule ${pts} ponto${pts === 1 ? '' : 's'} (R$1 → ${rate} pt) e ganhe o prêmio`;
+    const rate = c.pointsPerReal ?? reaisPerPoint;
+    return `Acumule ${pts} ponto${pts === 1 ? '' : 's'} (a cada R$ ${rate} = 1 ponto) e ganhe o prêmio`;
   }
   const n = c.stampsNeeded ?? 0;
   return `Complete ${n} carimbo${n === 1 ? '' : 's'} e ganhe o prêmio`;
@@ -35,6 +47,14 @@ function CampaignTypeBadge({
       <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF8E8] px-2 py-0.5 text-[11px] font-semibold text-[#92400E]">
         <Coins size={12} strokeWidth={2.5} aria-hidden />
         Pontos
+      </span>
+    );
+  }
+  if (type === 'cashback') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-cashback-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-cashback)]">
+        <Banknote size={12} strokeWidth={2.5} aria-hidden />
+        Cashback
       </span>
     );
   }
@@ -60,8 +80,8 @@ function CampaignTypeBadge({
 export function PublicShopPage({ data }: { data: PublicShopPayload }) {
   const { business, locations, campaigns } = data;
   const letter = business.name.trim().charAt(0).toUpperCase() || 'V';
-  const primary = business.primaryColor || '#3B5BDB';
-  const primaryDark = business.primaryColorDark || '#2F49C4';
+  const primary = business.primaryColor || '#24479C';
+  const primaryDark = business.primaryColorDark || '#1B3781';
   const location = locations[0];
 
   const hasHero = Boolean(business.heroImageUrl?.trim());
@@ -86,12 +106,14 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
         >
           {hasHero ? (
             <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={business.heroImageUrl!}
-                alt=""
-                className="aspect-[2/1] max-h-[220px] w-full object-cover sm:max-h-[240px]"
-              />
+              <div className="relative aspect-[2/1] max-h-[220px] w-full bg-[var(--color-neutral-200)] sm:max-h-[240px]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={business.heroImageUrl!}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              </div>
               {/* Soft fade into page — polish only, no text on the photo */}
               <div
                 className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2"
@@ -134,22 +156,13 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
             transition={{ duration: 0.4, ease }}
             className="-mt-8 mb-3 sm:-mt-9"
           >
-            {business.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={business.logoUrl}
-                alt=""
-                className="h-16 w-16 rounded-[18px] border-[3px] border-[var(--color-bg)] object-cover shadow-[0_8px_20px_rgba(16,24,40,0.14)] sm:h-[72px] sm:w-[72px]"
-              />
-            ) : (
-              <div
-                className="flex h-16 w-16 items-center justify-center rounded-[18px] border-[3px] border-[var(--color-bg)] text-[24px] font-bold text-white shadow-[0_8px_20px_rgba(16,24,40,0.14)] sm:h-[72px] sm:w-[72px] sm:text-[26px]"
-                style={{ background: primary }}
-                aria-hidden
-              >
-                {letter}
-              </div>
-            )}
+            <BusinessLogo
+              src={business.logoUrl}
+              letter={letter}
+              className="h-16 w-16 rounded-[18px] border-[3px] border-[var(--color-bg)] bg-[var(--color-neutral-200)] object-cover shadow-[0_8px_20px_rgba(16,24,40,0.14)] sm:h-[72px] sm:w-[72px]"
+              letterClassName="flex h-16 w-16 items-center justify-center rounded-[18px] border-[3px] border-[var(--color-bg)] text-[24px] font-bold text-white shadow-[0_8px_20px_rgba(16,24,40,0.14)] sm:h-[72px] sm:w-[72px] sm:text-[26px]"
+              background={primary}
+            />
           </motion.div>
 
           <motion.h1
@@ -160,6 +173,14 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
           >
             {business.name}
           </motion.h1>
+          <motion.p
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.06, ease }}
+            className="mt-1.5 text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-neutral-400)]"
+          >
+            {businessTypeLabel(business.type)}
+          </motion.p>
 
           {business.slogan && (
             <motion.p
@@ -219,15 +240,25 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-40px' }}
                   transition={{ duration: 0.45, delay: i * 0.06, ease }}
-                  className="overflow-hidden rounded-[16px] border border-[var(--color-hairline)] bg-white shadow-[0_6px_16px_rgba(16,24,40,0.05)]"
+                  className={`overflow-hidden rounded-[16px] border shadow-[0_6px_16px_rgba(16,24,40,0.05)] ${
+                    c.type === 'cashback'
+                      ? 'border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)]'
+                      : 'border-[var(--color-hairline)] bg-white'
+                  }`}
                 >
-                  <div className="h-[3px]" style={{ background: primary }} />
+                  <div
+                    className="h-[3px]"
+                    style={{
+                      background:
+                        c.type === 'cashback'
+                          ? 'var(--color-cashback)'
+                          : primary,
+                    }}
+                  />
                   <div className="flex gap-3 p-4">
                     {c.rewardImageUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
+                      <RemoteImg
                         src={c.rewardImageUrl}
-                        alt=""
                         className="h-16 w-16 shrink-0 rounded-[12px] object-cover"
                       />
                     ) : (
@@ -240,6 +271,8 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
                           <Coins size={22} style={{ color: primary }} />
                         ) : c.type === 'birthday' ? (
                           <Cake size={22} className="text-[#9D174D]" />
+                        ) : c.type === 'cashback' ? (
+                          <Banknote size={22} className="text-[var(--color-cashback)]" />
                         ) : (
                           <Stamp size={22} style={{ color: primary }} />
                         )}
@@ -264,7 +297,7 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
                         </p>
                       )}
                       <p className="mt-2 text-[12px] text-[var(--color-neutral-400)]">
-                        {campaignHint(c)}
+                        {campaignHint(c, business.pointsPerReal ?? 1)}
                       </p>
                     </div>
                   </div>
@@ -299,16 +332,10 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
         </section>
       </main>
 
-      <footer className="border-t border-[var(--color-hairline)] py-8 text-center">
-        <p className="text-[13px] text-[var(--color-neutral-400)]">
-          Powered by{' '}
-          <Link
-            href="/"
-            className="font-semibold text-[var(--color-ink)] underline-offset-2 hover:underline"
-          >
-            Frego
-          </Link>
-        </p>
+      <footer className="border-t border-[var(--color-hairline)] py-8">
+        <Link href="/" className="mx-auto flex justify-center" aria-label="Frego">
+          <FregoWordmark height={28} />
+        </Link>
       </footer>
     </div>
   );

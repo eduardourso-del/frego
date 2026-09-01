@@ -1,62 +1,42 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:frego_tokens/frego_tokens.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Design tokens from packages/tokens — keep in sync with CSS variables.
-abstract final class FregoColors {
-  static const primary50 = Color(0xFFEEF1FD);
-  static const primary200 = Color(0xFFC7D2F7);
-  static const primary500 = Color(0xFF3B5BDB);
-  static const primary600 = Color(0xFF2F49C4);
-  static const primary800 = Color(0xFF1E2F8A);
+export 'package:frego_tokens/frego_tokens.dart';
 
-  static const neutralBg = Color(0xFFF7F8FA);
-  static const neutral100 = Color(0xFFF1F3F6);
-  static const neutral200 = Color(0xFFE4E7EC);
-  static const hairline = Color(0xFFEEF0F3);
-  static const neutral400 = Color(0xFF9AA0AA);
-  static const neutral500 = Color(0xFF6B7280);
-  static const neutral700 = Color(0xFF3F444F);
-  static const ink = Color(0xFF16181D);
-  static const card = Color(0xFFFFFFFF);
-
-  static const success = Color(0xFF1F9D6B);
-  static const danger = Color(0xFFDF4138);
-
-  static const darkBg = Color(0xFF0C0D10);
-  static const darkCard = Color(0xFF15171C);
-  static const darkRaised = Color(0xFF1D2026);
-  static const darkBorder = Color(0xFF2A2E37);
-  static const darkPrimary = Color(0xFF5B78E8);
-  static const darkText = Color(0xFFE8EAED);
-}
-
+/// Theme built on [frego_tokens]. Swap tokens there — this file stays.
 abstract final class FregoTheme {
-  static TextTheme _soften(TextTheme theme) {
-    TextStyle? soft(TextStyle? style, {FontWeight weight = FontWeight.w500}) {
+  static TextTheme _scale(TextTheme theme) {
+    TextStyle? t(
+      TextStyle? style, {
+      required FontWeight weight,
+      double? letterSpacing,
+    }) {
       if (style == null) return null;
       return style.copyWith(
         fontWeight: weight,
+        letterSpacing: letterSpacing,
         decoration: TextDecoration.none,
       );
     }
 
     return theme.copyWith(
-      displayLarge: soft(theme.displayLarge, weight: FontWeight.w600),
-      displayMedium: soft(theme.displayMedium, weight: FontWeight.w600),
-      displaySmall: soft(theme.displaySmall, weight: FontWeight.w600),
-      headlineLarge: soft(theme.headlineLarge, weight: FontWeight.w600),
-      headlineMedium: soft(theme.headlineMedium, weight: FontWeight.w600),
-      headlineSmall: soft(theme.headlineSmall, weight: FontWeight.w600),
-      titleLarge: soft(theme.titleLarge, weight: FontWeight.w600),
-      titleMedium: soft(theme.titleMedium, weight: FontWeight.w500),
-      titleSmall: soft(theme.titleSmall, weight: FontWeight.w500),
-      bodyLarge: soft(theme.bodyLarge, weight: FontWeight.w400),
-      bodyMedium: soft(theme.bodyMedium, weight: FontWeight.w400),
-      bodySmall: soft(theme.bodySmall, weight: FontWeight.w400),
-      labelLarge: soft(theme.labelLarge, weight: FontWeight.w500),
-      labelMedium: soft(theme.labelMedium, weight: FontWeight.w500),
-      labelSmall: soft(theme.labelSmall, weight: FontWeight.w500),
+      displayLarge: t(theme.displayLarge, weight: FontWeight.w800, letterSpacing: -1.2),
+      displayMedium: t(theme.displayMedium, weight: FontWeight.w800, letterSpacing: -0.8),
+      displaySmall: t(theme.displaySmall, weight: FontWeight.w800, letterSpacing: -0.5),
+      headlineLarge: t(theme.headlineLarge, weight: FontWeight.w800, letterSpacing: -0.4),
+      headlineMedium: t(theme.headlineMedium, weight: FontWeight.w800, letterSpacing: -0.3),
+      headlineSmall: t(theme.headlineSmall, weight: FontWeight.w800),
+      titleLarge: t(theme.titleLarge, weight: FontWeight.w800, letterSpacing: -0.2),
+      titleMedium: t(theme.titleMedium, weight: FontWeight.w600),
+      titleSmall: t(theme.titleSmall, weight: FontWeight.w600),
+      bodyLarge: t(theme.bodyLarge, weight: FontWeight.w400),
+      bodyMedium: t(theme.bodyMedium, weight: FontWeight.w400),
+      bodySmall: t(theme.bodySmall, weight: FontWeight.w400),
+      labelLarge: t(theme.labelLarge, weight: FontWeight.w800, letterSpacing: 0.14),
+      labelMedium: t(theme.labelMedium, weight: FontWeight.w600, letterSpacing: 0.96),
+      labelSmall: t(theme.labelSmall, weight: FontWeight.w600, letterSpacing: 0.96),
     );
   }
 
@@ -65,9 +45,9 @@ abstract final class FregoTheme {
       seedColor: FregoColors.primary500,
       brightness: Brightness.light,
       primary: FregoColors.primary500,
+      onPrimary: FregoColors.onPrimary,
       surface: FregoColors.neutralBg,
       onSurface: FregoColors.ink,
-      onPrimary: Colors.white,
     );
 
     final base = ThemeData(
@@ -78,9 +58,8 @@ abstract final class FregoTheme {
       canvasColor: FregoColors.neutralBg,
     );
 
-    // Plus Jakarta Sans — lighter than SF Pro Bold defaults.
-    final textTheme = _soften(
-      GoogleFonts.plusJakartaSansTextTheme(base.textTheme).apply(
+    final textTheme = _scale(
+      GoogleFonts.archivoTextTheme(base.textTheme).apply(
         bodyColor: FregoColors.ink,
         displayColor: FregoColors.ink,
       ),
@@ -95,7 +74,7 @@ abstract final class FregoTheme {
         elevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.plusJakartaSans(
+        titleTextStyle: GoogleFonts.archivo(
           fontSize: 17,
           fontWeight: FontWeight.w600,
           color: FregoColors.ink,
@@ -107,9 +86,9 @@ abstract final class FregoTheme {
         indicatorColor: FregoColors.primary50,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
-          return GoogleFonts.plusJakartaSans(
+          return GoogleFonts.archivo(
             fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: FontWeight.w600,
             color: selected ? FregoColors.primary500 : FregoColors.neutral500,
             decoration: TextDecoration.none,
           );
@@ -124,54 +103,55 @@ abstract final class FregoTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: FregoColors.card,
-        hintStyle: GoogleFonts.plusJakartaSans(color: FregoColors.neutral400),
-        labelStyle: GoogleFonts.plusJakartaSans(color: FregoColors.neutral500),
+        hintStyle: GoogleFonts.archivo(color: FregoColors.neutral400),
+        labelStyle: GoogleFonts.archivo(color: FregoColors.neutral500),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: FregoColors.neutral200),
+          borderRadius: BorderRadius.circular(FregoRadius.sm),
+          borderSide: const BorderSide(color: FregoColors.control),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: FregoColors.neutral200),
+          borderRadius: BorderRadius.circular(FregoRadius.sm),
+          borderSide: const BorderSide(color: FregoColors.control),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(FregoRadius.sm),
           borderSide: const BorderSide(
             color: FregoColors.primary500,
             width: 1.5,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(FregoRadius.sm),
           borderSide: const BorderSide(color: FregoColors.danger),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(44, 44),
+          minimumSize: const Size(FregoTouch.minTarget, FregoTouch.minTarget),
           backgroundColor: FregoColors.primary500,
-          foregroundColor: Colors.white,
-          disabledBackgroundColor: FregoColors.primary200,
-          disabledForegroundColor: Colors.white70,
-          textStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
+          foregroundColor: FregoColors.onPrimary,
+          disabledBackgroundColor: FregoColors.neutral100,
+          disabledForegroundColor: FregoColors.neutral400,
+          textStyle: GoogleFonts.archivo(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(FregoRadius.sm),
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: FregoColors.ink,
-          side: const BorderSide(color: FregoColors.neutral200),
-          textStyle: GoogleFonts.plusJakartaSans(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
+          minimumSize: const Size(FregoTouch.minTarget, FregoTouch.minTarget),
+          foregroundColor: FregoColors.primary500,
+          side: const BorderSide(color: FregoColors.control),
+          textStyle: GoogleFonts.archivo(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
           ),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(FregoRadius.sm),
           ),
         ),
       ),
@@ -184,13 +164,13 @@ abstract final class FregoTheme {
   }
 
   static ThemeData dark() {
-    // Kept for future; app currently forces light.
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: FregoColors.darkBg,
       colorScheme: const ColorScheme.dark(
         primary: FregoColors.darkPrimary,
+        onPrimary: FregoColors.darkOnPrimary,
         surface: FregoColors.darkBg,
         onSurface: FregoColors.darkText,
       ),
@@ -198,33 +178,45 @@ abstract final class FregoTheme {
   }
 
   static CupertinoThemeData cupertino(Brightness brightness) {
-    final base = GoogleFonts.plusJakartaSans(
+    final base = GoogleFonts.archivo(
       color: FregoColors.ink,
       fontSize: 16,
       fontWeight: FontWeight.w400,
       decoration: TextDecoration.none,
+    ).copyWith(inherit: false);
+    final action = base.copyWith(
+      color: FregoColors.primary500,
+      fontWeight: FontWeight.w600,
+      fontSize: 17,
     );
     return CupertinoThemeData(
       brightness: Brightness.light,
       primaryColor: FregoColors.primary500,
+      primaryContrastingColor: FregoColors.onPrimary,
       scaffoldBackgroundColor: FregoColors.neutralBg,
       barBackgroundColor: FregoColors.card,
       textTheme: CupertinoTextThemeData(
-        primaryColor: FregoColors.ink,
+        primaryColor: FregoColors.primary500,
         textStyle: base,
+        actionTextStyle: action,
+        actionSmallTextStyle: action.copyWith(fontSize: 14),
+        navActionTextStyle: action,
         navTitleTextStyle: base.copyWith(
           fontSize: 17,
           fontWeight: FontWeight.w600,
         ),
         navLargeTitleTextStyle: base.copyWith(
           fontSize: 28,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w800,
           letterSpacing: -0.4,
         ),
-        actionTextStyle: base.copyWith(
-          color: FregoColors.primary500,
-          fontWeight: FontWeight.w500,
+        tabLabelTextStyle: base.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: FregoColors.neutral500,
         ),
+        pickerTextStyle: base.copyWith(fontSize: 21),
+        dateTimePickerTextStyle: base.copyWith(fontSize: 21),
       ),
     );
   }

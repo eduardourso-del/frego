@@ -2,6 +2,7 @@
 
 import { AppShell } from '@/components/app-shell';
 import { Card } from '@/components/ui';
+import { FregoMark } from '@/components/brand';
 
 export default function PlaceholderPage({
   title,
@@ -23,13 +24,13 @@ export default function PlaceholderPage({
     >
       <div className="mx-auto max-w-lg px-4 py-12 md:px-7 md:py-16">
         <Card className="text-center" padding="lg">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-[16px] bg-[var(--color-primary-50)] text-[20px] font-bold text-[var(--color-primary-500)]">
-            V
+          <div className="mx-auto mb-5 flex justify-center">
+            <FregoMark size={48} />
           </div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-neutral-400)]">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
             Em breve
           </p>
-          <h1 className="mt-2 text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
+          <h1 className="mt-2 text-[24px] font-extrabold tracking-[-0.015em] text-[var(--color-ink)]">
             {title}
           </h1>
           <p className="mx-auto mt-2 max-w-sm text-[15px] leading-relaxed text-[var(--color-neutral-500)]">

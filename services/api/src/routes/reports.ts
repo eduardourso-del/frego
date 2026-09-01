@@ -1,25 +1,20 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
-
-const rangeQuery = z.object({
-  range: z.enum(['7d', '30d', '90d']).default('30d'),
-});
-
-type RangeKey = '7d' | '30d' | '90d';
-
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function addDays(d: Date, n: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + n);
-  return x;
-}
+import {
+  AUDIENCE_PRESETS,
+  computeSpendTiers,
+  countMembershipsByRules,
+  parseAudienceRules,
+} from '../lib/audience.js';
+import { voucherFromMetadata } from '../lib/voucher.js';
+import { isCashbackUnit } from '../lib/customer-stats.js';
+import {
+  addDays,
+  periodQuerySchema,
+  resolvePeriod,
+  startOfDay,
+} from '../lib/period.js';
 
 function dayKey(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -43,20 +38,6 @@ const MONTH_SHORT = [
   'Nov',
   'Dez',
 ] as const;
-
-function rangeWindow(range: RangeKey, now = new Date()) {
-  const to = now;
-  const todayStart = startOfDay(now);
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const from = addDays(todayStart, -(days - 1));
-  return {
-    from,
-    to,
-    prevFrom: addDays(from, -days),
-    prevTo: from,
-    days,
-  };
-}
 
 function deltaPct(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
@@ -82,9 +63,11 @@ type TxLite = {
   createdAt: Date;
   amountCents: number | null;
   unitKind: string | null;
+  metadata?: unknown;
 };
 
 function isPointsEarn(tx: TxLite) {
+  if (isCashbackUnit(tx.unitKind)) return false;
   return (
     tx.type !== 'redeem' &&
     (tx.unitKind === 'points' || (tx.amountCents != null && tx.amountCents > 0))
@@ -109,6 +92,9 @@ function summarize(txs: TxLite[]) {
     }
     days.add(dayKey(tx.createdAt));
 
+    if (isCashbackUnit(tx.unitKind)) {
+      continue;
+    }
     if (tx.type === 'redeem') {
       redeems += tx.quantity;
       redeemers.add(tx.membershipId);
@@ -152,8 +138,9 @@ function summarize(txs: TxLite[]) {
 export const reportsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/reports', async (request) => {
     const auth = requireAuth(request);
-    const { range } = rangeQuery.parse(request.query);
-    const { from, to, prevFrom, prevTo, days } = rangeWindow(range);
+    const query = periodQuerySchema.parse(request.query);
+    const { key: range, from, toExclusive, prevFrom, prevTo, days } =
+      resolvePeriod(query, { '7d': 7, '30d': 30, '90d': 90 }, '30d');
     const inactiveCutoff = addDays(startOfDay(new Date()), -29);
 
     const txSelect = {
@@ -166,6 +153,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       createdAt: true,
       amountCents: true,
       unitKind: true,
+      metadata: true,
     } as const;
 
     const [
@@ -177,11 +165,12 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       totalMembers,
       memberships,
       activeIn30d,
+      savedAudiences,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
           businessId: auth.businessId,
-          createdAt: { gte: from, lt: to },
+          createdAt: { gte: from, lt: toExclusive },
         },
         select: txSelect,
       }),
@@ -212,6 +201,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           type: true,
           status: true,
           rewardTitle: true,
+          audienceSegmentId: true,
+          audienceSegment: { select: { id: true, name: true, rules: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -228,6 +219,11 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         select: { membershipId: true },
         distinct: ['membershipId'],
       }),
+      prisma.audienceSegment.findMany({
+        where: { businessId: auth.businessId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      }),
     ]);
 
     const current = summarize(currentTxs);
@@ -235,7 +231,6 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     const active30dCount = activeIn30d.length;
     const inactive30d = Math.max(0, totalMembers - active30dCount);
 
-    // Daily series across the selected window
     const series = Array.from({ length: days }, (_, i) => {
       const day = addDays(startOfDay(from), i);
       const key = dayKey(day);
@@ -253,7 +248,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       return {
         date: key,
         label:
-          range === '7d'
+          days <= 7
             ? ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][day.getDay()]
             : `${day.getDate()}/${day.getMonth() + 1}`,
         stamps,
@@ -263,7 +258,6 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    // Locations ranking (by activity volume)
     const locStats = new Map<
       string,
       { visits: number; stamps: number; points: number; redeems: number }
@@ -318,7 +312,6 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       })
       .sort((a, b) => b.visits - a.visits || b.stamps - a.stamps);
 
-    // Team ranking (earns attributed to staff)
     const teamStats = new Map<
       string,
       { stamps: number; points: number; redeems: number }
@@ -359,16 +352,20 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       .sort((a, b) => b.activity - a.activity)
       .slice(0, 10);
 
-    // Campaigns by redemption
-    const campaignEarners = new Map<string, Set<string>>();
     const campaignRedeemers = new Map<string, Set<string>>();
     const campaignRedeems = new Map<string, number>();
+    const campaignVoucher = new Map<
+      string,
+      { open: number; used: number; expired: number }
+    >();
+    const memberSpend = new Map<string, number>();
+
     for (const tx of currentTxs) {
-      if (!tx.campaignId) continue;
-      if (tx.type === 'redeem') {
+      if (tx.type === 'redeem' && tx.campaignId) {
+        const cashback = isCashbackUnit(tx.unitKind);
         campaignRedeems.set(
           tx.campaignId,
-          (campaignRedeems.get(tx.campaignId) ?? 0) + tx.quantity,
+          (campaignRedeems.get(tx.campaignId) ?? 0) + (cashback ? 1 : tx.quantity),
         );
         let set = campaignRedeemers.get(tx.campaignId);
         if (!set) {
@@ -376,44 +373,90 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           campaignRedeemers.set(tx.campaignId, set);
         }
         set.add(tx.membershipId);
-      } else {
-        let set = campaignEarners.get(tx.campaignId);
-        if (!set) {
-          set = new Set();
-          campaignEarners.set(tx.campaignId, set);
+
+        if (!cashback) {
+          let v = campaignVoucher.get(tx.campaignId);
+          if (!v) {
+            v = { open: 0, used: 0, expired: 0 };
+            campaignVoucher.set(tx.campaignId, v);
+          }
+          const voucher = voucherFromMetadata(tx.metadata, {
+            createdAt: tx.createdAt,
+          });
+          if (voucher?.status === 'used') v.used += 1;
+          else if (voucher?.status === 'expired') v.expired += 1;
+          else if (voucher) v.open += 1;
         }
-        set.add(tx.membershipId);
+      }
+      if (isPointsEarn(tx) && tx.amountCents) {
+        memberSpend.set(
+          tx.membershipId,
+          (memberSpend.get(tx.membershipId) ?? 0) + tx.amountCents,
+        );
       }
     }
 
-    const campaignsRanking = campaigns
-      .map((c) => {
-        const redeems = campaignRedeems.get(c.id) ?? 0;
-        const earners = campaignEarners.get(c.id)?.size ?? 0;
-        const redeemers = campaignRedeemers.get(c.id)?.size ?? 0;
-        const engaged = new Set([
-          ...(campaignEarners.get(c.id) ?? []),
-          ...(campaignRedeemers.get(c.id) ?? []),
-        ]).size;
-        const engagePct =
-          engaged === 0 ? 0 : Math.round((redeemers / engaged) * 100);
-        return {
-          id: c.id,
-          name: c.name,
-          type: c.type,
-          status: c.status,
-          rewardTitle: c.rewardTitle,
-          redeems,
-          earners,
-          redeemers,
-          engagePct,
-        };
-      })
-      .filter((c) => c.redeems > 0 || c.earners > 0)
-      .sort((a, b) => b.redeems - a.redeems || b.earners - a.earners)
-      .slice(0, 8);
+    const campaignsRanking = (
+      await Promise.all(
+        campaigns.map(async (c) => {
+          const redeems = campaignRedeems.get(c.id) ?? 0;
+          const redeemers = campaignRedeemers.get(c.id)?.size ?? 0;
+          const vouchers = campaignVoucher.get(c.id) ?? {
+            open: 0,
+            used: 0,
+            expired: 0,
+          };
+          const voucherTotal = vouchers.open + vouchers.used + vouchers.expired;
+          const fulfillPct =
+            voucherTotal === 0
+              ? 0
+              : Math.round((vouchers.used / voucherTotal) * 100);
 
-    // Retention by cohort month (last 5 months of associations)
+          let eligible = current.customers;
+          if (c.audienceSegment) {
+            eligible = await countMembershipsByRules(
+              auth.businessId,
+              parseAudienceRules(c.audienceSegment.rules),
+            );
+          }
+          const engagePct =
+            eligible === 0 ? 0 : Math.round((redeemers / eligible) * 100);
+
+          let revenueFromRedeemersCents = 0;
+          for (const mid of campaignRedeemers.get(c.id) ?? []) {
+            revenueFromRedeemersCents += memberSpend.get(mid) ?? 0;
+          }
+
+          return {
+            id: c.id,
+            name: c.name,
+            type: c.type,
+            status: c.status,
+            rewardTitle: c.rewardTitle,
+            audienceSegmentId: c.audienceSegmentId,
+            audienceName: c.audienceSegment?.name ?? null,
+            redeems,
+            redeemers,
+            eligible,
+            engagePct,
+            fulfillPct,
+            openVouchers: vouchers.open,
+            usedVouchers: vouchers.used,
+            expiredVouchers: vouchers.expired,
+            revenueFromRedeemersCents,
+          };
+        }),
+      )
+    )
+      .filter((c) => c.redeems > 0 || c.status === 'active')
+      .sort(
+        (a, b) =>
+          b.redeems - a.redeems ||
+          b.fulfillPct - a.fulfillPct ||
+          b.engagePct - a.engagePct,
+      )
+      .slice(0, 12);
+
     const now = new Date();
     const cohortMonths: Array<{ key: string; label: string; from: Date }> = [];
     for (let i = 4; i >= 0; i--) {
@@ -445,10 +488,45 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
+    const presetAudiences = await Promise.all(
+      AUDIENCE_PRESETS.map(async (p) => {
+        const memberCount = await countMembershipsByRules(
+          auth.businessId,
+          p.rules,
+        );
+        return {
+          key: p.key,
+          name: p.name,
+          description: p.description,
+          rules: p.rules,
+          memberCount,
+        };
+      }),
+    );
+    const spendTiers = await computeSpendTiers(auth.businessId, 90);
+    const atRisk = presetAudiences.find((p) => p.key === 'at_risk');
+
+    const saved = await Promise.all(
+      savedAudiences.map(async (s) => {
+        const rules = parseAudienceRules(s.rules);
+        const memberCount = await countMembershipsByRules(
+          auth.businessId,
+          rules,
+        );
+        return {
+          id: s.id,
+          name: s.name,
+          rules,
+          memberCount,
+          createdAt: s.createdAt,
+        };
+      }),
+    );
+
     return {
       range,
       from: from.toISOString(),
-      to: to.toISOString(),
+      to: toExclusive.toISOString(),
       kpis: {
         activeCustomers: {
           value: current.customers,
@@ -497,6 +575,22 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       locations: locationsRanking,
       team: teamRanking,
       campaigns: campaignsRanking,
+      audiences: {
+        presets: presetAudiences,
+        spendTiers,
+        saved,
+        insight: atRisk
+          ? {
+              title: `Alto valor em risco: ${atRisk.memberCount}`,
+              body:
+                atRisk.memberCount > 0
+                  ? `${atRisk.memberCount} clientes gastaram bem e estão sem visita há 30 dias ou mais. Crie uma campanha só para eles.`
+                  : 'Nenhum cliente de alto valor inativo no momento — continue acompanhando.',
+              rules: atRisk.rules,
+              memberCount: atRisk.memberCount,
+            }
+          : null,
+      },
     };
   });
 };

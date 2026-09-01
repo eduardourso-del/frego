@@ -4,6 +4,7 @@ export type PublicShopCampaign = {
   type: string;
   stampsNeeded: number | null;
   pointsPerReal: number | null;
+  cashbackPercent?: number | null;
   rewardTitle: string | null;
   rewardDescription: string | null;
   rewardImageUrl: string | null;
@@ -24,6 +25,8 @@ export type PublicShopBusiness = {
   primaryColorDark: string;
   slogan: string | null;
   slug: string;
+  cashbackPercent?: number;
+  pointsPerReal?: number;
 };
 
 export type PublicShopPayload = {

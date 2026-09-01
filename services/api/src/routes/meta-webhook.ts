@@ -1,6 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { createHash } from 'node:crypto';
 import { prisma } from '@frego/db';
+import {
+  EARN_TEMPLATE_LANG,
+  EARN_TEMPLATE_NAME,
+  WELCOME_TEMPLATE_LANG,
+  WELCOME_TEMPLATE_NAME,
+  mapWebhookTemplateEvent,
+} from '../lib/whatsapp/templates.js';
 
 function eventKeyFromPayload(payload: unknown): string {
   const raw = JSON.stringify(payload);
@@ -23,7 +30,8 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Ingest status / template updates. Always 200 quickly; idempotent by event hash.
+   * Ingest status / template / coexistence (history, smb_*) updates.
+   * Always 200 quickly; idempotent by event hash.
    */
   app.post('/webhooks/meta', async (request, reply) => {
     const payload = request.body as {
@@ -40,12 +48,15 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
               errors?: unknown;
             }>;
             messages?: unknown[];
+            event?: string;
+            message_template_id?: string | number;
+            message_template_name?: string;
+            message_template_language?: string;
           };
         }>;
       }>;
     };
 
-    // ACK immediately semantics: process then 200 (sync is fine for v1 volume)
     try {
       if (payload.object === 'whatsapp_business_account' && payload.entry) {
         for (const entry of payload.entry) {
@@ -53,15 +64,63 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
             const phoneNumberId =
               change.value?.metadata?.phone_number_id ?? null;
             let businessId: string | null = null;
+
+            if (change.field === 'message_template_status_update') {
+              const wabaId = entry.id;
+              const templateName = change.value?.message_template_name;
+              const templateLang = change.value?.message_template_language;
+              const mapped = mapWebhookTemplateEvent(change.value?.event);
+              const langOk =
+                !templateLang ||
+                templateLang === EARN_TEMPLATE_LANG ||
+                templateLang === WELCOME_TEMPLATE_LANG ||
+                templateLang === 'pt-BR';
+              if (wabaId && mapped && langOk) {
+                const conn = await prisma.businessWhatsAppConnection.findFirst({
+                  where: { wabaId, status: 'connected' },
+                });
+                if (conn) {
+                  businessId = conn.businessId;
+                  if (templateName === WELCOME_TEMPLATE_NAME) {
+                    await prisma.businessWhatsAppConnection.update({
+                      where: { id: conn.id },
+                      data: {
+                        templateWelcomeStatus: mapped,
+                        templateWelcomeId: change.value?.message_template_id
+                          ? String(change.value.message_template_id)
+                          : conn.templateWelcomeId,
+                        templateWelcomeSyncedAt: new Date(),
+                        ...(mapped === 'approved' ? { lastError: null } : {}),
+                      },
+                    });
+                  } else if (
+                    !templateName ||
+                    templateName === EARN_TEMPLATE_NAME
+                  ) {
+                    await prisma.businessWhatsAppConnection.update({
+                      where: { id: conn.id },
+                      data: {
+                        templateEarnStatus: mapped,
+                        templateEarnId: change.value?.message_template_id
+                          ? String(change.value.message_template_id)
+                          : conn.templateEarnId,
+                        templateEarnSyncedAt: new Date(),
+                        ...(mapped === 'approved' ? { lastError: null } : {}),
+                      },
+                    });
+                  }
+                }
+              }
+            }
+
             if (phoneNumberId) {
               const conn =
                 await prisma.businessWhatsAppConnection.findUnique({
                   where: { phoneNumberId },
                   select: { businessId: true, id: true },
                 });
-              businessId = conn?.businessId ?? null;
+              businessId = conn?.businessId ?? businessId;
 
-              // Persist last delivery failure on connection
               for (const st of change.value?.statuses ?? []) {
                 if (st.status === 'failed' && conn) {
                   const errMsg = JSON.stringify(st.errors ?? st).slice(0, 500);
@@ -91,7 +150,6 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
                 },
               })
               .catch((err: { code?: string }) => {
-                // Unique violation = duplicate webhook — ignore
                 if (err?.code !== 'P2002') throw err;
               });
           }

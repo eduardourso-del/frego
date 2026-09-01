@@ -142,6 +142,7 @@ class FregoPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = backgroundColor ?? FregoColors.neutralBg;
     if (FregoAdaptive.useCupertino(context)) {
+      final navStyle = CupertinoTheme.of(context).textTheme.navTitleTextStyle;
       return CupertinoPageScaffold(
         backgroundColor: bg,
         navigationBar: showNavBar || title != null || leading != null
@@ -150,10 +151,11 @@ class FregoPage extends StatelessWidget {
                 border: const Border(
                   bottom: BorderSide(color: FregoColors.hairline, width: 0.5),
                 ),
-                middle: title != null ? Text(title!) : null,
+                middle: title != null
+                    ? Text(title!, style: navStyle)
+                    : null,
                 leading: leading,
                 trailing: trailing,
-                previousPageTitle: 'Voltar',
               )
             : null,
         child: SafeArea(child: child),
@@ -207,13 +209,16 @@ class FregoPrimaryButton extends StatelessWidget {
     if (FregoAdaptive.useCupertino(context)) {
       final button = CupertinoButton.filled(
         onPressed: onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(FregoRadius.sm),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Text(
           label,
           style: const TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            inherit: false,
+            color: FregoColors.onPrimary,
+            decoration: TextDecoration.none,
           ),
         ),
       );
@@ -258,15 +263,16 @@ class FregoSecondaryButton extends StatelessWidget {
             );
       final button = CupertinoButton(
         onPressed: onPressed,
-        color: FregoColors.neutral100,
-        borderRadius: BorderRadius.circular(12),
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(FregoRadius.sm),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: DefaultTextStyle(
           style: const TextStyle(
-            color: FregoColors.ink,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+            color: FregoColors.primary500,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
             decoration: TextDecoration.none,
+            inherit: false,
           ),
           child: child,
         ),
@@ -337,8 +343,9 @@ class FregoTextField extends StatelessWidget {
               child: Text(
                 label!,
                 style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.96,
                   color: FregoColors.neutral500,
                 ),
               ),
@@ -371,11 +378,11 @@ class FregoTextField extends StatelessWidget {
             ),
             decoration: BoxDecoration(
               color: enabled ? FregoColors.card : FregoColors.neutral100,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(FregoRadius.sm),
               border: Border.all(
                 color: errorText != null
                     ? FregoColors.danger
-                    : FregoColors.neutral200,
+                    : FregoColors.control,
               ),
             ),
           ),

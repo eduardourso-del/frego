@@ -5,10 +5,13 @@ import {
   useEffect,
   useMemo,
   useState,
+  Suspense,
   type FormEvent,
 } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
+  Banknote,
   Gift,
   Link2,
   Plus,
@@ -54,8 +57,10 @@ type CustomerListItem = {
     pointsEarned: number;
     redeems: number;
     spendCents: number;
+    cashbackEarnedCents?: number;
+    cashbackSpentCents?: number;
   };
-  pools: { stamps: number; points: number };
+  pools: { stamps: number; points: number; cashbackCents?: number };
   progress: Progress | null;
   redeemableCampaigns: number;
 };
@@ -63,6 +68,11 @@ type CustomerListItem = {
 type ListResponse = {
   totalCount: number;
   vipCount: number;
+  audience?: {
+    id?: string;
+    name?: string;
+    memberCount: number;
+  } | null;
   customers: CustomerListItem[];
 };
 
@@ -87,10 +97,12 @@ type ProfileResponse = {
     pointsEarned: number;
     redeems: number;
     spendCents: number;
+    cashbackEarnedCents?: number;
+    cashbackSpentCents?: number;
     redeemableCampaigns: number;
   };
   wallet: {
-    pools: { stamps: number; points: number };
+    pools: { stamps: number; points: number; cashbackCents?: number };
     campaigns: Array<{
       campaignId: string;
       campaignName: string;
@@ -101,7 +113,7 @@ type ProfileResponse = {
       rewardsAvailable: number;
     }>;
   };
-  pools: { stamps: number; points: number };
+  pools: { stamps: number; points: number; cashbackCents?: number };
   otherShopsCount: number;
   otherShops: Array<{
     businessId: string;
@@ -157,8 +169,11 @@ function formatRelativeVisit(iso: string | null | undefined) {
   );
   if (days <= 0) return 'Hoje';
   if (days === 1) return 'Ontem';
-  if (days < 7) return `${days}d atrás`;
-  if (days < 30) return `${Math.floor(days / 7)}sem atrás`;
+  if (days < 7) return `Há ${days} dias`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? 'Há 1 semana' : `Há ${weeks} semanas`;
+  }
   return date.toLocaleDateString('pt-BR', {
     day: '2-digit',
     month: 'short',
@@ -177,6 +192,30 @@ function formatMoney(cents: number) {
     style: 'currency',
     currency: 'BRL',
   });
+}
+
+function showPool(
+  kinds: Array<'stamps' | 'points' | 'cashback'> | undefined,
+  kind: 'stamps' | 'points' | 'cashback',
+  value: number,
+) {
+  if (value > 0) return true;
+  if (kinds == null) return true;
+  return kinds.includes(kind);
+}
+
+function poolGridClass(
+  kinds: Array<'stamps' | 'points' | 'cashback'> | undefined,
+  pools: { stamps: number; points: number; cashbackCents?: number },
+) {
+  const n = [
+    showPool(kinds, 'stamps', pools.stamps),
+    showPool(kinds, 'points', pools.points),
+    showPool(kinds, 'cashback', pools.cashbackCents ?? 0),
+  ].filter(Boolean).length;
+  if (n <= 1) return 'grid-cols-1';
+  if (n === 2) return 'grid-cols-2';
+  return 'grid-cols-3';
 }
 
 function formatWhen(iso: string) {
@@ -230,6 +269,12 @@ function ProgressCell({ progress }: { progress: Progress | null }) {
 }
 
 function txLabel(tx: ProfileResponse['recentTransactions'][number]) {
+  if (tx.unitKind === 'cashback_cents') {
+    const money = formatMoney(tx.quantity);
+    return tx.type === 'redeem'
+      ? `Cashback no caixa · −${money}`
+      : `+${money} cashback`;
+  }
   if (tx.type === 'redeem') {
     const reward =
       tx.campaign?.rewardTitle ?? tx.campaign?.name ?? 'recompensa';
@@ -243,6 +288,24 @@ function txLabel(tx: ProfileResponse['recentTransactions'][number]) {
 }
 
 export default function CustomersPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell title="Clientes">
+          <div className="px-4 py-5 md:px-7 md:py-6">
+            <p className="text-[15px] text-[var(--color-neutral-500)]">
+              Carregando…
+            </p>
+          </div>
+        </AppShell>
+      }
+    >
+      <CustomersPageContent />
+    </Suspense>
+  );
+}
+
+function CustomersPageContent() {
   const { loading: authLoading } = useAuth();
   const {
     authHeaders,
@@ -250,6 +313,32 @@ export default function CustomersPage() {
     business,
     loading: businessLoading,
   } = useBusiness();
+  const searchParams = useSearchParams();
+
+  const audienceFilter = useMemo(() => {
+    const audienceId = searchParams.get('audienceId');
+    if (audienceId) return { audienceId };
+    const keys = [
+      'spendCentsMin',
+      'spendCentsMax',
+      'windowDays',
+      'inactiveDaysMin',
+      'visitsMin',
+      'visitsMax',
+      'nearReward',
+      'isVip',
+    ] as const;
+    const rules: Record<string, string> = {};
+    let any = false;
+    for (const k of keys) {
+      const v = searchParams.get(k);
+      if (v != null && v !== '') {
+        rules[k] = v;
+        any = true;
+      }
+    }
+    return any ? rules : null;
+  }, [searchParams]);
 
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -276,17 +365,22 @@ export default function CustomersPage() {
       const params = new URLSearchParams();
       if (debouncedQ) params.set('q', debouncedQ);
       params.set('limit', '100');
+      if (audienceFilter) {
+        for (const [k, v] of Object.entries(audienceFilter)) {
+          params.set(k, v);
+        }
+      }
       const res = await fetch(`${API_URL}/customers?${params}`, { headers });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao carregar clientes');
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar os clientes.');
       setList(json as ListResponse);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar');
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar.');
       setList(null);
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, businessId, debouncedQ]);
+  }, [authHeaders, businessId, debouncedQ, audienceFilter]);
 
   useEffect(() => {
     if (authLoading || businessLoading) return;
@@ -318,12 +412,12 @@ export default function CustomersPage() {
           headers,
         });
         const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? 'Falha ao carregar perfil');
+        if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar o perfil.');
         setProfile(json as ProfileResponse);
       } catch (err) {
         setProfile(null);
         setProfileError(
-          err instanceof Error ? err.message : 'Falha ao carregar perfil',
+          err instanceof Error ? err.message : 'Não foi possível carregar o perfil.',
         );
       } finally {
         setProfileLoading(false);
@@ -408,7 +502,7 @@ export default function CustomersPage() {
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Card padding="sm" className="!p-4">
               <p className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                Base
+                Cadastrados
               </p>
               <p className="mt-1 text-[24px] font-semibold tracking-[-0.02em] tabular-nums text-[var(--color-ink)]">
                 {list.totalCount.toLocaleString('pt-BR')}
@@ -430,6 +524,36 @@ export default function CustomersPage() {
                 {avgVisits.toLocaleString('pt-BR')}
               </p>
             </Card>
+          </div>
+        ) : null}
+
+        {audienceFilter ? (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-3.5 py-2.5 text-[13px]">
+            <span className="font-semibold text-[var(--color-ink)]">
+              Filtro de audiência
+              {list?.audience?.name ? `: ${list.audience.name}` : ''}
+            </span>
+            {list?.audience?.memberCount != null && (
+              <span className="text-[var(--color-neutral-600)]">
+                {list.audience.memberCount} clientes
+              </span>
+            )}
+            <Link
+              href={`/campaigns?${
+                audienceFilter.audienceId
+                  ? `audienceId=${audienceFilter.audienceId}`
+                  : `fromAudience=1&${new URLSearchParams(audienceFilter).toString()}`
+              }`}
+              className="font-semibold text-[var(--color-primary-600)]"
+            >
+              Criar campanha para esta audiência →
+            </Link>
+            <Link
+              href="/customers"
+              className="ml-auto text-[var(--color-neutral-500)]"
+            >
+              Limpar
+            </Link>
           </div>
         ) : null}
 
@@ -474,14 +598,14 @@ export default function CustomersPage() {
             description={
               debouncedQ
                 ? 'Tente outro nome ou telefone, ou cadastre no balcão.'
-                : 'Associe o primeiro cliente no balcão — o telefone é a identidade compartilhada.'
+                : 'Cadastre o primeiro cliente no balcão. O telefone é o que identifica a pessoa no Frego.'
             }
             action={
               <Link
                 href="/counter"
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)]"
               >
-                Ir ao balcão
+                Ir para o balcão
               </Link>
             }
           />
@@ -660,48 +784,83 @@ export default function CustomersPage() {
                           {profile.stats.redeemableCampaigns}
                         </p>
                         <p className="text-[11px] text-[var(--color-neutral-400)]">
-                          Prêmio pronto
+                          {profile.stats.redeemableCampaigns === 1
+                            ? 'Prêmio pronto'
+                            : 'Prêmios prontos'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-stamps-bg)] px-3 py-2.5">
-                        <Stamp className="h-4 w-4 text-[var(--color-stamps)]" />
-                        <div>
-                          <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                            {profile.pools.stamps}
-                          </p>
-                          <p className="text-[11px] text-[var(--color-neutral-500)]">
-                            Carimbos
-                          </p>
+                    <div
+                      className={`mt-3 grid gap-2 ${poolGridClass(business?.activeEarnKinds, profile.pools)}`}
+                    >
+                      {showPool(business?.activeEarnKinds, 'stamps', profile.pools.stamps) && (
+                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-stamps-bg)] px-3 py-2.5">
+                          <Stamp className="h-4 w-4 shrink-0 text-[var(--color-stamps)]" />
+                          <div className="min-w-0">
+                            <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                              {profile.pools.stamps}
+                            </p>
+                            <p className="text-[11px] text-[var(--color-neutral-500)]">
+                              Carimbos
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-points-bg)] px-3 py-2.5">
-                        <Gift className="h-4 w-4 text-[var(--color-points)]" />
-                        <div>
-                          <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                            {profile.pools.points}
-                          </p>
-                          <p className="text-[11px] text-[var(--color-neutral-500)]">
-                            Pontos
-                          </p>
+                      )}
+                      {showPool(business?.activeEarnKinds, 'points', profile.pools.points) && (
+                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-points-bg)] px-3 py-2.5">
+                          <Gift className="h-4 w-4 shrink-0 text-[var(--color-points)]" />
+                          <div className="min-w-0">
+                            <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                              {profile.pools.points}
+                            </p>
+                            <p className="text-[11px] text-[var(--color-neutral-500)]">
+                              Pontos
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
+                      {showPool(
+                        business?.activeEarnKinds,
+                        'cashback',
+                        profile.pools.cashbackCents ?? 0,
+                      ) && (
+                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-cashback-bg)] px-3 py-2.5">
+                          <Banknote className="h-4 w-4 shrink-0 text-[var(--color-cashback)]" />
+                          <div className="min-w-0">
+                            <p className="truncate text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                              {formatMoney(profile.pools.cashbackCents ?? 0)}
+                            </p>
+                            <p className="text-[11px] text-[var(--color-neutral-500)]">
+                              Cashback
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {(profile.stats.stampsEarned > 0 ||
                       profile.stats.pointsEarned > 0 ||
-                      profile.stats.redeems > 0) && (
+                      profile.stats.redeems > 0 ||
+                      (profile.stats.cashbackEarnedCents ?? 0) > 0 ||
+                      (profile.stats.cashbackSpentCents ?? 0) > 0) && (
                       <p className="mt-3 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
                         Histórico: {profile.stats.stampsEarned} carimbos ·{' '}
-                        {profile.stats.pointsEarned} pts ·{' '}
-                        {profile.stats.redeems} resgates
+                        {profile.stats.pointsEarned} pontos
+                        {(profile.stats.cashbackEarnedCents ?? 0) > 0
+                          ? ` · ${formatMoney(profile.stats.cashbackEarnedCents ?? 0)} cashback`
+                          : ''}
+                        {(profile.stats.cashbackSpentCents ?? 0) > 0
+                          ? ` · ${formatMoney(profile.stats.cashbackSpentCents ?? 0)} usados no caixa`
+                          : ''}
+                        {profile.stats.redeems > 0
+                          ? ` · ${profile.stats.redeems} resgates`
+                          : ''}
                         {profile.stats.spendCents > 0
                           ? ` · ${formatMoney(profile.stats.spendCents)}`
                           : ''}
                         {profile.stats.lastVisitAt
-                          ? ` · última ${formatRelativeVisit(profile.stats.lastVisitAt).toLowerCase()}`
+                          ? ` · última visita: ${formatRelativeVisit(profile.stats.lastVisitAt).toLowerCase()}`
                           : ''}
                       </p>
                     )}
@@ -725,7 +884,10 @@ export default function CustomersPage() {
                           </p>
                           <p className="text-[11px] text-[var(--color-neutral-400)]">
                             Esta loja · {profile.pools.stamps} carimbos ·{' '}
-                            {profile.pools.points} pts
+                            {profile.pools.points} pontos
+                            {(profile.pools.cashbackCents ?? 0) > 0
+                              ? ` · ${formatMoney(profile.pools.cashbackCents ?? 0)} cashback`
+                              : ''}
                           </p>
                         </div>
                         <span className="rounded-full bg-[var(--color-success-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-success)]">
@@ -744,7 +906,7 @@ export default function CustomersPage() {
                                 : `${profile.otherShopsCount} outras lojas`}
                             </p>
                             <p className="text-[11px] text-[var(--color-neutral-400)]">
-                              Saldo e visitas ocultos para você
+                              Saldo e visitas das outras lojas ficam ocultos.
                             </p>
                           </div>
                         </div>
@@ -752,7 +914,7 @@ export default function CustomersPage() {
                     </div>
                     <p className="mt-3 text-[11px] leading-relaxed text-[var(--color-neutral-500)]">
                       Nome e aniversário são compartilhados. Cada loja só vê
-                      seus próprios carimbos e visitas.
+                      os próprios carimbos e visitas.
                     </p>
                   </div>
 
@@ -763,6 +925,27 @@ export default function CustomersPage() {
                       </p>
                       <ul className="space-y-2.5">
                         {profile.wallet.campaigns.map((camp) => {
+                          if (camp.type === 'cashback') {
+                            const bal = profile.pools.cashbackCents ?? 0;
+                            return (
+                              <li
+                                key={camp.campaignId}
+                                className="rounded-[12px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-3 py-2.5"
+                              >
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <p className="truncate text-[13px] font-semibold text-[var(--color-ink)]">
+                                    {camp.campaignName}
+                                  </p>
+                                  <span className="shrink-0 tabular-nums text-[12px] font-semibold text-[var(--color-cashback)]">
+                                    {formatMoney(bal)}
+                                  </span>
+                                </div>
+                                <p className="mt-0.5 text-[11px] text-[var(--color-cashback)]">
+                                  Use no caixa — o atendente aplica na compra
+                                </p>
+                              </li>
+                            );
+                          }
                           const current =
                             camp.type === 'spend'
                               ? profile.pools.points
@@ -824,6 +1007,7 @@ export default function CustomersPage() {
                     ) : (
                       <ul className="space-y-3.5">
                         {profile.recentTransactions.map((tx) => {
+                          const isCashback = tx.unitKind === 'cashback_cents';
                           const isRedeem = tx.type === 'redeem';
                           return (
                             <li
@@ -832,12 +1016,20 @@ export default function CustomersPage() {
                             >
                               <span
                                 className={`flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full text-[13px] ${
-                                  isRedeem
-                                    ? 'bg-[var(--color-success-bg)] text-[var(--color-success)]'
-                                    : 'bg-[var(--color-primary-50)] text-[var(--color-primary-500)]'
+                                  isCashback
+                                    ? 'bg-[var(--color-cashback-bg)] text-[var(--color-cashback)]'
+                                    : isRedeem
+                                      ? 'bg-[var(--color-success-bg)] text-[var(--color-success)]'
+                                      : 'bg-[var(--color-primary-50)] text-[var(--color-primary-500)]'
                                 }`}
                               >
-                                {isRedeem ? '🎁' : '+'}
+                                {isCashback
+                                  ? isRedeem
+                                    ? '−'
+                                    : '+'
+                                  : isRedeem
+                                    ? '🎁'
+                                    : '+'}
                               </span>
                               <div className="min-w-0 flex-1">
                                 <p className="truncate text-[13px] font-medium text-[var(--color-ink)]">

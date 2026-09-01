@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { FregoMark } from '@/components/brand';
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -22,17 +23,17 @@ export function Button({
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'ink';
 }) {
   const base =
-    'inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] px-4 text-[14px] font-semibold transition-[transform,background,box-shadow,opacity] duration-150 enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-55';
+    'inline-flex min-h-11 items-center justify-center gap-2 rounded-[8px] px-5 text-[14px] font-extrabold transition-[transform,background,opacity] duration-150 enabled:active:scale-[0.98] disabled:cursor-not-allowed';
   const variants = {
     primary:
-      'bg-[var(--color-primary-500)] text-white shadow-[var(--shadow-cta)] hover:bg-[var(--color-primary-600)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none',
+      'bg-[var(--color-primary-500)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-600)] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)]',
     secondary:
-      'border border-[var(--color-neutral-200)] bg-[var(--color-card)] text-[var(--color-ink)] hover:bg-[var(--color-bg)]',
+      'border border-[var(--color-control)] bg-transparent text-[var(--color-primary-500)] hover:bg-[var(--color-primary-50)]',
     ghost:
-      'bg-transparent text-[var(--color-neutral-600)] hover:bg-[var(--color-bg)] hover:text-[var(--color-ink)]',
+      'bg-transparent text-[var(--color-neutral-500)] hover:bg-[var(--color-bg)] hover:text-[var(--color-ink)]',
     danger:
       'bg-[var(--color-danger-bg)] text-[var(--color-danger)] hover:brightness-[0.98]',
-    ink: 'bg-[var(--color-ink)] text-white hover:opacity-90',
+    ink: 'bg-[var(--color-ink)] text-[var(--color-card)] hover:opacity-90',
   } as const;
 
   return (
@@ -64,7 +65,7 @@ export function Card({
   return (
     <div
       className={cx(
-        'rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]',
+        'rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-card)]',
         pads[padding],
         className,
       )}
@@ -93,7 +94,7 @@ export function PageHeader({
       )}
     >
       <div className="min-w-0">
-        <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)] md:text-[28px]">
+        <h1 className="text-[32px] font-extrabold tracking-[-0.025em] text-[var(--color-ink)]">
           {title}
         </h1>
         {description ? (
@@ -162,7 +163,7 @@ export function FieldLabel({
   return (
     <span
       className={cx(
-        'mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]',
+        'mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]',
         className,
       )}
     >
@@ -172,7 +173,7 @@ export function FieldLabel({
 }
 
 const controlClass =
-  'min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3.5 text-[16px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]';
+  'min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3.5 text-[16px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)]';
 
 export function TextField({
   label,
@@ -263,10 +264,10 @@ export function EmptyState({
 }) {
   return (
     <Card className="border-dashed text-center" padding="lg">
-      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-[14px] bg-[var(--color-primary-50)] text-[var(--color-primary-500)]">
-        <span className="text-[18px] font-bold">V</span>
+      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center">
+        <FregoMark size={48} />
       </div>
-      <p className="text-[17px] font-semibold text-[var(--color-ink)]">{title}</p>
+      <p className="text-[18px] font-extrabold text-[var(--color-ink)]">{title}</p>
       {description ? (
         <p className="mx-auto mt-1.5 max-w-sm text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
           {description}
@@ -283,16 +284,19 @@ export function TypeBadge({
   kind: 'stamps' | 'points' | string;
 }) {
   const isPoints = kind === 'spend' || kind === 'points';
+  const isCashback = kind === 'cashback';
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-[0.02em] ring-1 ring-inset',
-        isPoints
-          ? 'bg-[var(--color-points-bg)] text-[var(--color-points)] ring-[var(--color-points-ring)]'
-          : 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)] ring-[var(--color-stamps-ring)]',
+        'inline-flex items-center rounded-[100px] px-3 py-1 text-[12px] font-extrabold tracking-[0.02em] ring-1 ring-inset',
+        isCashback
+          ? 'bg-[var(--color-cashback-bg)] text-[var(--color-cashback)] ring-[var(--color-cashback-ring)]'
+          : isPoints
+            ? 'bg-[var(--color-points-bg)] text-[var(--color-points)] ring-[var(--color-points-ring)]'
+            : 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)] ring-[var(--color-stamps-ring)]',
       )}
     >
-      {isPoints ? 'Pontos' : 'Carimbos'}
+      {isCashback ? 'Cashback' : isPoints ? 'Pontos' : 'Carimbos'}
     </span>
   );
 }

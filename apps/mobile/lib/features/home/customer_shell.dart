@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 
 import '../history/history_page.dart';
 import '../profile/profile_page.dart';
+import '../rewards/rewards_page.dart';
 import '../shops/shops_page.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 
-/// Shell do app do cliente: lojas + histórico + perfil.
+/// Shell do app do cliente: lojas + prêmios + histórico + perfil.
 class CustomerShell extends StatefulWidget {
   const CustomerShell({super.key, required this.phoneE164});
 
@@ -20,8 +21,9 @@ class CustomerShell extends StatefulWidget {
 
 class _CustomerShellState extends State<CustomerShell> {
   int _index = 0;
-  int _shopsEpoch = 0;
-  int _historyEpoch = 0;
+  int _shopsRefresh = 0;
+  int _rewardsRefresh = 0;
+  int _historyRefresh = 0;
   late final CupertinoTabController _cupertinoTabs;
 
   @override
@@ -39,28 +41,44 @@ class _CustomerShellState extends State<CustomerShell> {
   void _onTab(int i) {
     setState(() {
       _index = i;
-      if (i == 0) _shopsEpoch++;
-      if (i == 1) _historyEpoch++;
+      // Soft-refresh in the background — keep the page mounted so content
+      // does not flash away.
+      if (i == 0) _shopsRefresh++;
+      if (i == 1) _rewardsRefresh++;
+      if (i == 2) _historyRefresh++;
     });
   }
+
+  Widget _shopsPage() => ShopsPage(
+        phoneE164: widget.phoneE164,
+        refreshToken: _shopsRefresh,
+      );
+
+  Widget _rewardsPage() => RewardsPage(refreshToken: _rewardsRefresh);
+
+  Widget _historyPage() => HistoryPage(refreshToken: _historyRefresh);
+
+  Widget _profilePage() => ProfilePage(
+        phoneE164: widget.phoneE164,
+        onProfileSaved: () {
+          setState(() {
+            _shopsRefresh++;
+            _rewardsRefresh++;
+          });
+        },
+      );
 
   Widget _pageAt(int index) {
     switch (index) {
       case 1:
-        return HistoryPage(key: ValueKey('history-$_historyEpoch'));
+        return _rewardsPage();
       case 2:
-        return ProfilePage(
-          phoneE164: widget.phoneE164,
-          onProfileSaved: () {
-            setState(() => _shopsEpoch++);
-          },
-        );
+        return _historyPage();
+      case 3:
+        return _profilePage();
       case 0:
       default:
-        return ShopsPage(
-          key: ValueKey('shops-$_shopsEpoch'),
-          phoneE164: widget.phoneE164,
-        );
+        return _shopsPage();
     }
   }
 
@@ -87,6 +105,11 @@ class _CustomerShellState extends State<CustomerShell> {
               label: 'Lojas',
             ),
             BottomNavigationBarItem(
+              icon: Icon(FregoIcons.rewards),
+              activeIcon: Icon(FregoIcons.rewardsFilled),
+              label: 'Prêmios',
+            ),
+            BottomNavigationBarItem(
               icon: Icon(FregoIcons.history),
               activeIcon: Icon(FregoIcons.historyFilled),
               label: 'Histórico',
@@ -110,14 +133,10 @@ class _CustomerShellState extends State<CustomerShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          _pageAt(0),
-          HistoryPage(key: ValueKey('history-$_historyEpoch')),
-          ProfilePage(
-            phoneE164: widget.phoneE164,
-            onProfileSaved: () {
-              setState(() => _shopsEpoch++);
-            },
-          ),
+          _shopsPage(),
+          _rewardsPage(),
+          _historyPage(),
+          _profilePage(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
@@ -130,6 +149,11 @@ class _CustomerShellState extends State<CustomerShell> {
             icon: Icon(FregoIcons.shops),
             selectedIcon: Icon(FregoIcons.shopsFilled),
             label: 'Lojas',
+          ),
+          NavigationDestination(
+            icon: Icon(FregoIcons.rewards),
+            selectedIcon: Icon(FregoIcons.rewardsFilled),
+            label: 'Prêmios',
           ),
           NavigationDestination(
             icon: Icon(FregoIcons.history),

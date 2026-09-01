@@ -23,17 +23,63 @@ export type CustomerLifetimeStats = {
   pointsEarned: number;
   redeems: number;
   spendCents: number;
+  cashbackEarnedCents: number;
+  cashbackSpentCents: number;
   redeemableNow: number;
   /** Campanha mais próxima de um prêmio (ou já resgatável). */
   nextReward: CustomerProgress | null;
 };
 
+type LedgerTx = {
+  type: string;
+  quantity: number;
+  unitKind: string | null;
+  amountCents: number | null;
+};
+
+/** Classifica uma linha do ledger sem misturar cashback (centavos) com carimbos/pontos. */
+export function isCashbackUnit(unitKind: string | null | undefined) {
+  return unitKind === 'cashback_cents';
+}
+
+export function foldLedgerTx(
+  acc: {
+    stampsEarned: number;
+    pointsEarned: number;
+    redeems: number;
+    spendCents: number;
+    cashbackEarnedCents: number;
+    cashbackSpentCents: number;
+  },
+  tx: LedgerTx,
+) {
+  if (tx.unitKind === 'cashback_cents') {
+    if (tx.type === 'redeem') acc.cashbackSpentCents += tx.quantity;
+    else acc.cashbackEarnedCents += tx.quantity;
+    return;
+  }
+  if (tx.type === 'redeem') {
+    acc.redeems += tx.quantity;
+    return;
+  }
+  const isPoints =
+    tx.unitKind === 'points' ||
+    (tx.unitKind == null && (tx.amountCents ?? 0) > 0);
+  if (isPoints) {
+    acc.pointsEarned += tx.quantity;
+    if (tx.amountCents) acc.spendCents += tx.amountCents;
+  } else {
+    acc.stampsEarned += tx.quantity;
+    if (tx.amountCents) acc.spendCents += tx.amountCents;
+  }
+}
+
 function primaryCampaign(
   wallet: WalletSnapshot,
 ): CampaignWalletEntry | null {
   return (
-    wallet.campaigns.find((c) => c.type !== 'birthday' && c.canRedeem) ??
-    wallet.campaigns.find((c) => c.type !== 'birthday') ??
+    wallet.campaigns.find((c) => c.type !== 'birthday' && c.type !== 'cashback' && c.canRedeem) ??
+    wallet.campaigns.find((c) => c.type !== 'birthday' && c.type !== 'cashback') ??
     wallet.campaigns.find((c) => c.canRedeem) ??
     wallet.campaigns[0] ??
     null
@@ -92,6 +138,8 @@ export async function aggregateCustomerStats(
       pointsEarned: 0,
       redeems: 0,
       spendCents: 0,
+      cashbackEarnedCents: 0,
+      cashbackSpentCents: 0,
       redeemableNow: 0,
       nextReward: null,
     };
@@ -111,32 +159,21 @@ export async function aggregateCustomerStats(
 
   const visitDays = new Set<string>();
   let lastVisitAt: Date | null = null;
-  let stampsEarned = 0;
-  let pointsEarned = 0;
-  let redeems = 0;
-  let spendCents = 0;
+  const fold = {
+    stampsEarned: 0,
+    pointsEarned: 0,
+    redeems: 0,
+    spendCents: 0,
+    cashbackEarnedCents: 0,
+    cashbackSpentCents: 0,
+  };
 
   for (const tx of transactions) {
     if (!lastVisitAt || tx.createdAt > lastVisitAt) {
       lastVisitAt = tx.createdAt;
     }
     visitDays.add(tx.createdAt.toISOString().slice(0, 10));
-
-    if (tx.type === 'redeem') {
-      redeems += tx.quantity;
-      continue;
-    }
-    const kind =
-      tx.unitKind === 'points' ||
-      (tx.amountCents != null && tx.amountCents > 0)
-        ? 'points'
-        : 'stamps';
-    if (kind === 'points') {
-      pointsEarned += tx.quantity;
-      if (tx.amountCents) spendCents += tx.amountCents;
-    } else {
-      stampsEarned += tx.quantity;
-    }
+    foldLedgerTx(fold, tx);
   }
 
   const wallets = await Promise.all(
@@ -179,10 +216,12 @@ export async function aggregateCustomerStats(
     shops: memberships.length,
     visits: visitDays.size,
     lastVisitAt,
-    stampsEarned,
-    pointsEarned,
-    redeems,
-    spendCents,
+    stampsEarned: fold.stampsEarned,
+    pointsEarned: fold.pointsEarned,
+    redeems: fold.redeems,
+    spendCents: fold.spendCents,
+    cashbackEarnedCents: fold.cashbackEarnedCents,
+    cashbackSpentCents: fold.cashbackSpentCents,
     redeemableNow,
     nextReward,
   };

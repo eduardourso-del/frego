@@ -18,14 +18,9 @@ import {
   SoftLink,
   TextField,
 } from '@/components/ui';
-
-const TYPES = [
-  { value: 'café', label: 'Café' },
-  { value: 'restaurant', label: 'Restaurante' },
-  { value: 'beauty', label: 'Beleza' },
-  { value: 'retail', label: 'Varejo' },
-  { value: 'pet', label: 'Pet' },
-];
+import { FregoWordmark } from '@/components/brand';
+import { BusinessTypePicker } from '@/components/business-type-picker';
+import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -41,7 +36,7 @@ export default function RegisterPage() {
     slogan: '',
     locationName: '',
     locationAddress: '',
-    primaryColor: '#3B5BDB',
+    primaryColor: '#24479C',
   });
 
   function setField<K extends keyof typeof form>(key: K, value: string) {
@@ -59,7 +54,7 @@ export default function RegisterPage() {
     try {
       await registerStaff(form.email, form.password);
       const token = await getIdToken(true);
-      if (!token) throw new Error('Token Firebase indisponível');
+      if (!token) throw new Error('Não foi possível autenticar. Tente novamente.');
 
       const res = await fetch(`${API_URL}/businesses/register`, {
         method: 'POST',
@@ -82,7 +77,7 @@ export default function RegisterPage() {
       if (!res.ok) {
         const code = json.error as string | undefined;
         if (code === 'ALREADY_HAS_BUSINESS') {
-          throw new Error('Este e-mail já está ligado a uma loja.');
+          throw new Error('Este e-mail já está vinculado a uma loja.');
         }
         throw new Error(code ?? `Erro HTTP ${res.status}`);
       }
@@ -97,7 +92,7 @@ export default function RegisterPage() {
 
       router.replace('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no cadastro');
+      setError(err instanceof Error ? err.message : 'Não foi possível concluir o cadastro.');
     } finally {
       setBusy(false);
     }
@@ -124,28 +119,19 @@ export default function RegisterPage() {
         aria-hidden
       />
       <div className="relative mx-auto max-w-lg px-5 py-10 md:py-14">
-        <div className="mb-8 flex items-center gap-3">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[20px] font-bold text-white shadow-[var(--shadow-cta)]"
-            style={{ background: 'var(--color-primary-500)' }}
-          >
-            V
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-neutral-400)]">
-              Frego
-            </p>
-            <p className="text-[15px] font-semibold text-[var(--color-ink)]">
-              Novo estabelecimento
-            </p>
-          </div>
+        <div className="mb-8">
+          <FregoWordmark height={28} href="/" />
+          <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
+            Novo estabelecimento
+          </p>
         </div>
 
-        <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
+        <h1 className="text-[32px] font-extrabold tracking-[-0.025em] text-[var(--color-ink)]">
           Cadastrar loja
         </h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Uma conta por loja. Após o envio, a equipe Frego aprova o acesso.
+          Uma conta por loja. Depois do envio, a equipe Frego analisa e libera o
+          acesso.
         </p>
 
         <form onSubmit={onSubmit} className="mt-8 flex flex-col gap-4">
@@ -193,28 +179,10 @@ export default function RegisterPage() {
                 required
                 minLength={2}
               />
-              <div>
-                <FieldLabel>Tipo</FieldLabel>
-                <div className="flex flex-wrap gap-2">
-                  {TYPES.map((t) => {
-                    const active = form.type === t.value;
-                    return (
-                      <button
-                        key={t.value}
-                        type="button"
-                        onClick={() => setField('type', t.value)}
-                        className={`min-h-9 rounded-full px-3.5 text-[13px] font-semibold transition-colors ${
-                          active
-                            ? 'bg-[var(--color-primary-500)] text-white shadow-[var(--shadow-cta)]'
-                            : 'bg-[var(--color-bg)] text-[var(--color-neutral-600)] ring-1 ring-[var(--color-hairline)]'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <BusinessTypePicker
+                value={form.type}
+                onChange={(type) => setField('type', type)}
+              />
               <TextField
                 label="Slogan (opcional)"
                 value={form.slogan}
@@ -258,6 +226,12 @@ export default function RegisterPage() {
 
           {error ? <Alert>{error}</Alert> : null}
 
+          <p className="text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+            Ao enviar, você concorda com os{' '}
+            <SoftLink href="/termos">Termos de Uso</SoftLink> e a{' '}
+            <SoftLink href="/privacidade">Política de Privacidade</SoftLink>.
+          </p>
+
           <Button
             type="submit"
             disabled={busy}
@@ -269,6 +243,15 @@ export default function RegisterPage() {
 
         <p className="mt-6 text-center text-[14px] text-[var(--color-neutral-500)]">
           Já tem conta? <SoftLink href="/login">Entrar</SoftLink>
+        </p>
+        <p className="mt-3 text-center text-[12px] text-[var(--color-neutral-400)]">
+          Dúvidas?{' '}
+          <a
+            href={CONTACT_MAILTO}
+            className="font-medium text-[var(--color-neutral-600)] hover:text-[var(--color-ink)]"
+          >
+            {CONTACT_EMAIL}
+          </a>
         </p>
       </div>
     </main>

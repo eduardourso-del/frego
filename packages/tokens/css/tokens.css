@@ -1,77 +1,181 @@
+/* ==========================================================================
+   Frego — design tokens
+   Source: frego-guia-de-estilos (Rampa · Estúdio de marca, ago/2026).
+
+   Replace this file (and tokens.json) when the definitive brand arrives.
+   Apps consume these names — never raw hex — so a palette swap is a
+   value change, not a refactor.
+
+   Autoria do sistema de tokens: Rampa · Estúdio de marca — https://rampabr.com
+   Tipografia Archivo: Copyright 2020 The Archivo Project Authors, SIL OFL 1.1.
+   ========================================================================== */
+
 :root {
-  /* Primary */
-  --color-primary-50: #eef1fd;
-  --color-primary-200: #c7d2f7;
-  --color-primary-500: #3b5bdb;
-  --color-primary-600: #2f49c4;
-  --color-primary-800: #1e2f8a;
+  /* ---------- Cor · primária (azul de azulejo) ---------- */
+  --color-primary-50:  #EEF2FB;
+  --color-primary-100: #DCE4F7;
+  --color-primary-200: #B4C4EA;
+  --color-primary-500: #24479C;
+  --color-primary-600: #1B3781;
+  --color-primary-800: #101F45;
+  --color-on-primary:  #FFFFFF;
 
-  /* Neutral light */
-  --color-bg: #f7f8fa;
-  --color-neutral-100: #f1f3f6;
-  --color-neutral-200: #e4e7ec;
-  --color-hairline: #eef0f3;
-  --color-neutral-400: #9aa0aa;
-  --color-neutral-500: #6b7280;
-  --color-neutral-700: #3f444f;
-  --color-ink: #16181d;
-  --color-card: #ffffff;
+  /* ---------- Cor · neutros ---------- */
+  --color-bg:          #F7F8FA;
+  --color-card:        #FFFFFF;
+  --color-neutral-100: #F1F3F6;
+  --color-neutral-200: #E4E7EC;
+  --color-hairline:    #E4E8EE;
+  --color-control:     #868C96;
+  --color-neutral-400: #98A0AB;
+  --color-neutral-500: #5F6672;
+  --color-neutral-700: #3F444F;
+  --color-ink:         #16181D;
 
-  /* Semantic */
-  --color-success: #1f9d6b;
-  --color-success-bg: #e6f6ee;
-  --color-warning: #e8920c;
-  --color-warning-bg: #fdf2e0;
-  --color-danger: #df4138;
-  --color-danger-bg: #fdeceb;
+  /* ---------- Cor · estados ---------- */
+  --color-success:     #12805A;
+  --color-success-bg:  #E6F6EE;
+  --color-success-fill:#2BB37E;
+  --color-danger:      #C4342A;
+  --color-danger-bg:   #FDECEB;
+  --color-danger-fill: #DF4138;
+  --color-info:        #24479C;
+  --color-info-bg:     #EEF2FB;
+  /* Alias: amber is exclusive to points. Info covers former "warning". */
+  --color-warning:     var(--color-info);
+  --color-warning-bg:  var(--color-info-bg);
 
-  /* Loyalty unit kinds (produto) */
-  --color-stamps: #0f766e;
-  --color-stamps-bg: #f0fdfa;
-  --color-stamps-ring: #99f6e4;
-  --color-points: #b45309;
-  --color-points-bg: #fffbeb;
-  --color-points-ring: #fde68a;
+  /* ---------- Cor · domínio ----------
+     Âmbar é exclusivo de pontos. Teal é exclusivo de selos.
+     Esmeralda é exclusivo de cashback. */
+  --color-points:      #B45309;
+  --color-points-bg:   #FFFBEB;
+  --color-points-ring: #FDE68A;
+  --color-stamps:      #0F766E;
+  --color-stamps-bg:   #F0FDFA;
+  --color-stamps-ring: #99F6E4;
+  --color-cashback:      #047857;
+  --color-cashback-bg:   #ECFDF5;
+  --color-cashback-ring: #A7F3D0;
 
-  /* Spacing (8pt) */
-  --space-xs: 8px;
-  --space-sm: 16px;
-  --space-md: 24px;
-  --space-lg: 32px;
-  --space-xl: 48px;
+  /* ---------- Tipografia ---------- */
+  --font-archivo: 'Archivo';
+  --font-sans: var(--font-archivo), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, monospace;
 
-  /* Radius */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 20px;
-  --radius-pill: 999px;
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-extrabold: 800;
 
-  /* Type */
-  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
-    system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-display:     2.5rem;
+  --text-display-lh:  2.75rem;
+  --text-title:       2rem;
+  --text-title-lh:    2.375rem;
+  --text-section:     1.5rem;
+  --text-section-lh:  1.875rem;
+  --text-sub:         1.125rem;
+  --text-sub-lh:      1.5rem;
+  --text-body:        1rem;
+  --text-body-lh:     1.625rem;
+  --text-support:     0.875rem;
+  --text-support-lh:  1.375rem;
+  --text-label:       0.75rem;
+  --text-label-lh:    1rem;
+  --text-label-ls:    0.08em;
+  --text-number:      2rem;
+  --text-number-lh:   2.125rem;
+  --text-number-sm:   1.25rem;
 
-  /* Shadow */
-  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04),
-    0 4px 16px rgba(16, 24, 40, 0.03);
-  --shadow-raised: 0 16px 40px rgba(16, 24, 40, 0.1);
-  --shadow-focus: 0 0 0 3px rgba(59, 91, 219, 0.14);
-  --shadow-cta: 0 10px 24px -8px rgba(59, 91, 219, 0.45);
+  --tracking-display: -0.03em;
+  --tracking-title:   -0.025em;
+  --tracking-tight:   -0.015em;
+
+  /* ---------- Espaço · base 8 ---------- */
+  --space-xs:  8px;
+  --space-sm:  16px;
+  --space-md:  24px;
+  --space-lg:  32px;
+  --space-xl:  48px;
+  --space-2xl: 64px;
+  --space-3xl: 96px;
+
+  /* ---------- Forma ---------- */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;   /* compat: blocos largos / sheets */
+  --radius-pill: 100px;
+  --radius-icon: 22.4%;
+
+  --border-width: 1px;
+  --focus-ring: 0 0 0 3px rgba(36, 71, 156, 0.28);
+
+  /* Sombra só em modal, sheet e menu. O que está na tela não flutua. */
+  --shadow-card: none;
+  --shadow-raised: 0 16px 40px rgba(16, 24, 40, 0.10);
+  --shadow-focus: var(--focus-ring);
+  --shadow-cta: none;
   --shadow-sheet: 0 -12px 40px rgba(16, 24, 40, 0.14);
+
+  /* ---------- Movimento ---------- */
+  --duration-fast: 150ms;
+  --duration-base: 250ms;
+  --easing: cubic-bezier(0.2, 0, 0.2, 1);
 }
 
 .dark {
-  --color-bg: #0c0d10;
-  --color-card: #15171c;
-  --color-raised: #1d2026;
-  --color-hairline: #2a2e37;
-  --color-neutral-200: #2a2e37;
-  --color-primary-500: #5b78e8;
-  --color-ink: #e8eaed;
-  --color-neutral-500: #9aa0aa;
-  --color-neutral-400: #5b616b;
-  --color-success: #2bb37e;
-  --color-warning: #f0a52c;
-  --color-danger: #f0584f;
+  --color-primary-500: #5C82DE;
+  --color-primary-600: #4A6FD1;
+  --color-primary-800: #DCE4F7;
+  --color-on-primary:  #0C0D10;
+
+  --color-bg:          #0C0D10;
+  --color-card:        #15171C;
+  --color-raised:      #1D2026;
+  --color-neutral-200: #2A2E37;
+  --color-hairline:    #2A2E37;
+  --color-control:     #666D78;
+  --color-neutral-400: #5B616B;
+  --color-neutral-500: #9AA0AA;
+  --color-ink:         #E8EAED;
+
+  --color-success:     #3ECB93;
+  --color-success-bg:  rgba(62, 203, 147, 0.14);
+  --color-danger:      #F0584F;
+  --color-danger-bg:   rgba(240, 88, 79, 0.14);
+  --color-info:        #5C82DE;
+  --color-info-bg:     rgba(92, 130, 222, 0.14);
+  --color-warning:     var(--color-info);
+  --color-warning-bg:  var(--color-info-bg);
+
+  --color-points:      #FCD34D;
+  --color-points-bg:   rgba(180, 83, 9, 0.20);
+  --color-points-ring: rgba(252, 211, 77, 0.28);
+  --color-stamps:      #5EEAD4;
+  --color-stamps-bg:   rgba(15, 118, 110, 0.18);
+  --color-stamps-ring: rgba(94, 234, 212, 0.30);
+  --color-cashback:      #34D399;
+  --color-cashback-bg:   rgba(4, 120, 87, 0.18);
+  --color-cashback-ring: rgba(52, 211, 153, 0.28);
+
+  --focus-ring: 0 0 0 3px rgba(92, 130, 222, 0.35);
+  --shadow-focus: var(--focus-ring);
+}
+
+/* Todo número que muda usa numeral tabular. Saldo, pontos, valor, data. */
+.num, [data-num] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Foco visível em tudo que recebe teclado. Nunca remover sem substituir. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

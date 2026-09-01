@@ -1,10 +1,10 @@
 const LABELS: Record<string, string> = {
   pending: 'Pendente',
-  trial: 'Trial',
+  trial: 'Teste',
   active: 'Ativo',
   past_due: 'Inadimplente',
   suspended: 'Suspenso',
-  inactive: 'Inativa',
+  inactive: 'Inativo',
   draft: 'Rascunho',
 };
 

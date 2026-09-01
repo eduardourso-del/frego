@@ -20,34 +20,8 @@ class HomeShell extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: FregoColors.primary500,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text(
-                  'V',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Frego',
-                style: TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -1.2,
-                  color: FregoColors.ink,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const FregoWordmark(height: 28),
+              const SizedBox(height: 16),
               const Text(
                 'O telefone é a conta de fidelidade.',
                 style: TextStyle(fontSize: 17, color: FregoColors.neutral500),

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
+import '../../ui/campaign_order.dart';
 import 'counter_lookup_page.dart';
 
 class CustomerStampPage extends StatefulWidget {
@@ -88,6 +89,19 @@ class _CustomerStampPageState extends State<CustomerStampPage> {
     final pools = _pools;
     final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
     final points = (pools['points'] as num?)?.toInt() ?? 0;
+    final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
+    final campaigns = ((_data['wallet'] as Map<String, dynamic>?)?['campaigns']
+                as List<dynamic>? ??
+            const [])
+        .whereType<Map<String, dynamic>>();
+    final rawKinds = _data['activeEarnKinds'];
+    final earnKinds = rawKinds is List
+        ? rawKinds.whereType<String>().toSet()
+        : earnKindsFromCampaigns(campaigns);
+    final showStamps = earnKinds.contains('stamps') || stamps > 0;
+    final showPoints = earnKinds.contains('points') || points > 0;
+    final showCashback = earnKinds.contains('cashback') || cashbackCents > 0;
+    final canStamp = earnKinds.contains('stamps');
 
     return Scaffold(
       appBar: AppBar(
@@ -111,17 +125,29 @@ class _CustomerStampPageState extends State<CustomerStampPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _PoolCard(label: 'Carimbos', value: stamps),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _PoolCard(label: 'Pontos', value: points),
-                    ),
-                  ],
-                ),
+                if (showStamps || showPoints)
+                  Row(
+                    children: [
+                      if (showStamps)
+                        Expanded(
+                          child: _PoolCard(label: 'Carimbos', value: '$stamps'),
+                        ),
+                      if (showStamps && showPoints)
+                        const SizedBox(width: 12),
+                      if (showPoints)
+                        Expanded(
+                          child: _PoolCard(label: 'Pontos', value: '$points'),
+                        ),
+                    ],
+                  ),
+                if (showCashback) ...[
+                  if (showStamps || showPoints) const SizedBox(height: 12),
+                  _PoolCard(
+                    label: 'Cashback',
+                    value:
+                        'R\$ ${(cashbackCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+                  ),
+                ],
                 const SizedBox(height: 16),
                 const Text(
                   'O cliente escolhe a campanha e resgata no app.',
@@ -139,8 +165,14 @@ class _CustomerStampPageState extends State<CustomerStampPage> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: _loading ? null : _addStamp,
-                  child: Text(_loading ? 'Carimbando…' : 'Dar carimbo'),
+                  onPressed: !canStamp || _loading ? null : _addStamp,
+                  child: Text(
+                    _loading
+                        ? 'Carimbando…'
+                        : canStamp
+                            ? 'Dar carimbo'
+                            : 'Sem campanha de carimbos',
+                  ),
                 ),
               ),
             ),
@@ -155,7 +187,7 @@ class _PoolCard extends StatelessWidget {
   const _PoolCard({required this.label, required this.value});
 
   final String label;
-  final int value;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +210,7 @@ class _PoolCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '$value',
+            value,
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,

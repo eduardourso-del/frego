@@ -48,12 +48,12 @@ export function LandingSocialProof() {
       aria-labelledby="resultados-heading"
     >
       <Reveal>
-        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-primary-500)]">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
           O que muda na prática
         </p>
         <h2
           id="resultados-heading"
-          className="mt-3 max-w-2xl text-[28px] font-semibold tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
+          className="mt-4 max-w-2xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
         >
           Quando o cliente vira freguês, o caixa sente.
         </h2>

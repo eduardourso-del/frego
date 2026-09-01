@@ -8,9 +8,16 @@ import '../../ui/adaptive.dart';
 import 'shop_detail_page.dart';
 
 class ShopsPage extends StatefulWidget {
-  const ShopsPage({super.key, required this.phoneE164});
+  const ShopsPage({
+    super.key,
+    required this.phoneE164,
+    this.refreshToken = 0,
+  });
 
   final String phoneE164;
+
+  /// Bumped by the shell to reload in the background without remounting.
+  final int refreshToken;
 
   @override
   State<ShopsPage> createState() => _ShopsPageState();
@@ -18,14 +25,26 @@ class ShopsPage extends StatefulWidget {
 
 enum _ShopFilter { all, favorites, ready, close }
 
+class _ListRow {
+  const _ListRow.header(this.header) : membership = null;
+  const _ListRow.shop(this.membership) : header = null;
+
+  final String? header;
+  final Map<String, dynamic>? membership;
+
+  bool get isHeader => header != null;
+}
+
 class _ShopsPageState extends State<ShopsPage> {
   final _search = TextEditingController();
   bool _loading = true;
+  bool _hydrated = false;
   String? _error;
   List<Map<String, dynamic>> _memberships = [];
   String? _displayName;
   Map<String, dynamic>? _stats;
   _ShopFilter _filter = _ShopFilter.all;
+  String? _category;
   final Set<String> _togglingFavorite = {};
 
   @override
@@ -36,15 +55,26 @@ class _ShopsPageState extends State<ShopsPage> {
   }
 
   @override
+  void didUpdateWidget(covariant ShopsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      _load();
+    }
+  }
+
+  @override
   void dispose() {
     _search.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
+    final keepContent = _hydrated;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (!keepContent) {
+        _loading = true;
+        _error = null;
+      }
     });
     try {
       final membershipsRes = await fetchMyMemberships();
@@ -75,13 +105,21 @@ class _ShopsPageState extends State<ShopsPage> {
         _displayName = customer?['displayName'] as String?;
         _stats = stats;
         _loading = false;
+        _hydrated = true;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (keepContent) {
+        setState(() => _loading = false);
+        FregoAdaptive.showMessage(context, message);
+      } else {
+        setState(() {
+          _error = message;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -92,10 +130,16 @@ class _ShopsPageState extends State<ShopsPage> {
       final name = (business['name'] as String? ?? '').toLowerCase();
       final slogan = (business['slogan'] as String? ?? '').toLowerCase();
       final type = (business['type'] as String? ?? '').toLowerCase();
+      final typeLabel =
+          FregoBusinessTypes.labelOf(business['type'] as String?).toLowerCase();
       if (q.isNotEmpty &&
           !name.contains(q) &&
           !slogan.contains(q) &&
-          !type.contains(q)) {
+          !type.contains(q) &&
+          !typeLabel.contains(q)) {
+        return false;
+      }
+      if (_category != null && (business['type'] as String?) != _category) {
         return false;
       }
 
@@ -117,6 +161,54 @@ class _ShopsPageState extends State<ShopsPage> {
         _ShopFilter.close => close,
       };
     }).toList();
+  }
+
+  List<String> get _presentCategories {
+    final seen = <String>{};
+    for (final m in _memberships) {
+      final type = (m['business'] as Map?)?['type'] as String?;
+      if (type != null && type.isNotEmpty) seen.add(type);
+    }
+    final list = seen.toList()
+      ..sort(
+        (a, b) => FregoBusinessTypes.sortIndex(a)
+            .compareTo(FregoBusinessTypes.sortIndex(b)),
+      );
+    return list;
+  }
+
+  List<_ListRow> get _rows {
+    final items = _filtered;
+    if (items.isEmpty) return const [];
+    final types = <String>{
+      for (final m in items)
+        (m['business'] as Map?)?['type'] as String? ?? '',
+    };
+    final group = _category == null && types.length >= 2;
+    if (!group) {
+      return [for (final m in items) _ListRow.shop(m)];
+    }
+    final ordered = types.toList()
+      ..sort(
+        (a, b) => FregoBusinessTypes.sortIndex(a)
+            .compareTo(FregoBusinessTypes.sortIndex(b)),
+      );
+    final rows = <_ListRow>[];
+    for (final type in ordered) {
+      final shops = items
+          .where(
+            (m) => ((m['business'] as Map?)?['type'] as String? ?? '') == type,
+          )
+          .toList();
+      if (shops.isEmpty) continue;
+      rows.add(
+        _ListRow.header(
+          FregoBusinessTypes.pluralOf(type.isEmpty ? null : type),
+        ),
+      );
+      rows.addAll(shops.map(_ListRow.shop));
+    }
+    return rows;
   }
 
   int get _redeemableNow {
@@ -257,7 +349,7 @@ class _ShopsPageState extends State<ShopsPage> {
                   color: FregoColors.neutral500,
                 ),
               ),
-              if (!_loading && _memberships.isNotEmpty) ...[
+              if (_memberships.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 _InsightStrip(
                   redeemableNow: _redeemableNow,
@@ -281,12 +373,20 @@ class _ShopsPageState extends State<ShopsPage> {
                   closeCount: _closeCount,
                   onChanged: (f) => setState(() => _filter = f),
                 ),
+                if (_presentCategories.length > 1) ...[
+                  const SizedBox(height: 10),
+                  _CategoryChips(
+                    types: _presentCategories,
+                    selected: _category,
+                    onChanged: (value) => setState(() => _category = value),
+                  ),
+                ],
               ],
             ],
           ),
         ),
       ),
-      if (!_loading && _memberships.isNotEmpty)
+      if (_memberships.isNotEmpty)
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
@@ -415,7 +515,9 @@ class _ShopsPageState extends State<ShopsPage> {
                 Text(
                   _search.text.trim().isNotEmpty
                       ? 'Nenhuma loja para “${_search.text.trim()}”'
-                      : switch (_filter) {
+                      : _category != null
+                          ? 'Nenhuma ${FregoBusinessTypes.labelOf(_category!).toLowerCase()} aqui'
+                          : switch (_filter) {
                           _ShopFilter.favorites => 'Nenhuma favorita ainda',
                           _ShopFilter.ready => 'Nenhum prêmio pronto',
                           _ShopFilter.close => 'Nenhuma loja perto do prêmio',
@@ -430,7 +532,9 @@ class _ShopsPageState extends State<ShopsPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _search.text.trim().isNotEmpty || _filter != _ShopFilter.all
+                  _search.text.trim().isNotEmpty ||
+                  _filter != _ShopFilter.all ||
+                  _category != null
                       ? 'Ajuste a busca ou o filtro para ver outras lojas.'
                       : 'Suas fidelidades aparecem aqui.',
                   textAlign: TextAlign.center,
@@ -440,13 +544,17 @@ class _ShopsPageState extends State<ShopsPage> {
                   ),
                 ),
                 if (_filter != _ShopFilter.all ||
-                    _search.text.trim().isNotEmpty) ...[
+                    _search.text.trim().isNotEmpty ||
+                    _category != null) ...[
                   const SizedBox(height: 16),
                   FregoSecondaryButton(
                     label: 'Limpar filtros',
                     onPressed: () {
                       _search.clear();
-                      setState(() => _filter = _ShopFilter.all);
+                      setState(() {
+                        _filter = _ShopFilter.all;
+                        _category = null;
+                      });
                     },
                     expanded: false,
                   ),
@@ -459,10 +567,30 @@ class _ShopsPageState extends State<ShopsPage> {
         SliverPadding(
               padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
               sliver: SliverList.separated(
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemCount: _rows.length,
+                separatorBuilder: (context, index) {
+                  final next = _rows[index + 1];
+                  if (next.isHeader) return const SizedBox(height: 18);
+                  if (_rows[index].isHeader) return const SizedBox(height: 8);
+                  return const SizedBox(height: 12);
+                },
                 itemBuilder: (context, index) {
-                  final m = items[index];
+                  final row = _rows[index];
+                  if (row.isHeader) {
+                    return Padding(
+                      padding: EdgeInsets.only(top: index == 0 ? 0 : 4),
+                      child: Text(
+                        row.header!,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.1,
+                          color: FregoColors.ink,
+                        ),
+                      ),
+                    );
+                  }
+                  final m = row.membership!;
                   final business =
                       m['business'] as Map<String, dynamic>? ?? {};
                   final pools = m['pools'] as Map<String, dynamic>? ??
@@ -486,6 +614,11 @@ class _ShopsPageState extends State<ShopsPage> {
                       ? 'V'
                       : name.trim()[0].toUpperCase();
                   final businessId = m['businessId'] as String;
+                  final badges = (m['badges'] as List<dynamic>? ?? [])
+                      .cast<Map<String, dynamic>>();
+                  final badgeTitle = badges.isNotEmpty
+                      ? (badges.first['badgeTitle'] as String?)
+                      : null;
 
                   return Material(
                     color: FregoColors.card,
@@ -511,6 +644,7 @@ class _ShopsPageState extends State<ShopsPage> {
                           ],
                         ),
                         child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             _ShopAvatar(
                               letter: letter,
@@ -522,6 +656,17 @@ class _ShopsPageState extends State<ShopsPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  Text(
+                                    FregoBusinessTypes.labelOf(
+                                      business['type'] as String?,
+                                    ),
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.04,
+                                      color: FregoColors.neutral400,
+                                    ),
+                                  ),
                                   Text(
                                     name,
                                     style: const TextStyle(
@@ -551,6 +696,13 @@ class _ShopsPageState extends State<ShopsPage> {
                                     spacing: 6,
                                     runSpacing: 6,
                                     children: [
+                                      if (badgeTitle != null &&
+                                          badgeTitle.isNotEmpty)
+                                        _Pill(
+                                          label: badgeTitle,
+                                          tone: _PillTone.badge,
+                                          icon: FregoIcons.trophy,
+                                        ),
                                       if (redeemable > 0)
                                         _Pill(
                                           label: redeemable == 1
@@ -646,7 +798,7 @@ class _ShopsPageState extends State<ShopsPage> {
   }
 }
 
-enum _PillTone { stamps, points, ready }
+enum _PillTone { stamps, points, ready, badge }
 
 class _ShopSearchField extends StatelessWidget {
   const _ShopSearchField({
@@ -831,11 +983,80 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
+class _CategoryChips extends StatelessWidget {
+  const _CategoryChips({
+    required this.types,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final List<String> types;
+  final String? selected;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < types.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            _catChip(
+              label: FregoBusinessTypes.labelOf(types[i]),
+              selected: selected == types[i],
+              onTap: () =>
+                  onChanged(selected == types[i] ? null : types[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _catChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? FregoColors.primary50 : FregoColors.card,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? FregoColors.primary200 : FregoColors.neutral200,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: selected ? FregoColors.primary600 : FregoColors.ink,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.tone});
+  const _Pill({
+    required this.label,
+    required this.tone,
+    this.icon,
+  });
 
   final String label;
   final _PillTone tone;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -852,20 +1073,36 @@ class _Pill extends StatelessWidget {
           const Color(0xFFF0FDFA),
           const Color(0xFF115E59),
         ),
+      _PillTone.badge => (
+          const Color(0xFFFFF8E1),
+          const Color(0xFF8A5A00),
+        ),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(999),
+        border: tone == _PillTone.badge
+            ? Border.all(color: const Color(0xFFF0C43A).withValues(alpha: 0.45))
+            : null,
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1072,6 +1309,10 @@ class _ShopAvatar extends StatelessWidget {
             ? Image.network(
                 logoUrl!,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return const ColoredBox(color: FregoColors.neutral200);
+                },
                 errorBuilder: (_, __, ___) => _fallback(),
               )
             : _fallback(),

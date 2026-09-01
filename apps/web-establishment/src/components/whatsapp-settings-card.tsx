@@ -6,6 +6,7 @@ import { API_URL } from '@/lib/api';
 import {
   isMetaEmbeddedSignupConfigured,
   launchWhatsAppEmbeddedSignup,
+  type WhatsAppSignupMode,
 } from '@/lib/whatsapp-embedded-signup';
 
 type Connection = {
@@ -18,6 +19,16 @@ type Connection = {
   messagingLimitTier: string | null;
   templateEarnName: string;
   templateEarnLang: string;
+  templateEarnStatus: string;
+  templateEarnId: string | null;
+  templateEarnSyncedAt: string | null;
+  templateWelcomeName?: string;
+  templateWelcomeLang?: string;
+  templateWelcomeStatus?: string;
+  templateWelcomeId?: string | null;
+  templateWelcomeSyncedAt?: string | null;
+  coexistence: boolean;
+  smbSyncStartedAt: string | null;
   connectedAt: string;
   webhookSubscribedAt: string | null;
   lastError: string | null;
@@ -36,6 +47,23 @@ function WhatsAppGlyph({ className }: { className?: string }) {
   );
 }
 
+function templateStatusLabel(status: string): { label: string; tone: string } {
+  switch (status) {
+    case 'approved':
+      return { label: 'Aprovado', tone: 'text-[var(--color-success)]' };
+    case 'pending':
+      return { label: 'Em análise na Meta', tone: 'text-amber-700' };
+    case 'rejected':
+      return { label: 'Rejeitado', tone: 'text-[var(--color-danger)]' };
+    case 'paused':
+      return { label: 'Pausado', tone: 'text-amber-700' };
+    case 'disabled':
+      return { label: 'Desativado', tone: 'text-[var(--color-danger)]' };
+    default:
+      return { label: 'Não criado', tone: 'text-[var(--color-neutral-500)]' };
+  }
+}
+
 export function WhatsAppSettingsCard() {
   const { getToken, user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -43,6 +71,7 @@ export function WhatsAppSettingsCard() {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [testPhone, setTestPhone] = useState('');
   const configured = isMetaEmbeddedSignupConfigured();
 
   const load = useCallback(async () => {
@@ -72,12 +101,12 @@ export function WhatsAppSettingsCard() {
     void load();
   }, [load]);
 
-  async function connect() {
+  async function connect(mode: WhatsAppSignupMode) {
     setBusy(true);
     setError(null);
     setToast(null);
     try {
-      const code = await launchWhatsAppEmbeddedSignup();
+      const signup = await launchWhatsAppEmbeddedSignup(mode);
       const token = await getToken();
       if (!token) throw new Error('Sessão expirada');
       const res = await fetch(`${API_URL}/whatsapp/oauth/callback`, {
@@ -86,7 +115,12 @@ export function WhatsAppSettingsCard() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({
+          code: signup.code,
+          coexistence: signup.coexistence,
+          wabaId: signup.wabaId,
+          phoneNumberId: signup.phoneNumberId,
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -95,10 +129,23 @@ export function WhatsAppSettingsCard() {
             'Falha ao conectar WhatsApp',
         );
       }
-      setConnection(
-        (body as { connection: Connection }).connection ?? null,
-      );
-      setToast('WhatsApp conectado. Use um número BR e aprove o template frego_earn_summary.');
+      const conn = (body as { connection: Connection }).connection ?? null;
+      setConnection(conn);
+      if (conn?.coexistence) {
+        setToast(
+          'WhatsApp conectado com o app Business no mesmo número. Mantenha o app aberto alguns minutos enquanto a Meta sincroniza.',
+        );
+      } else if (conn?.templateEarnStatus === 'approved') {
+        setToast('WhatsApp conectado. Template de avisos já aprovado.');
+      } else if (conn?.templateEarnStatus === 'pending') {
+        setToast(
+          'WhatsApp conectado. Template enviado à Meta — aguarde aprovação.',
+        );
+      } else {
+        setToast(
+          'WhatsApp conectado. Use “Criar / sincronizar template” se o status não atualizar.',
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao conectar');
     } finally {
@@ -127,6 +174,80 @@ export function WhatsAppSettingsCard() {
     }
   }
 
+  async function ensureTemplate() {
+    setBusy(true);
+    setError(null);
+    setToast(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sessão expirada');
+      const res = await fetch(`${API_URL}/whatsapp/ensure-template`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (body as { message?: string }).message ??
+            'Falha ao criar/sincronizar template',
+        );
+      }
+      const conn = (body as { connection: Connection }).connection ?? null;
+      setConnection(conn);
+      const st = conn?.templateEarnStatus;
+      if (st === 'approved') setToast('Template aprovado — avisos liberados.');
+      else if (st === 'pending')
+        setToast('Template criado/enviado. Aguardando análise da Meta.');
+      else if (st === 'rejected')
+        setToast('Template rejeitado pela Meta. Veja o WhatsApp Manager.');
+      else setToast('Status do template atualizado.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendTest() {
+    setBusy(true);
+    setError(null);
+    setToast(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sessão expirada');
+      const res = await fetch(`${API_URL}/whatsapp/test-send`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ toE164: testPhone }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const conn = (body as { connection?: Connection }).connection;
+        if (conn) setConnection(conn);
+        throw new Error(
+          (body as { message?: string }).message ?? 'Falha no envio de teste',
+        );
+      }
+      setToast(
+        `Mensagem de teste enviada para ${(body as { toE164?: string }).toE164 ?? testPhone}. Confira o WhatsApp.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Erro');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const templateTone = connection
+    ? templateStatusLabel(connection.templateEarnStatus)
+    : null;
+  const welcomeTone = connection
+    ? templateStatusLabel(connection.templateWelcomeStatus ?? 'missing')
+    : null;
+
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -142,9 +263,9 @@ export function WhatsAppSettingsCard() {
               WhatsApp
             </h2>
             <p className="mt-1 max-w-md text-[13px] text-[var(--color-neutral-500)]">
-              Conecte o WhatsApp Business oficial da loja. Após carimbos ou
-              pontos no balcão, o cliente recebe um resumo no próprio número da
-              marca.
+              Antes do App Review da Meta, use “Conectar para testes” com um
+              Facebook que seja admin/developer do app Frego. Depois da
+              aprovação, use coexistência para manter o app Business no celular.
             </p>
           </div>
         </div>
@@ -173,6 +294,13 @@ export function WhatsAppSettingsCard() {
               {connection.verifiedName}
             </p>
           )}
+          {connection.coexistence && (
+            <p className="text-[13px] text-[var(--color-neutral-500)]">
+              Modo coexistência: app WhatsApp Business + API no mesmo número.
+              Não desconecte em Configurações → Conta → Plataforma Business no
+              celular, senão o Frego perde o vínculo.
+            </p>
+          )}
           {connection.qualityRating && (
             <p>
               <span className="text-[var(--color-neutral-500)]">
@@ -189,6 +317,81 @@ export function WhatsAppSettingsCard() {
               {connection.templateEarnName} ({connection.templateEarnLang})
             </code>
           </p>
+          {templateTone && (
+            <p>
+              <span className="text-[var(--color-neutral-500)]">
+                Status do template:{' '}
+              </span>
+              <span className={`font-semibold ${templateTone.tone}`}>
+                {templateTone.label}
+              </span>
+            </p>
+          )}
+          <p>
+            <span className="text-[var(--color-neutral-500)]">
+              Template de boas-vindas:{' '}
+            </span>
+            <code className="text-[13px]">
+              {connection.templateWelcomeName ?? 'frego_welcome'} (
+              {connection.templateWelcomeLang ?? 'pt_BR'})
+            </code>
+          </p>
+          {welcomeTone && (
+            <p>
+              <span className="text-[var(--color-neutral-500)]">
+                Status boas-vindas:{' '}
+              </span>
+              <span className={`font-semibold ${welcomeTone.tone}`}>
+                {welcomeTone.label}
+              </span>
+            </p>
+          )}
+          <p>
+            <a
+              href={`https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id=${encodeURIComponent(connection.wabaId)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[13px] font-medium text-[var(--color-primary-500)] underline-offset-2 hover:underline"
+            >
+              Abrir templates no WhatsApp Manager
+            </a>
+          </p>
+          {connection.templateEarnStatus === 'pending' && (
+            <p className="text-[13px] text-[var(--color-neutral-500)]">
+              A Meta analisa o template (geralmente minutos a algumas horas).
+              Avisos de carimbo só saem depois de aprovado.
+            </p>
+          )}
+
+          {connection.templateEarnStatus === 'approved' && (
+            <div className="mt-4 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
+              <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                Enviar mensagem de teste
+              </p>
+              <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
+                Use para gravar o vídeo do App Review. Informe um celular que
+                possa receber WhatsApp (com DDI).
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="tel"
+                  value={testPhone}
+                  onChange={(e) => setTestPhone(e.target.value)}
+                  placeholder="+55 11 99999-9999"
+                  className="min-h-10 flex-1 rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[14px]"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !testPhone.trim()}
+                  onClick={() => void sendTest()}
+                  className="min-h-10 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white disabled:opacity-60"
+                >
+                  {busy ? 'Enviando…' : 'Enviar teste'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <p className="text-[12px] text-[var(--color-neutral-400)]">
             Conectado em{' '}
             {new Date(connection.connectedAt).toLocaleString('pt-BR')}
@@ -198,32 +401,88 @@ export function WhatsAppSettingsCard() {
               Último erro Meta: {connection.lastError}
             </p>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void disconnect()}
-            className="mt-3 ml-auto block min-h-10 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[13px] font-semibold disabled:opacity-60"
-          >
-            {busy ? 'Aguarde…' : 'Desconectar'}
-          </button>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            {connection.templateEarnStatus !== 'approved' && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void ensureTemplate()}
+                className="min-h-10 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white disabled:opacity-60"
+              >
+                {busy ? 'Aguarde…' : 'Criar / sincronizar template'}
+              </button>
+            )}
+            {connection.templateEarnStatus === 'approved' && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void ensureTemplate()}
+                className="min-h-10 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[13px] font-semibold disabled:opacity-60"
+              >
+                {busy ? 'Aguarde…' : 'Atualizar status'}
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void disconnect()}
+              className="min-h-10 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[13px] font-semibold disabled:opacity-60"
+            >
+              {busy ? 'Aguarde…' : 'Desconectar'}
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="mt-4">
+        <div className="mt-4 space-y-4">
           {!configured && (
-            <p className="mb-3 text-[13px] text-[var(--color-danger)]">
+            <p className="text-[13px] text-[var(--color-danger)]">
               Embedded Signup não configurado no front
               (NEXT_PUBLIC_META_APP_ID / NEXT_PUBLIC_META_EMBEDDED_CONFIG_ID).
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3 text-[13px] text-[var(--color-neutral-500)]">
+            <p className="font-semibold text-[var(--color-ink)]">
+              Como testar antes do App Review
+            </p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              <li>
+                No Meta App Dashboard, adicione seu Facebook como{' '}
+                <span className="text-[var(--color-ink)]">Admin</span> ou{' '}
+                <span className="text-[var(--color-ink)]">Developer</span>.
+              </li>
+              <li>
+                Use um Business Portfolio{' '}
+                <span className="text-[var(--color-ink)]">sem restrição</span>{' '}
+                (Bearlabs restrito bloqueia o fluxo).
+              </li>
+              <li>
+                Clique em <span className="text-[var(--color-ink)]">Conectar para testes</span>{' '}
+                (Cloud API). Prefira um número BR dedicado ou o sandbox da Meta.
+              </li>
+              <li>
+                Aguarde o template aprovado e use “Enviar mensagem de teste”
+                para o vídeo do review.
+              </li>
+            </ol>
+          </div>
+          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <button
               type="button"
               disabled={busy || !configured}
-              onClick={() => void connect()}
-              className="inline-flex min-h-11 items-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
+              onClick={() => void connect('cloud')}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
             >
               {!busy && <WhatsAppGlyph className="h-4 w-4" />}
-              {busy ? 'Conectando…' : 'Conectar WhatsApp'}
+              {busy ? 'Conectando…' : 'Conectar para testes'}
+            </button>
+            <button
+              type="button"
+              disabled={busy || !configured}
+              onClick={() => void connect('coexistence')}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold disabled:opacity-60"
+              title="Requer Advanced Access (App Review) da Meta"
+            >
+              {busy ? 'Conectando…' : 'Coexistência (após App Review)'}
             </button>
           </div>
         </div>

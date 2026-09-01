@@ -41,6 +41,7 @@ enum CampaignType {
   spend
   visits
   birthday
+  cashback
 }
 
 enum CampaignStatus {
@@ -59,6 +60,16 @@ enum WhatsAppConnectionStatus {
   connected
   disconnected
   error
+}
+
+/// Meta message template review state for the earn summary template.
+enum WhatsAppTemplateStatus {
+  missing
+  pending
+  approved
+  rejected
+  paused
+  disabled
 }
 
 // ─── Platform ────────────────────────────────────────────────────────────────
@@ -106,20 +117,32 @@ model BillingAccount {
 model Business {
   id        String         @id @default(cuid())
   name      String
-  /// café | restaurant | beauty | retail | pet
+  /// padaria | café | restaurant | pizzaria | hamburgueria | … (see @frego/tokens BUSINESS_TYPES)
   type      String
   status    BusinessStatus @default(trial)
   logoUrl   String?        @map("logo_url")
   /// Imagem de capa (hero) da página pública e detalhe no app.
   heroImageUrl String?       @map("hero_image_url")
-  /// Hex da cor primária da marca (ex. #3B5BDB). Painel + cartões no app do cliente.
-  primaryColor   String  @default("#3B5BDB") @map("primary_color")
-  primaryColorDark String @default("#2F49C4") @map("primary_color_dark")
+  /// Hex da cor primária da marca (ex. #24479C). Painel + cartões no app do cliente.
+  primaryColor   String  @default("#24479C") @map("primary_color")
+  primaryColorDark String @default("#1B3781") @map("primary_color_dark")
   slogan         String? @map("slogan")
   /// Página / slug público (ex. bloom-coffee)
   slug           String? @unique
-  /// Taxa padrão da loja: pontos ganhos por R$ 1,00 no acúmulo (pool).
+  /// Quantos reais o cliente precisa gastar para ganhar 1 ponto no acúmulo.
   pointsPerReal  Int     @default(1) @map("points_per_real")
+  /// Legado — a % agora vive em cada campanha de cashback.
+  cashbackPercent Int    @default(0) @map("cashback_percent")
+  /// Teto opcional de cashback por compra, em centavos.
+  cashbackMaxCents Int?  @map("cashback_max_cents")
+  /// Compra mínima (centavos pagos) para creditar cashback.
+  cashbackMinPurchaseCents Int? @map("cashback_min_purchase_cents")
+  /// Dias até carimbos expirarem após o ganho. null = não expiram.
+  stampsExpireDays Int?  @map("stamps_expire_days")
+  /// Dias até pontos expirarem após o ganho. null = não expiram.
+  pointsExpireDays Int?  @map("points_expire_days")
+  /// Dias até o cashback expirar após o ganho. null = não expira.
+  cashbackExpireDays Int? @map("cashback_expire_days")
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
@@ -127,6 +150,7 @@ model Business {
   teamMembers  TeamMember[]
   memberships  Membership[]
   campaigns    Campaign[]
+  audienceSegments AudienceSegment[]
   transactions Transaction[]
   billing      BillingAccount?
   whatsapp     BusinessWhatsAppConnection?
@@ -232,21 +256,50 @@ model Campaign {
   status       CampaignStatus @default(draft)
   /// Meta para recompensa: carimbos necessários OU pontos necessários (spend).
   stampsNeeded Int?           @map("stamps_needed")
-  /// Spend: pontos ganhos por R$ 1,00 (ex. 1 = R$1 → 1 pt).
+  /// Spend: reais gastos para ganhar 1 ponto (ex. 10 = R$10 → 1 pt).
   pointsPerReal Int?          @map("points_per_real")
+  /// Cashback: % do valor pago creditado em R$ (0–100). Só type cashback.
+  cashbackPercent Int?        @map("cashback_percent")
   rewardTitle  String?        @map("reward_title")
   rewardDescription String?   @map("reward_description")
   /// Foto do prêmio (produto) — aparece no app e no balcão.
   rewardImageUrl String?      @map("reward_image_url")
+  /// Se definido, só membros da audiência podem resgatar.
+  audienceSegmentId String?   @map("audience_segment_id")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
   business    Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  audienceSegment AudienceSegment? @relation(fields: [audienceSegmentId], references: [id], onDelete: SetNull)
   locations   CampaignLocation[]
   transactions Transaction[]
 
   @@index([businessId, status])
+  @@index([audienceSegmentId])
   @@map("campaigns")
+}
+
+/// Audiência salva: regras JSON para segmentar clientes (gasto, inatividade, etc.).
+model AudienceSegment {
+  id         String   @id @default(cuid())
+  businessId String   @map("business_id")
+  name       String
+  /// AudienceRules v1 — ver services/api/src/lib/audience.ts
+  rules      Json
+  /// Mostrar selo de reconhecimento no app do cliente quando elegível.
+  showBadge    Boolean @default(false) @map("show_badge")
+  /// Título do selo no app (ex. "Cliente da casa").
+  badgeTitle   String? @map("badge_title")
+  /// Mensagem curta (ex. "Você desbloqueou promoções exclusivas.").
+  badgeMessage String? @map("badge_message")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@index([businessId])
+  @@map("audience_segments")
 }
 
 model CampaignLocation {
@@ -276,7 +329,7 @@ model Transaction {
   type              TransactionType
   /// Carimbos ganhos, pontos ganhos, ou quantidade de resgates.
   quantity          Int             @default(1)
-  /// Earn: 'stamps' | 'points' (pool). Null em txs legadas / redeems.
+  /// Earn: 'stamps' | 'points' | 'cashback_cents'. Null em txs legadas.
   unitKind          String?         @map("unit_kind")
   /// Spend: valor cobrado em centavos (R$ 12,50 → 1250).
   amountCents       Int?            @map("amount_cents")
@@ -315,6 +368,20 @@ model BusinessWhatsAppConnection {
   tokenKeyVersion    Int                      @default(1) @map("token_key_version")
   templateEarnName   String                   @default("frego_earn_summary") @map("template_earn_name")
   templateEarnLang   String                   @default("pt_BR") @map("template_earn_lang")
+  templateEarnStatus WhatsAppTemplateStatus   @default(missing) @map("template_earn_status")
+  templateEarnId     String?                  @map("template_earn_id")
+  templateEarnSyncedAt DateTime?              @map("template_earn_synced_at")
+  /// Welcome when the store registers a customer phone.
+  templateWelcomeName   String                   @default("frego_welcome") @map("template_welcome_name")
+  templateWelcomeLang   String                   @default("pt_BR") @map("template_welcome_lang")
+  templateWelcomeStatus WhatsAppTemplateStatus   @default(missing) @map("template_welcome_status")
+  templateWelcomeId     String?                  @map("template_welcome_id")
+  templateWelcomeSyncedAt DateTime?              @map("template_welcome_synced_at")
+  /// True when onboarded via WhatsApp Business app coexistence (keep app + Cloud API).
+  coexistence        Boolean                  @default(false)
+  smbSyncStartedAt   DateTime?                @map("smb_sync_started_at")
+  smbContactsSyncRequestId String?            @map("smb_contacts_sync_request_id")
+  smbHistorySyncRequestId  String?            @map("smb_history_sync_request_id")
   status             WhatsAppConnectionStatus @default(connected)
   webhookSubscribedAt DateTime?               @map("webhook_subscribed_at")
   connectedAt        DateTime                 @default(now()) @map("connected_at")

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
+import { BusinessLogo } from '@/components/remote-img';
 import { PendingGate } from '@/components/pending-gate';
 
 const mainNav = [
@@ -93,6 +94,15 @@ export function AppShell({
     isActivePath(pathname, '/reports') ||
     moreOpen;
 
+  const brandTheme = business?.primaryColor
+    ? ({
+        '--color-primary-500': business.primaryColor,
+        '--color-primary-600':
+          business.primaryColorDark || business.primaryColor,
+        '--color-primary-50': `${business.primaryColor}14`,
+      } as CSSProperties)
+    : undefined;
+
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
@@ -150,22 +160,13 @@ export function AppShell({
 
   const brandMark = (
     <div className="flex min-w-0 items-center gap-2.5">
-      {logoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={logoUrl}
-          alt=""
-          className="h-9 w-9 shrink-0 rounded-[11px] object-cover shadow-sm ring-1 ring-black/5"
-        />
-      ) : (
-        <div
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[15px] font-bold text-white shadow-sm"
-          style={{ background: primary }}
-          aria-hidden
-        >
-          {letter}
-        </div>
-      )}
+      <BusinessLogo
+        src={logoUrl}
+        letter={letter}
+        className="h-9 w-9 shrink-0 rounded-[11px] object-cover shadow-sm ring-1 ring-black/5"
+        letterClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[15px] font-bold text-white shadow-sm"
+        background={primary}
+      />
       <div className="min-w-0">
         {businesses.length > 1 ? (
           <label className="block">
@@ -197,7 +198,10 @@ export function AppShell({
   );
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[var(--color-bg)]">
+    <div
+      className="flex h-dvh overflow-hidden bg-[var(--color-bg)]"
+      style={brandTheme}
+    >
       {/* Desktop sidebar */}
       <aside className="hidden h-full w-[228px] shrink-0 flex-col border-r border-[var(--color-hairline)] bg-[var(--color-card)] px-3.5 py-5 md:flex">
         <div className="mb-5 shrink-0 px-2">{brandMark}</div>
@@ -305,8 +309,8 @@ export function AppShell({
                     className={`flex h-9 w-9 items-center justify-center rounded-[14px] transition-all ${
                       emphasize
                         ? active
-                          ? 'bg-[var(--color-primary-500)] text-white shadow-[0_8px_20px_-8px_rgba(59,91,219,0.8)]'
-                          : 'bg-[var(--color-ink)] text-white shadow-[0_8px_18px_-10px_rgba(22,24,29,0.55)]'
+                          ? 'bg-[var(--color-primary-500)] text-[var(--color-on-primary)]'
+                          : 'bg-[var(--color-ink)] text-[var(--color-card)]'
                         : active
                           ? 'bg-[var(--color-primary-50)]'
                           : ''
@@ -380,7 +384,7 @@ export function AppShell({
                   Mais
                 </p>
                 <p className="text-[13px] text-[var(--color-neutral-500)]">
-                  Conta, ajustes e atalhos
+                  Relatórios, configurações e a conta
                 </p>
               </div>
               <button
@@ -395,21 +399,13 @@ export function AppShell({
 
             <div className="px-4 py-4">
               <div className="mb-4 flex items-center gap-3 rounded-[16px] bg-[var(--color-bg)] p-3.5">
-                {logoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={logoUrl}
-                    alt=""
-                    className="h-12 w-12 rounded-[14px] object-cover ring-1 ring-black/5"
-                  />
-                ) : (
-                  <div
-                    className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[18px] font-bold text-white"
-                    style={{ background: primary }}
-                  >
-                    {letter}
-                  </div>
-                )}
+                <BusinessLogo
+                  src={logoUrl}
+                  letter={letter}
+                  className="h-12 w-12 rounded-[14px] object-cover ring-1 ring-black/5"
+                  letterClassName="flex h-12 w-12 items-center justify-center rounded-[14px] text-[18px] font-bold text-white"
+                  background={primary}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-semibold text-[var(--color-ink)]">
                     {name}

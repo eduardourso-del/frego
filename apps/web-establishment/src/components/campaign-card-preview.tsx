@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Cake, Coins, Gift, ImageIcon, Stamp } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Banknote, Cake, Coins, Gift, ImageIcon, Stamp } from 'lucide-react';
+import { RemoteImg } from '@/components/remote-img';
 
 type CampaignCardPreviewProps = {
   businessName: string;
@@ -9,9 +10,10 @@ type CampaignCardPreviewProps = {
   primaryColor: string;
   primaryColorDark?: string;
   campaignName: string;
-  campaignType: 'stamps' | 'spend' | 'birthday';
+  campaignType: 'stamps' | 'spend' | 'birthday' | 'cashback';
   unitsNeeded: number;
   pointsPerReal?: number;
+  cashbackPercent?: number;
   rewardTitle: string;
   rewardDescription?: string;
   rewardImageUrl?: string | null;
@@ -26,15 +28,16 @@ export function CampaignCardPreview({
   campaignType,
   unitsNeeded,
   pointsPerReal = 1,
+  cashbackPercent = 0,
   rewardTitle,
   rewardDescription,
   rewardImageUrl,
 }: CampaignCardPreviewProps) {
-  const needed = Math.max(2, Math.min(unitsNeeded || 10, 8));
+  const needed = Math.max(1, Math.min(unitsNeeded || 10, 24));
   const sampleProgress =
     campaignType === 'stamps'
-      ? Math.min(3, needed - 1)
-      : Math.min(Math.round(needed * 0.35), needed - 1);
+      ? Math.min(3, Math.max(0, needed - 1))
+      : Math.min(Math.round(needed * 0.35), Math.max(0, needed - 1));
   const remaining = Math.max(0, needed - sampleProgress);
   const letter = businessName.trim().charAt(0).toUpperCase() || 'V';
   const reward = rewardTitle.trim() || 'Recompensa';
@@ -46,16 +49,28 @@ export function CampaignCardPreview({
         Preview ao vivo · cartão do cliente
       </p>
 
-      <div className="overflow-hidden rounded-[16px] border border-[var(--color-hairline)] bg-white text-[var(--color-ink)] shadow-[0_6px_16px_rgba(16,24,40,0.06)]">
-        <div className="h-[3px]" style={{ background: primaryColor }} />
+      <div
+        className={`overflow-hidden rounded-[16px] border text-[var(--color-ink)] shadow-[0_6px_16px_rgba(16,24,40,0.06)] ${
+          campaignType === 'cashback'
+            ? 'border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)]'
+            : 'border-[var(--color-hairline)] bg-white'
+        }`}
+      >
+        <div
+          className="h-[3px]"
+          style={{
+            background:
+              campaignType === 'cashback'
+                ? 'var(--color-cashback)'
+                : primaryColor,
+          }}
+        />
 
         <div className="p-3.5">
           <div className="flex items-center gap-2">
             {businessLogoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <RemoteImg
                 src={businessLogoUrl}
-                alt=""
                 className="h-6 w-6 rounded-[7px] object-cover"
               />
             ) : (
@@ -79,7 +94,9 @@ export function CampaignCardPreview({
                   ? 'bg-[#FFF8E8] text-[#92400E]'
                   : campaignType === 'birthday'
                     ? 'bg-[#FDF2F8] text-[#9D174D]'
-                    : ''
+                    : campaignType === 'cashback'
+                      ? 'bg-[var(--color-cashback-bg)] text-[var(--color-cashback)]'
+                      : ''
               }`}
               style={
                 campaignType === 'stamps'
@@ -94,6 +111,8 @@ export function CampaignCardPreview({
                 <Coins size={11} strokeWidth={2.5} aria-hidden />
               ) : campaignType === 'birthday' ? (
                 <Cake size={11} strokeWidth={2.5} aria-hidden />
+              ) : campaignType === 'cashback' ? (
+                <Banknote size={11} strokeWidth={2.5} aria-hidden />
               ) : (
                 <Stamp size={11} strokeWidth={2.5} aria-hidden />
               )}
@@ -101,7 +120,9 @@ export function CampaignCardPreview({
                 ? 'Pontos'
                 : campaignType === 'birthday'
                   ? 'Aniversário'
-                  : 'Carimbos'}
+                  : campaignType === 'cashback'
+                    ? 'Cashback'
+                    : 'Carimbos'}
             </span>
           </div>
 
@@ -121,24 +142,33 @@ export function CampaignCardPreview({
                     {reward} · 1× ao ano
                   </p>
                 </div>
+              ) : campaignType === 'cashback' ? (
+                <>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-[22px] font-semibold tracking-[-0.02em] leading-none text-[var(--color-cashback)]">
+                      R$ 0,00
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
+                    {cashbackPercent}% de volta · use no caixa
+                  </p>
+                </>
               ) : campaignType === 'stamps' ? (
                 <>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {Array.from({ length: needed }).map((_, i) => {
-                      const filled = i < sampleProgress;
                       const isGift = i === needed - 1;
+                      const filled = i < sampleProgress;
                       return (
                         <div
                           key={i}
                           className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                            filled || isGift
+                            filled
                               ? 'text-white'
-                              : 'border-[1.4px] border-[var(--color-neutral-200)] bg-transparent'
+                              : 'border-[1.4px] border-[var(--color-neutral-200)] bg-transparent text-[var(--color-neutral-400)]'
                           }`}
                           style={
-                            filled || isGift
-                              ? { background: primaryColor }
-                              : undefined
+                            filled ? { background: primaryColor } : undefined
                           }
                           aria-hidden
                         >
@@ -166,7 +196,7 @@ export function CampaignCardPreview({
                       {sampleProgress}
                     </span>
                     <span className="text-[12px] text-[var(--color-neutral-500)]">
-                      / {needed} pts
+                      / {needed} pontos
                     </span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-neutral-100)]">
@@ -179,7 +209,7 @@ export function CampaignCardPreview({
                     />
                   </div>
                   <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
-                    {pointsPerReal} pt/R$1
+                    R$ {pointsPerReal} → 1 ponto
                     {remaining > 0 ? ` · faltam ${remaining}` : ''}
                   </p>
                 </>
@@ -187,7 +217,7 @@ export function CampaignCardPreview({
             </div>
           </div>
 
-          {!hasImage && campaignType !== 'birthday' && (
+          {!hasImage && campaignType !== 'birthday' && campaignType !== 'cashback' && (
             <p className="mt-2 truncate text-[12px] font-medium text-[var(--color-neutral-500)]">
               {reward}
               {rewardDescription?.trim()
@@ -202,7 +232,7 @@ export function CampaignCardPreview({
             className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[11px] text-[13px] font-semibold text-white"
             style={{ background: primaryColor }}
           >
-            Continuar acumulando
+            {campaignType === 'cashback' ? 'Use no caixa' : 'Continuar acumulando'}
           </button>
         </div>
       </div>
@@ -215,29 +245,30 @@ export function CampaignCardPreview({
 }
 
 function RewardThumb({ src }: { src: string }) {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
 
   return (
     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[12px] bg-[var(--color-neutral-200)]">
-      {status !== 'ready' && (
+      {failed ? (
         <span
           className="absolute inset-0 flex items-center justify-center text-[var(--color-neutral-400)]"
           aria-hidden
         >
           <ImageIcon size={18} strokeWidth={1.75} />
         </span>
-      )}
-      {status !== 'error' && (
+      ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          key={src}
           src={src}
           alt=""
-          className={`h-full w-full object-cover transition-opacity ${
-            status === 'ready' ? 'opacity-100' : 'opacity-0'
-          }`}
-          onLoad={() => setStatus('ready')}
-          onError={() => setStatus('error')}
+          referrerPolicy="no-referrer"
+          decoding="async"
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
         />
       )}
     </div>

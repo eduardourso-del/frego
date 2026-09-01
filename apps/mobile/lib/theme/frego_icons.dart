@@ -7,6 +7,8 @@ abstract final class FregoIcons {
   // Tabs / navegação principal
   static const shops = Icons.storefront_outlined;
   static const shopsFilled = Icons.storefront_rounded;
+  static const rewards = Icons.card_giftcard_outlined;
+  static const rewardsFilled = Icons.card_giftcard_rounded;
   static const history = Icons.receipt_long_outlined;
   static const historyFilled = Icons.receipt_long_rounded;
   static const profile = Icons.person_outline_rounded;
@@ -28,6 +30,8 @@ abstract final class FregoIcons {
   static const pointsFilled = Icons.stars_rounded;
   static const birthday = Icons.cake_outlined;
   static const birthdayFilled = Icons.cake_rounded;
+  static const cashback = Icons.payments_outlined;
+  static const cashbackFilled = Icons.payments_rounded;
   static const gift = Icons.card_giftcard_rounded;
   static const stampCheck = Icons.check_rounded;
   static const visits = Icons.calendar_today_rounded;

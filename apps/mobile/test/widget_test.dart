@@ -4,6 +4,6 @@ import 'package:frego_mobile/main.dart';
 void main() {
   testWidgets('Shell inicial do Frego carrega', (tester) async {
     await tester.pumpWidget(const FregoApp());
-    expect(find.text('Frego'), findsOneWidget);
+    expect(find.bySemanticsLabel('Frego'), findsWidgets);
   });
 }

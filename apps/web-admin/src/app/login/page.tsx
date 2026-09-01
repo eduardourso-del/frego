@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { isFirebaseConfigured, signInStaff } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { FregoWordmark } from '@/components/brand';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -63,7 +64,8 @@ export default function AdminLoginPage() {
   if (!isFirebaseConfigured()) {
     return (
       <main className="mx-auto max-w-md px-4 py-16">
-        <h1 className="text-[28px] font-semibold">Frego Admin</h1>
+        <FregoWordmark height={28} />
+        <h1 className="mt-6 text-[32px] font-extrabold tracking-[-0.025em]">Admin</h1>
         <p className="mt-2 text-[15px] text-[var(--color-neutral-500)]">
           Configure <code>NEXT_PUBLIC_FIREBASE_*</code> em `.env.local`.
         </p>
@@ -73,11 +75,12 @@ export default function AdminLoginPage() {
 
   return (
     <main className="mx-auto max-w-md px-4 py-16">
-      <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+      <FregoWordmark height={28} />
+      <p className="mt-6 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
         Plataforma
       </p>
-      <h1 className="mt-1 text-[28px] font-semibold tracking-[-0.02em]">
-        Entrar no Frego Admin
+      <h1 className="mt-1 text-[32px] font-extrabold tracking-[-0.025em]">
+        Entrar no admin
       </h1>
       <p className="mt-2 text-[15px] text-[var(--color-neutral-500)]">
         Aprove novos estabelecimentos e acompanhe a operação.
@@ -90,7 +93,7 @@ export default function AdminLoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px]"
+            className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3 text-[16px]"
             required
           />
         </label>
@@ -100,7 +103,7 @@ export default function AdminLoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[17px]"
+            className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3 text-[16px]"
             required
             minLength={6}
           />
@@ -113,7 +116,7 @@ export default function AdminLoginPage() {
         <button
           type="submit"
           disabled={busy}
-          className="min-h-11 rounded-[12px] bg-[var(--color-primary-500)] text-[15px] font-semibold text-white disabled:opacity-60"
+          className="min-h-11 rounded-[8px] bg-[var(--color-primary-500)] text-[14px] font-extrabold text-[var(--color-on-primary)] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)]"
         >
           {busy ? 'Entrando…' : 'Entrar'}
         </button>

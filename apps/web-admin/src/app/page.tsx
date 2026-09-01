@@ -66,14 +66,14 @@ export default function AdminHomePage() {
   return (
     <AdminShell>
       <header className="mb-8 flex min-h-[60px] flex-wrap items-center justify-between gap-4">
-        <h1 className="text-[28px] font-semibold tracking-[-0.02em]">
+        <h1 className="text-[32px] font-extrabold tracking-[-0.025em]">
           Visão geral da plataforma
         </h1>
         <Link
           href="/businesses"
-          className="inline-flex min-h-11 items-center rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[15px] font-semibold text-white"
+          className="inline-flex min-h-11 items-center rounded-[8px] bg-[var(--color-primary-500)] px-5 text-[14px] font-extrabold text-[var(--color-on-primary)]"
         >
-          Fila de aprovação
+          Estabelecimentos
         </Link>
       </header>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -6,22 +6,22 @@ const steps = [
   {
     n: '01',
     title: 'Cadastre seu negócio',
-    body: 'Em minutos sua loja está no Frego. Sem instalação complicada, sem time de TI.',
+    body: 'Em minutos, sua loja está no Frego. Sem instalação complicada, sem equipe de TI.',
   },
   {
     n: '02',
-    title: 'Conecte o relacionamento',
-    body: 'WhatsApp, automações e o jeito que você quer falar com quem já comprou. A conversa passa a ter dono: você.',
+    title: 'Monte o motivo de voltar',
+    body: 'Campanha de carimbos, pontos, cashback ou aniversário. Você define o prêmio; o Frego leva até o aplicativo e o caixa.',
   },
   {
     n: '03',
-    title: 'Atenda — a gente lembra',
-    body: 'No dia a dia você foca no balcão. O Frego identifica quem sumiu, quem está perto de voltar e dispara no momento certo.',
+    title: 'O painel aponta; o app mostra',
+    body: 'Quem sumiu, quem está quase no prêmio. O cliente vê o saldo no bolso. Você atende a loja — a gente lembra.',
   },
   {
     n: '04',
     title: 'Cliente vira freguês',
-    body: 'Segunda visita, terceira, hábito. Cada funcionalidade existe para uma pergunta: isso aumenta a chance dele voltar?',
+    body: 'Segunda visita, terceira, hábito. Cada funcionalidade existe para uma pergunta: isso aumenta a chance de ele voltar?',
   },
 ];
 
@@ -29,27 +29,27 @@ export function LandingHowItWorks() {
   return (
     <section
       id="como-funciona"
-      className="border-y border-[var(--color-hairline)] bg-[var(--color-ink)] text-white"
+      className="border-y border-[var(--color-hairline)] bg-[var(--color-primary-800)] text-white"
       aria-labelledby="como-heading"
     >
-      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-28">
+      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
         <Reveal>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-primary-200)]">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-200)]">
             Como funciona
           </p>
           <h2
             id="como-heading"
-            className="mt-3 max-w-2xl text-[28px] font-semibold tracking-[-0.03em] sm:text-[36px]"
+            className="mt-4 max-w-2xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] sm:text-[36px]"
           >
-            Do primeiro cliente ao freguês — em quatro passos
+            Do primeiro cliente ao freguês, em quatro passos
           </h2>
           <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-white/65">
-            As mesmas ferramentas de relacionamento que grandes marcas usam —
+            As mesmas ferramentas de relacionamento que as grandes marcas usam —
             agora na mão do negócio local.
           </p>
         </Reveal>
 
-        <RevealGroup className="mt-14 grid gap-10 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+        <RevealGroup className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
           {steps.map((s) => (
             <RevealItem key={s.n}>
               <p className="font-mono text-[13px] font-semibold tracking-[0.04em] text-[var(--color-primary-200)]">

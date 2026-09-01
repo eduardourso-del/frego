@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Coins, Stamp } from 'lucide-react';
+import { Banknote, Coins, Stamp } from 'lucide-react';
 import { useBusiness } from '@/lib/business-context';
 import { AppShell } from '@/components/app-shell';
 import { API_URL } from '@/lib/api';
@@ -10,9 +10,28 @@ import {
   formatPhoneBr,
   phoneDigitsForApi,
 } from '@/lib/phone';
+import {
+  formatBrl,
+  formatCentsAsInput,
+  maskMoneyInput,
+  parseMoneyToCents,
+} from '@/lib/money';
+
+/** Matches API display: K7M-2PQ */
+function normalizeVoucherCode(raw: string): string {
+  return raw.replace(/[^0-9A-Za-z]/g, '').toUpperCase().slice(0, 6);
+}
+
+function formatVoucherInput(raw: string): string {
+  const clean = normalizeVoucherCode(raw);
+  if (clean.length <= 3) return clean;
+  return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+}
+
+type EarnMode = 'stamps' | 'points' | 'cashback';
 
 type WalletSnapshot = {
-  pools: { stamps: number; points: number };
+  pools: { stamps: number; points: number; cashbackCents?: number };
   campaigns?: Array<{
     campaignId: string;
     campaignName: string;
@@ -28,7 +47,19 @@ type Match = {
   displayName: string | null;
   phoneE164: string;
   isVip: boolean;
-  membershipId: string;
+  membershipId: string | null;
+  associatedHere?: boolean;
+};
+
+type OpenVoucher = {
+  transactionId: string;
+  voucherCode: string;
+  voucherDisplay: string;
+  status: 'open' | 'used' | 'expired';
+  expiresAt?: string;
+  createdAt: string;
+  rewardTitle: string;
+  campaignName: string | null;
 };
 
 type LookupResult = {
@@ -45,26 +76,36 @@ type LookupResult = {
   membership?: { id: string; isVip: boolean } | null;
   otherShopsCount?: number;
   wallet?: WalletSnapshot | null;
-  pools?: { stamps: number; points: number };
+  pools?: { stamps: number; points: number; cashbackCents?: number };
   pointsPerReal?: number;
+  cashbackPercent?: number;
+  cashback?: {
+    campaignId: string | null;
+    percent: number;
+    balanceCents: number;
+  };
   matches?: Match[];
+  openVouchers?: OpenVoucher[];
+  activeEarnKinds?: EarnMode[];
   error?: string;
 };
 
-type EarnMode = 'stamps' | 'points';
+const EARN_MODE_OPTIONS = [
+  { key: 'stamps' as const, label: 'Carimbos', Icon: Stamp },
+  { key: 'points' as const, label: 'Pontos', Icon: Coins },
+  { key: 'cashback' as const, label: 'Cashback', Icon: Banknote },
+] as const;
 
-function parseMoneyToCents(raw: string): number | null {
-  const cleaned = raw.replace(/[^\d,.-]/g, '').replace(',', '.');
-  if (!cleaned) return null;
-  const n = Number(cleaned);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.round(n * 100);
+function parseEarnKinds(raw: unknown): EarnMode[] {
+  if (!Array.isArray(raw)) return [];
+  const allowed = new Set<EarnMode>(['stamps', 'points', 'cashback']);
+  return raw.filter((k): k is EarnMode => allowed.has(k as EarnMode));
 }
 
 function poolsFrom(lookup: LookupResult | null) {
   return (
     lookup?.pools ??
-    lookup?.wallet?.pools ?? { stamps: 0, points: 0 }
+    lookup?.wallet?.pools ?? { stamps: 0, points: 0, cashbackCents: 0 }
   );
 }
 
@@ -78,22 +119,103 @@ export default function CounterPage() {
   const [error, setError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<LookupResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [applyCashback, setApplyCashback] = useState(true);
+  const [applyAmount, setApplyAmount] = useState('');
+  const [fulfillingId, setFulfillingId] = useState<string | null>(null);
+  const [fetchedKinds, setFetchedKinds] = useState<EarnMode[] | null>(null);
+  const [voucherResult, setVoucherResult] = useState<{
+    kind: 'used' | 'already_used' | 'expired' | 'not_found' | 'error';
+    message: string;
+    voucherDisplay?: string;
+    rewardTitle?: string;
+    expiresAt?: string | null;
+    usedAt?: string | null;
+    customerName?: string | null;
+    transactionId?: string;
+    voucherCode?: string;
+  } | null>(null);
 
   const pointsPerReal = lookup?.pointsPerReal ?? business?.pointsPerReal ?? 1;
+  const cashbackPercent =
+    lookup?.cashback?.percent ?? lookup?.cashbackPercent ?? 0;
+  const cashbackBalance =
+    lookup?.cashback?.balanceCents ?? poolsFrom(lookup).cashbackCents ?? 0;
+  const earnKinds = useMemo(() => {
+    if (lookup?.activeEarnKinds) return parseEarnKinds(lookup.activeEarnKinds);
+    if (fetchedKinds) return fetchedKinds;
+    return parseEarnKinds(business?.activeEarnKinds);
+  }, [lookup?.activeEarnKinds, fetchedKinds, business?.activeEarnKinds]);
+  const canEarn = earnKinds.length > 0;
+  const canEarnCashback = earnKinds.includes('cashback');
+  const saleMode =
+    earnMode === 'points' ||
+    earnMode === 'cashback' ||
+    (!canEarn && cashbackBalance > 0);
+  const showAmount = saleMode;
   const pools = useMemo(() => poolsFrom(lookup), [lookup]);
   const qDigits = digitsOnly(query);
   const isLast4 = qDigits.length === 4;
   const amountCents = parseMoneyToCents(amount);
   const previewPoints =
     earnMode === 'points' && amountCents != null
-      ? Math.floor(amountCents / 100) * pointsPerReal
+      ? Math.floor(amountCents / 100 / pointsPerReal)
       : 0;
+  const maxApplyCents =
+    cashbackBalance <= 0
+      ? 0
+      : Math.min(cashbackBalance, amountCents ?? cashbackBalance);
+  const typedApply = parseMoneyToCents(applyAmount);
+  const applyCents =
+    saleMode && applyCashback && maxApplyCents > 0
+      ? Math.min(typedApply ?? maxApplyCents, maxApplyCents)
+      : 0;
+  const paidCents = Math.max(0, (amountCents ?? 0) - applyCents);
+  const previewCashback =
+    earnMode === 'cashback' &&
+    canEarnCashback &&
+    cashbackPercent > 0 &&
+    paidCents > 0
+      ? Math.floor((paidCents * cashbackPercent) / 100)
+      : 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_URL}/business`, {
+          headers: await bizAuthHeaders(),
+        });
+        const json = await res.json();
+        if (cancelled || !res.ok) return;
+        setFetchedKinds(parseEarnKinds(json.business?.activeEarnKinds));
+      } catch {
+        // Keep kinds from session.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bizAuthHeaders, business?.id]);
+
+  useEffect(() => {
+    if (earnKinds.length === 0) return;
+    if (!earnKinds.includes(earnMode)) setEarnMode(earnKinds[0]);
+  }, [earnKinds, earnMode]);
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 3200);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!applyCashback || maxApplyCents <= 0) return;
+    const typed = parseMoneyToCents(applyAmount);
+    if (typed != null && typed > maxApplyCents) {
+      setApplyAmount(formatCentsAsInput(maxApplyCents));
+    }
+  }, [applyCashback, applyAmount, maxApplyCents]);
 
   async function authHeaders(): Promise<HeadersInit> {
     return {
@@ -107,6 +229,8 @@ export default function CounterPage() {
     setLoading(true);
     setError(null);
     setLookup(null);
+    setVoucherResult(null);
+    setApplyAmount('');
     try {
       const payload =
         qDigits.length === 4
@@ -114,7 +238,7 @@ export default function CounterPage() {
           : { phone: phoneDigitsForApi(query) };
 
       if (qDigits.length !== 4 && qDigits.length < 10) {
-        throw new Error('Digite os 4 últimos dígitos ou o telefone completo');
+        throw new Error('Digite os 4 últimos dígitos ou o telefone completo.');
       }
 
       const res = await fetch(`${API_URL}/customers/lookup`, {
@@ -133,11 +257,11 @@ export default function CounterPage() {
         return;
       }
       if (!res.ok) {
-        throw new Error(data.error ?? 'Falha na busca');
+        throw new Error(data.error ?? 'Não foi possível buscar.');
       }
       setLookup(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na busca');
+      setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
     } finally {
       setLoading(false);
     }
@@ -153,25 +277,65 @@ export default function CounterPage() {
         body: JSON.stringify({ phone: match.phoneE164 }),
       });
       const data = (await res.json()) as LookupResult;
-      if (!res.ok) throw new Error(data.error ?? 'Falha na busca');
+      if (!res.ok) throw new Error(data.error ?? 'Não foi possível buscar.');
       setLookup(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na busca');
+      setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
     } finally {
       setLoading(false);
     }
   }
 
-  async function createCustomer(withEarn: boolean) {
+  /** From not-found: try global lookup first, then create if new. */
+  async function resolveFullPhoneAndEarn() {
+    const phone = phoneDigitsForApi(fullPhone);
+    if (digitsOnly(phone).length < 10) {
+      setError('Informe o telefone completo com DDD.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/customers/lookup`, {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({ phone }),
+      });
+      const data = (await res.json()) as LookupResult;
+      if (res.ok && data.found && data.customer) {
+        setLookup(data);
+        setFullPhone('');
+        if (data.associatedHere && data.membership) {
+          if (canEarn) await earn(data.membership.id);
+        } else {
+          await createCustomer(canEarn, phone);
+        }
+        return;
+      }
+      await createCustomer(canEarn, phone);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
+      setLoading(false);
+    }
+  }
+
+  async function createCustomer(withEarn: boolean, phoneOverride?: string) {
     const phone =
+      phoneOverride ||
       phoneDigitsForApi(fullPhone) ||
       (lookup?.phoneE164 ? lookup.phoneE164 : phoneDigitsForApi(query));
     if (digitsOnly(phone).length < 10) {
-      setError('Para criar cliente, informe o telefone completo com DDD');
+      setError('Para cadastrar o cliente, informe o telefone completo com DDD.');
+      setLoading(false);
       return;
     }
-    if (withEarn && earnMode === 'points' && amountCents == null) {
-      setError('Informe o valor da compra');
+    if (
+      withEarn &&
+      (earnMode === 'points' || earnMode === 'cashback') &&
+      amountCents == null
+    ) {
+      setError('Informe o valor da compra.');
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -182,11 +346,11 @@ export default function CounterPage() {
         headers: await authHeaders(),
         body: JSON.stringify({
           phone,
-          addFirstStamp: earnMode === 'stamps' && withEarn,
+          addFirstStamp: earnMode === 'stamps' && withEarn && amountCents == null,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Falha ao criar');
+      if (!res.ok) throw new Error(data.error ?? 'Não foi possível cadastrar.');
       setLookup({
         found: true,
         associatedHere: true,
@@ -196,9 +360,15 @@ export default function CounterPage() {
         wallet: data.wallet,
         pools: data.pools ?? data.wallet?.pools,
         pointsPerReal,
+        cashbackPercent,
+        cashback: data.cashback,
       });
 
-      if (earnMode === 'points' && withEarn && data.membership?.id) {
+      if (
+        withEarn &&
+        data.membership?.id &&
+        (earnMode === 'points' || earnMode === 'cashback')
+      ) {
         await earn(data.membership.id);
         return;
       }
@@ -206,11 +376,11 @@ export default function CounterPage() {
       setToast(
         earnMode === 'stamps' && withEarn
           ? data.message ??
-              `Carimbo adicionado — saldo ${data.pools?.stamps ?? data.wallet?.pools?.stamps ?? 1}`
-          : 'Cliente adicionado à loja',
+              `Carimbo adicionado — saldo ${data.pools?.stamps ?? data.wallet?.pools?.stamps ?? 1}.`
+          : 'Cliente adicionado à loja.',
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao criar');
+      setError(err instanceof Error ? err.message : 'Não foi possível cadastrar.');
     } finally {
       setLoading(false);
     }
@@ -219,8 +389,22 @@ export default function CounterPage() {
   async function earn(membershipId?: string) {
     const mid = membershipId ?? lookup?.membership?.id;
     if (!mid) return;
-    if (earnMode === 'points' && amountCents == null) {
-      setError('Informe o valor da compra');
+    const applyingLeftover = saleMode && applyCents > 0;
+    const unitKind =
+      canEarn && earnKinds.includes(earnMode) ? earnMode : 'cashback';
+    if (!canEarn && !applyingLeftover) {
+      setError('Nenhuma campanha ativa para registrar no caixa.');
+      setLoading(false);
+      return;
+    }
+    if (
+      (unitKind === 'points' ||
+        unitKind === 'cashback' ||
+        applyingLeftover) &&
+      amountCents == null
+    ) {
+      setError('Informe o valor da compra.');
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -232,12 +416,16 @@ export default function CounterPage() {
         body: JSON.stringify({
           membershipId: mid,
           type: 'stamp',
-          unitKind: earnMode,
-          ...(earnMode === 'points' ? { amountCents } : { quantity: 1 }),
+          unitKind,
+          ...(unitKind !== 'stamps' && amountCents != null
+            ? { amountCents }
+            : {}),
+          ...(unitKind === 'stamps' ? { quantity: 1 } : {}),
+          ...(applyingLeftover ? { applyCashbackCents: applyCents } : {}),
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Falha ao registrar');
+      if (!res.ok) throw new Error(data.error ?? 'Não foi possível registrar.');
       setLookup((prev) =>
         prev
           ? {
@@ -251,16 +439,134 @@ export default function CounterPage() {
       );
       setToast(data.message);
       setAmount('');
+      setApplyAmount('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao registrar');
+      setError(err instanceof Error ? err.message : 'Não foi possível registrar.');
     } finally {
       setLoading(false);
     }
   }
 
-  const title = earnMode === 'points' ? 'Pontos' : 'Carimbar';
-  const primaryAction =
-    earnMode === 'points' ? 'Registrar gasto' : 'Carimbar';
+  async function fulfillVoucher(opts: {
+    transactionId?: string;
+    voucherCode?: string;
+    acceptExpired?: boolean;
+  }) {
+    setFulfillingId(opts.transactionId ?? opts.voucherCode ?? 'code');
+    setError(null);
+    setVoucherResult(null);
+    try {
+      const res = await fetch(`${API_URL}/vouchers/fulfill`, {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify(opts),
+      });
+      const data = await res.json();
+      const voucher = data.voucher as
+        | {
+            transactionId?: string;
+            voucherCode?: string;
+            voucherDisplay?: string;
+            rewardTitle?: string;
+            expiresAt?: string | null;
+            usedAt?: string | null;
+            status?: string;
+          }
+        | undefined;
+      const customerName =
+        (data.customer as { displayName?: string | null } | undefined)
+          ?.displayName ?? null;
+
+      if (!res.ok) {
+        if (data.error === 'VOUCHER_EXPIRED') {
+          setVoucherResult({
+            kind: 'expired',
+            message:
+              data.message ??
+              `O voucher ${voucher?.voucherDisplay ?? ''} expirou (válido por 24 h).`,
+            voucherDisplay: voucher?.voucherDisplay,
+            rewardTitle: voucher?.rewardTitle,
+            expiresAt: voucher?.expiresAt,
+            customerName,
+            transactionId: voucher?.transactionId ?? opts.transactionId,
+            voucherCode:
+              voucher?.voucherCode ??
+              voucher?.voucherDisplay ??
+              opts.voucherCode,
+          });
+          return;
+        }
+        if (data.error === 'VOUCHER_NOT_FOUND') {
+          setVoucherResult({
+            kind: 'not_found',
+            message: 'Voucher não encontrado nesta loja.',
+          });
+          return;
+        }
+        throw new Error(data.error ?? 'Não foi possível confirmar o voucher.');
+      }
+
+      setVoucherResult({
+        kind: data.alreadyUsed ? 'already_used' : 'used',
+        message:
+          data.message ??
+          (data.alreadyUsed
+            ? 'Este voucher já tinha sido usado.'
+            : data.acceptedExpired
+              ? 'Voucher aceito mesmo depois do prazo.'
+              : 'Voucher confirmado.'),
+        voucherDisplay: voucher?.voucherDisplay,
+        rewardTitle: voucher?.rewardTitle,
+        expiresAt: voucher?.expiresAt,
+        usedAt: voucher?.usedAt,
+        customerName,
+      });
+      setVoucherCode('');
+      if (!data.alreadyUsed) {
+        setToast(data.message ?? 'Voucher confirmado.');
+      }
+
+      if (lookup?.customer?.phoneE164 || lookup?.phoneE164) {
+        const phone = lookup.customer?.phoneE164 ?? lookup.phoneE164!;
+        const refresh = await fetch(`${API_URL}/customers/lookup`, {
+          method: 'POST',
+          headers: await authHeaders(),
+          body: JSON.stringify({ phone }),
+        });
+        const refreshed = (await refresh.json()) as LookupResult;
+        if (refresh.ok) setLookup(refreshed);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Não foi possível confirmar o voucher.';
+      setVoucherResult({ kind: 'error', message });
+      setError(message);
+    } finally {
+      setFulfillingId(null);
+    }
+  }
+
+  const openVouchers = lookup?.openVouchers ?? [];
+  const canApplyLeftover = cashbackBalance > 0;
+  const showStampsPool = earnKinds.includes('stamps') || pools.stamps > 0;
+  const showPointsPool = earnKinds.includes('points') || pools.points > 0;
+  const title =
+    earnKinds.length === 0
+      ? 'Balcão'
+      : earnMode === 'points'
+        ? 'Pontos'
+        : earnMode === 'cashback'
+          ? 'Cashback'
+          : 'Carimbos';
+  const primaryAction = !canEarn
+    ? canApplyLeftover
+      ? 'Usar cashback'
+      : 'Sem campanha ativa'
+    : earnMode === 'points'
+      ? 'Registrar gasto'
+      : earnMode === 'cashback'
+        ? 'Registrar cashback'
+        : 'Carimbar';
 
   return (
     <AppShell title="Balcão">
@@ -274,45 +580,222 @@ export default function CounterPage() {
           </h1>
           <p className="mt-2 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
             Digite os <strong>4 últimos dígitos</strong> do celular. O acúmulo
-            vai para o pool do cliente — ele escolhe a campanha no app.
+            vai para o saldo do cliente — ele escolhe a campanha no aplicativo.
+            Prêmios resgatados no app são confirmados aqui na entrega.
           </p>
         </header>
 
-        <div className="mb-6 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
-          {(
-            [
-              {
-                key: 'stamps' as const,
-                label: 'Carimbos',
-                Icon: Stamp,
+        <section className="mb-6 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+            Confirmar voucher
+          </p>
+          <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+            Digite o código que o cliente mostra no app e marque como usado.
+          </p>
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const code = normalizeVoucherCode(voucherCode);
+              if (code.length < 4) return;
+              void fulfillVoucher({ voucherCode: code });
+            }}
+          >
+            <input
+              value={voucherCode}
+              onChange={(e) => setVoucherCode(formatVoucherInput(e.target.value))}
+              placeholder="K7M-2PQ"
+              maxLength={7}
+              inputMode="text"
+              className="min-h-11 flex-1 rounded-[10px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 font-mono text-[16px] tracking-[0.12em]"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button
+              type="submit"
+              disabled={
+                loading ||
+                normalizeVoucherCode(voucherCode).length < 4 ||
+                fulfillingId != null
+              }
+              className="min-h-11 shrink-0 rounded-[10px] bg-[var(--color-ink)] px-4 text-[14px] font-semibold text-white disabled:opacity-50"
+            >
+              {fulfillingId === normalizeVoucherCode(voucherCode) ||
+              fulfillingId === 'code'
+                ? '…'
+                : 'Usar'}
+            </button>
+          </form>
+
+          {voucherResult && (
+            <div
+              className={`mt-3 rounded-[12px] border px-3.5 py-3 ${
+                voucherResult.kind === 'expired'
+                  ? 'border-[#F5C6A5] bg-[#FFF7ED]'
+                  : voucherResult.kind === 'already_used'
+                    ? 'border-[var(--color-neutral-300)] bg-[var(--color-neutral-100)]'
+                    : voucherResult.kind === 'used'
+                      ? 'border-[var(--color-success)]/25 bg-[var(--color-success-bg)]'
+                      : 'border-[var(--color-danger)]/25 bg-[var(--color-danger-bg, #FEF2F2)]'
+              }`}
+              role="status"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p
+                    className={`text-[13px] font-semibold ${
+                      voucherResult.kind === 'expired'
+                        ? 'text-[#C45C26]'
+                        : voucherResult.kind === 'already_used'
+                          ? 'text-[var(--color-neutral-600)]'
+                          : voucherResult.kind === 'used'
+                            ? 'text-[var(--color-success)]'
+                            : 'text-[var(--color-danger)]'
+                    }`}
+                  >
+                    {voucherResult.kind === 'expired'
+                      ? 'Voucher expirado'
+                      : voucherResult.kind === 'used'
+                        ? 'Voucher confirmado'
+                        : voucherResult.kind === 'already_used'
+                          ? 'Voucher já foi usado'
+                          : voucherResult.kind === 'not_found'
+                            ? 'Voucher não encontrado'
+                            : 'Erro'}
+                  </p>
+                  {voucherResult.voucherDisplay && (
+                    <p className="mt-1 font-mono text-[18px] font-semibold tracking-[0.12em] text-[var(--color-ink)]">
+                      {voucherResult.voucherDisplay}
+                    </p>
+                  )}
+                  {voucherResult.rewardTitle && (
+                    <p className="mt-0.5 text-[13px] text-[var(--color-neutral-600)]">
+                      {voucherResult.rewardTitle}
+                      {voucherResult.customerName
+                        ? ` · ${voucherResult.customerName}`
+                        : ''}
+                    </p>
+                  )}
+                  {voucherResult.kind === 'already_used' &&
+                    voucherResult.usedAt && (
+                      <p className="mt-1 text-[12px] font-medium text-[var(--color-neutral-600)]">
+                        Usado em{' '}
+                        {new Date(voucherResult.usedAt).toLocaleString(
+                          'pt-BR',
+                          {
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          },
+                        )}
+                      </p>
+                    )}
+                  {voucherResult.kind === 'expired' && voucherResult.expiresAt && (
+                    <p className="mt-1 text-[12px] font-medium text-[#C45C26]">
+                      Expirou em{' '}
+                      {new Date(voucherResult.expiresAt).toLocaleString(
+                        'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        },
+                      )}{' '}
+                      · validade de 24h
+                    </p>
+                  )}
+                  {voucherResult.kind === 'expired' && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={fulfillingId != null}
+                        onClick={() =>
+                          void fulfillVoucher({
+                            transactionId: voucherResult.transactionId,
+                            voucherCode: voucherResult.voucherCode,
+                            acceptExpired: true,
+                          })
+                        }
+                        className="min-h-9 rounded-[8px] bg-[var(--color-ink)] px-3 text-[13px] font-semibold text-white disabled:opacity-60"
+                      >
+                        {fulfillingId != null
+                          ? '…'
+                          : 'Aceitar mesmo assim'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVoucherResult(null)}
+                        className="min-h-9 rounded-[8px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold text-[var(--color-neutral-600)]"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
+                  {voucherResult.kind !== 'expired' &&
+                    voucherResult.kind !== 'already_used' && (
+                    <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
+                      {voucherResult.message}
+                    </p>
+                  )}
+                  {voucherResult.kind === 'already_used' && (
+                    <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
+                      Este voucher já foi confirmado e não pode ser usado de
+                      novo.
+                    </p>
+                  )}
+                </div>
+                {voucherResult.kind !== 'expired' && (
+                  <button
+                    type="button"
+                    onClick={() => setVoucherResult(null)}
+                    className="text-[12px] font-semibold text-[var(--color-neutral-400)]"
+                  >
+                    Fechar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {earnKinds.length > 1 ? (
+          <div className="mb-6 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
+            {EARN_MODE_OPTIONS.filter((opt) => earnKinds.includes(opt.key)).map(
+              ({ key, label, Icon }) => {
+                const selected = earnMode === key;
+                const selectedClass =
+                  key === 'points'
+                    ? 'bg-[var(--color-points)] text-white shadow-[0_8px_18px_-10px_rgba(180,83,9,0.55)]'
+                    : key === 'cashback'
+                      ? 'bg-[var(--color-cashback)] text-white shadow-[0_8px_18px_-10px_rgba(4,120,87,0.55)]'
+                      : 'bg-[var(--color-stamps)] text-white shadow-[0_8px_18px_-10px_rgba(15,118,110,0.55)]';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEarnMode(key)}
+                    className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-[11px] px-1 text-[13px] font-semibold whitespace-nowrap transition-all sm:gap-2 sm:text-[14px] ${
+                      selected
+                        ? selectedClass
+                        : 'text-[var(--color-neutral-600)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={2.25} aria-hidden />
+                    {label}
+                  </button>
+                );
               },
-              {
-                key: 'points' as const,
-                label: 'Pontos (R$)',
-                Icon: Coins,
-              },
-            ] as const
-          ).map(({ key, label, Icon }) => {
-            const selected = earnMode === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setEarnMode(key)}
-                className={`flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[11px] text-[14px] font-semibold transition-all ${
-                  selected
-                    ? key === 'points'
-                      ? 'bg-[var(--color-points)] text-white shadow-[0_8px_18px_-10px_rgba(180,83,9,0.55)]'
-                      : 'bg-[var(--color-stamps)] text-white shadow-[0_8px_18px_-10px_rgba(15,118,110,0.55)]'
-                    : 'text-[var(--color-neutral-600)] hover:text-[var(--color-ink)]'
-                }`}
-              >
-                <Icon size={16} strokeWidth={2.25} aria-hidden />
-                {label}
-              </button>
-            );
-          })}
-        </div>
+            )}
+          </div>
+        ) : earnKinds.length === 0 ? (
+          <p className="mb-6 rounded-[12px] bg-[var(--color-neutral-100)] px-3 py-3 text-[13px] text-[var(--color-neutral-500)]">
+            Nenhuma campanha ativa para registrar no caixa. Crie carimbos,
+            pontos ou cashback em Campanhas.
+          </p>
+        ) : null}
 
         <form onSubmit={doLookup} className="flex flex-col gap-3">
           <label className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-700)]">
@@ -348,7 +831,7 @@ export default function CounterPage() {
             disabled={loading}
             className="min-h-12 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
           >
-            {loading ? 'Consultando Frego…' : 'Buscar'}
+            {loading ? 'Buscando…' : 'Buscar'}
           </button>
         </form>
 
@@ -356,11 +839,11 @@ export default function CounterPage() {
           <section className="mt-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
             <h2 className="text-[20px] font-semibold">Vários clientes</h2>
             <p className="mt-1 text-[15px] text-[var(--color-neutral-500)]">
-              Terminam em {lookup.last4}. Qual é?
+              Estes clientes terminam em {lookup.last4}. Qual deles?
             </p>
             <ul className="mt-4 flex flex-col gap-2">
               {lookup.matches.map((m) => (
-                <li key={m.membershipId}>
+                <li key={m.customerId}>
                   <button
                     type="button"
                     onClick={() => selectMatch(m)}
@@ -369,6 +852,7 @@ export default function CounterPage() {
                     <span className="font-medium">
                       {m.displayName ?? 'Cliente'}
                       {m.isVip ? ' · VIP' : ''}
+                      {m.associatedHere === false ? ' · outra loja ou app' : ''}
                     </span>
                     <span className="font-mono text-[13px] text-[var(--color-neutral-500)]">
                       {m.phoneE164}
@@ -382,9 +866,10 @@ export default function CounterPage() {
 
         {lookup && !lookup.found && !lookup.multiple && (
           <section className="mt-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-            <h2 className="text-[20px] font-semibold">Não encontrado</h2>
+            <h2 className="text-[20px] font-semibold">Cliente não encontrado nesta loja</h2>
             <p className="mt-1 text-[15px] text-[var(--color-neutral-500)]">
-              Informe o telefone completo para criar o cliente.
+              Pode já estar no Frego (aplicativo ou outra loja). Informe o
+              telefone completo para localizar ou cadastrar.
             </p>
             <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
               Telefone completo
@@ -397,23 +882,32 @@ export default function CounterPage() {
                 placeholder="(19) 99488-5914"
               />
             </label>
-            {earnMode === 'points' && (
+            {showAmount && (
               <AmountField
                 amount={amount}
                 setAmount={setAmount}
                 previewPoints={previewPoints}
                 pointsPerReal={pointsPerReal}
+                previewCashback={previewCashback}
+                cashbackPercent={cashbackPercent}
+                applyCents={applyCents}
+                paidCents={paidCents}
+                showPointsRate={earnMode === 'points'}
               />
             )}
             <button
               type="button"
-              onClick={() => createCustomer(true)}
+              onClick={() => void resolveFullPhoneAndEarn()}
               disabled={loading}
               className="mt-4 min-h-11 w-full rounded-[12px] bg-[var(--color-primary-500)] text-[15px] font-semibold text-white disabled:bg-[var(--color-primary-200)]"
             >
-              {earnMode === 'points'
-                ? 'Criar e registrar gasto'
-                : 'Criar e dar primeiro carimbo'}
+              {!canEarn
+                ? 'Buscar / criar cliente'
+                : earnMode === 'points'
+                  ? 'Buscar / criar e registrar gasto'
+                  : earnMode === 'cashback'
+                    ? 'Buscar / criar e registrar cashback'
+                    : 'Buscar / criar e dar primeiro carimbo'}
             </button>
           </section>
         )}
@@ -428,40 +922,160 @@ export default function CounterPage() {
             </p>
             {!lookup.associatedHere && (
               <p className="mt-2 rounded-[8px] bg-[var(--color-primary-50)] px-3 py-2 text-[13px] text-[var(--color-primary-800)]">
-                Identidade Frego compartilhada — ativo em{' '}
-                {lookup.otherShopsCount ?? 0} outro(s) estabelecimento(s).
+                {(lookup.otherShopsCount ?? 0) > 0
+                  ? `Já está no Frego — ativo em ${lookup.otherShopsCount} outro${lookup.otherShopsCount === 1 ? '' : 's'} estabelecimento${lookup.otherShopsCount === 1 ? '' : 's'}. Adicione a esta loja para carimbar.`
+                  : 'Já está no Frego (aplicativo), mas ainda não nesta loja. Adicione para carimbar.'}
               </p>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-[14px] bg-[var(--color-stamps-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-stamps-ring)]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-stamps)]">
-                  Carimbos
-                </p>
-                <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
-                  {pools.stamps}
-                </p>
-              </div>
-              <div className="rounded-[14px] bg-[var(--color-points-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-points-ring)]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-points)]">
-                  Pontos
-                </p>
-                <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
-                  {pools.points}
-                </p>
-              </div>
+            {(showStampsPool || showPointsPool) && (
+            <div
+              className={`mt-4 grid gap-2 ${
+                showStampsPool && showPointsPool ? 'grid-cols-2' : 'grid-cols-1'
+              }`}
+            >
+              {showStampsPool && (
+                <div className="rounded-[14px] bg-[var(--color-stamps-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-stamps-ring)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-stamps)]">
+                    Carimbos
+                  </p>
+                  <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
+                    {pools.stamps}
+                  </p>
+                </div>
+              )}
+              {showPointsPool && (
+                <div className="rounded-[14px] bg-[var(--color-points-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-points-ring)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-points)]">
+                    Pontos
+                  </p>
+                  <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
+                    {pools.points}
+                  </p>
+                </div>
+              )}
             </div>
+            )}
+            {cashbackBalance > 0 || canEarnCashback ? (
+              <div className="mt-2 rounded-[14px] bg-[var(--color-cashback-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+                  Cashback
+                </p>
+                <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
+                  {formatBrl(cashbackBalance)}
+                </p>
+                {cashbackPercent > 0 && earnMode === 'cashback' && (
+                  <p className="mt-1 text-[12px] text-[var(--color-cashback)]">
+                    {cashbackPercent}% do valor pago
+                  </p>
+                )}
+                {cashbackBalance > 0 && saleMode && (
+                  <div className="mt-3">
+                    <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
+                      <input
+                        type="checkbox"
+                        checked={applyCashback}
+                        onChange={(e) => setApplyCashback(e.target.checked)}
+                        className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                      />
+                      Usar cashback nesta compra
+                    </label>
+                    {applyCashback && (
+                      <label className="mt-2 block text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+                        Valor a usar (R$)
+                        <input
+                          value={applyAmount}
+                          onChange={(e) =>
+                            setApplyAmount(maskMoneyInput(e.target.value))
+                          }
+                          inputMode="numeric"
+                          className="mt-1.5 min-h-12 w-full rounded-[8px] border border-[var(--color-cashback-ring)] bg-[var(--color-card)] px-3 text-center text-[22px] font-semibold text-[var(--color-ink)]"
+                          placeholder={
+                            maxApplyCents > 0
+                              ? formatCentsAsInput(maxApplyCents)
+                              : '0,00'
+                          }
+                        />
+                      </label>
+                    )}
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-cashback)]">
+                      {applyCashback && applyCents > 0
+                        ? `Desconta ${formatBrl(applyCents)} do saldo. O caixa da loja cobra ${formatBrl(paidCents || (amountCents ?? 0))}.`
+                        : `Saldo disponível: ${formatBrl(cashbackBalance)}. Informe quanto o outro sistema descontou.`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
             <p className="mt-3 text-[13px] text-[var(--color-neutral-500)]">
-              Resgate no app do cliente — ele escolhe a campanha.
+              {earnMode === 'cashback'
+                ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
+                : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher abaixo ao entregar o prêmio.'}
             </p>
 
-            {earnMode === 'points' && (
+            {openVouchers.length > 0 && (
+              <div className="mt-4 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                  Vouchers em aberto · {openVouchers.length}
+                </p>
+                <ul className="mt-2 flex flex-col gap-2">
+                  {openVouchers.map((v) => (
+                    <li
+                      key={v.transactionId}
+                      className="flex items-center gap-3 rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] font-semibold text-[var(--color-ink)]">
+                          {v.rewardTitle}
+                        </p>
+                        <p className="font-mono text-[13px] tracking-[0.08em] text-[var(--color-neutral-500)]">
+                          {v.voucherDisplay}
+                        </p>
+                        {v.expiresAt && (
+                          <p className="mt-0.5 text-[11px] text-[var(--color-neutral-400)]">
+                            Válido até{' '}
+                            {new Date(v.expiresAt).toLocaleString('pt-BR', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}{' '}
+                            · 24h
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={fulfillingId != null}
+                        onClick={() =>
+                          void fulfillVoucher({
+                            transactionId: v.transactionId,
+                          })
+                        }
+                        className="min-h-9 shrink-0 rounded-[8px] bg-[var(--color-success)] px-3 text-[13px] font-semibold text-white disabled:opacity-60"
+                      >
+                        {fulfillingId === v.transactionId
+                          ? '…'
+                          : 'Confirmar'}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {showAmount && (
               <AmountField
                 amount={amount}
                 setAmount={setAmount}
                 previewPoints={previewPoints}
                 pointsPerReal={pointsPerReal}
+                previewCashback={previewCashback}
+                cashbackPercent={cashbackPercent}
+                applyCents={applyCents}
+                paidCents={paidCents}
+                showPointsRate={earnMode === 'points'}
               />
             )}
 
@@ -470,16 +1084,25 @@ export default function CounterPage() {
               onClick={() =>
                 lookup.associatedHere && lookup.membership
                   ? earn()
-                  : createCustomer(true)
+                  : createCustomer(canEarn)
               }
-              disabled={loading}
+              disabled={
+                loading ||
+                (Boolean(lookup.associatedHere) &&
+                  !canEarn &&
+                  !canApplyLeftover)
+              }
               className="mt-6 min-h-11 w-full rounded-[12px] bg-[var(--color-primary-500)] text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)]"
             >
               {lookup.associatedHere
                 ? primaryAction
-                : earnMode === 'points'
-                  ? 'Adicionar à loja e registrar'
-                  : 'Adicionar à loja e carimbar'}
+                : !canEarn
+                  ? 'Adicionar à loja'
+                  : earnMode === 'points'
+                    ? 'Adicionar à loja e registrar'
+                    : earnMode === 'cashback'
+                      ? 'Adicionar à loja e registrar cashback'
+                      : 'Adicionar à loja e carimbar'}
             </button>
           </section>
         )}
@@ -502,43 +1125,70 @@ function AmountField({
   setAmount,
   previewPoints,
   pointsPerReal,
+  previewCashback = 0,
+  cashbackPercent = 0,
+  applyCents = 0,
+  paidCents = 0,
+  showPointsRate = true,
 }: {
   amount: string;
   setAmount: (v: string) => void;
   previewPoints: number;
   pointsPerReal: number;
+  previewCashback?: number;
+  cashbackPercent?: number;
+  applyCents?: number;
+  paidCents?: number;
+  showPointsRate?: boolean;
 }) {
-  const chips = ['20', '40', '60', '100'];
+  const chips = [2000, 4000, 6000, 10000];
   return (
     <div className="mt-4">
       <label className="block text-[13px] font-semibold uppercase tracking-[0.04em]">
         Valor da compra (R$)
         <input
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          inputMode="decimal"
+          onChange={(e) => setAmount(maskMoneyInput(e.target.value))}
+          inputMode="numeric"
           className="mt-2 min-h-14 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-center text-[28px] font-semibold"
           placeholder="0,00"
         />
       </label>
-      <p className="mt-1 text-[12px] text-[var(--color-neutral-400)]">
-        Taxa da loja: {pointsPerReal} pt / R$1
-      </p>
+      {showPointsRate && (
+        <p className="mt-1 text-[12px] text-[var(--color-neutral-400)]">
+          Taxa da loja: R$ {pointsPerReal} → 1 ponto
+        </p>
+      )}
+      {cashbackPercent > 0 && (
+        <p className="mt-1 text-[12px] text-[var(--color-cashback)]">
+          Cashback {cashbackPercent}%
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap gap-2">
-        {chips.map((c) => (
+        {chips.map((cents) => (
           <button
-            key={c}
+            key={cents}
             type="button"
-            onClick={() => setAmount(c)}
+            onClick={() => setAmount(formatCentsAsInput(cents))}
             className="min-h-9 rounded-[8px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold text-[var(--color-neutral-700)]"
           >
-            R$ {c}
+            {formatBrl(cents)}
           </button>
         ))}
       </div>
+      {applyCents > 0 && (
+        <p className="mt-2 text-center text-[13px] font-semibold text-[var(--color-cashback)]">
+          −{formatBrl(applyCents)} de cashback · a pagar {formatBrl(paidCents)}
+        </p>
+      )}
       {previewPoints > 0 && (
         <p className="mt-2 text-center text-[13px] font-semibold text-[var(--color-primary-600)]">
-          +{previewPoints} pts
+          +{previewPoints} {previewPoints === 1 ? 'ponto' : 'pontos'}
+        </p>
+      )}
+      {previewCashback > 0 && (
+        <p className="mt-1 text-center text-[13px] font-semibold text-[var(--color-cashback)]">
+          +{formatBrl(previewCashback)} de cashback
         </p>
       )}
     </div>

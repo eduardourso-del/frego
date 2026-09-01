@@ -13,31 +13,49 @@ export type EarnNotifyLines = {
  */
 export function buildEarnWhatsAppLines(input: {
   businessName: string;
-  unitKind: 'stamps' | 'points';
+  unitKind: 'stamps' | 'points' | 'cashback';
   quantity: number;
   amountCents?: number | null;
+  cashbackCents?: number | null;
   wallet: WalletSnapshot;
 }): EarnNotifyLines {
   const businessName = (input.businessName || 'Frego').slice(0, 60);
 
+  const money = (cents: number) =>
+    (cents / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+
   let earnLine: string;
   if (input.unitKind === 'points') {
     const reais =
-      input.amountCents != null
-        ? (input.amountCents / 100).toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL',
-          })
-        : null;
+      input.amountCents != null ? money(input.amountCents) : null;
     earnLine = reais
       ? `+${input.quantity} pts (${reais})`
       : `+${input.quantity} pts`;
+  } else if (input.unitKind === 'cashback') {
+    earnLine =
+      input.cashbackCents && input.cashbackCents > 0
+        ? `+${money(input.cashbackCents)} cashback`
+        : 'compra registrada';
   } else {
     earnLine =
       input.quantity === 1 ? '+1 carimbo' : `+${input.quantity} carimbos`;
   }
+  if (
+    input.unitKind !== 'cashback' &&
+    input.cashbackCents &&
+    input.cashbackCents > 0
+  ) {
+    earnLine += ` + ${money(input.cashbackCents)} cashback`;
+  }
 
-  const balanceLine = `${input.wallet.pools.stamps} carimbos · ${input.wallet.pools.points} pts`;
+  const cashbackBal = input.wallet.pools.cashbackCents ?? 0;
+  let balanceLine = `${input.wallet.pools.stamps} carimbos · ${input.wallet.pools.points} pts`;
+  if (cashbackBal > 0) {
+    balanceLine += ` · ${money(cashbackBal)} cashback`;
+  }
 
   const redeemable = input.wallet.campaigns.filter((c) => c.canRedeem);
   let hintLine = '—';

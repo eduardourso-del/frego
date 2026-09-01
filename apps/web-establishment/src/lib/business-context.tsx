@@ -24,7 +24,16 @@ export type BusinessBrand = {
   slug: string | null;
   status: string;
   pointsPerReal?: number;
+  cashbackPercent?: number;
+  cashbackMaxCents?: number | null;
+  cashbackMinPurchaseCents?: number | null;
+  /** null = não expiram. */
+  stampsExpireDays?: number | null;
+  pointsExpireDays?: number | null;
+  cashbackExpireDays?: number | null;
   role?: string;
+  /** Campanhas ativas que o caixa pode registrar: carimbos, pontos, cashback. */
+  activeEarnKinds?: Array<'stamps' | 'points' | 'cashback'>;
 };
 
 type BusinessContextValue = {
@@ -45,18 +54,12 @@ function storageKeyFor(uid: string | null | undefined) {
   return uid ? `${STORAGE_KEY}.${uid}` : STORAGE_KEY;
 }
 
-function applyBrandCss(business: BusinessBrand | null) {
+function clearDocumentBrandCss() {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  if (!business) {
-    root.style.removeProperty('--color-primary-500');
-    root.style.removeProperty('--color-primary-600');
-    root.style.removeProperty('--color-primary-50');
-    return;
-  }
-  root.style.setProperty('--color-primary-500', business.primaryColor);
-  root.style.setProperty('--color-primary-600', business.primaryColorDark);
-  root.style.setProperty('--color-primary-50', `${business.primaryColor}14`);
+  root.style.removeProperty('--color-primary-500');
+  root.style.removeProperty('--color-primary-600');
+  root.style.removeProperty('--color-primary-50');
 }
 
 function clearLegacyStorage() {
@@ -98,7 +101,6 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     setBusiness(null);
     setBusinesses([]);
     setBusinessIdState(null);
-    applyBrandCss(null);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -134,7 +136,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       });
       const listJson = await listRes.json();
       if (!listRes.ok) {
-        throw new Error(listJson.error ?? 'Falha ao listar lojas');
+        throw new Error(listJson.error ?? 'Não foi possível listar as lojas.');
       }
 
       const list = (listJson.businesses ?? []) as BusinessBrand[];
@@ -164,10 +166,9 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       };
       const res = await fetch(`${API_URL}/business`, { headers });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao carregar negócio');
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar a loja.');
       const next = json.business as BusinessBrand;
       setBusiness(next);
-      applyBrandCss(next);
     } catch {
       resetBusinessState();
     } finally {
@@ -187,13 +188,12 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         body: JSON.stringify(patch),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao salvar');
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
       const next = json.business as BusinessBrand;
       setBusiness(next);
       setBusinesses((prev) =>
         prev.map((b) => (b.id === next.id ? { ...b, ...next } : b)),
       );
-      applyBrandCss(next);
       return next;
     },
     [authHeaders],
@@ -205,6 +205,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on auth identity change
   }, [authLoading, user?.uid]);
+
+  // Brand CSS belongs on the painel shell, never on :root (landing / login / legal).
+  useEffect(() => {
+    clearDocumentBrandCss();
+  }, []);
 
   const value = useMemo(
     () => ({

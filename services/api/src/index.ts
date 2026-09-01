@@ -5,6 +5,7 @@ import { authPlugin } from './plugins/auth.js';
 import { customerRoutes } from './routes/customers.js';
 import { transactionRoutes } from './routes/transactions.js';
 import { campaignRoutes } from './routes/campaigns.js';
+import { audienceRoutes } from './routes/audiences.js';
 import { dashboardRoutes } from './routes/dashboard.js';
 import { reportsRoutes } from './routes/reports.js';
 import { businessRoutes } from './routes/business.js';
@@ -15,6 +16,7 @@ import { adminRoutes } from './routes/admin.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
 import { metaWebhookRoutes } from './routes/meta-webhook.js';
 import { publicBusinessRoutes } from './routes/public-business.js';
+import { voucherRoutes } from './routes/vouchers.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -47,7 +49,9 @@ async function main() {
   await app.register(reportsRoutes);
   await app.register(customerRoutes);
   await app.register(transactionRoutes);
+  await app.register(voucherRoutes);
   await app.register(campaignRoutes);
+  await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
 
   await app.listen({ port, host });

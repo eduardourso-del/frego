@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { isFirebaseConfigured, signInStaff } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
+import { FregoWordmark } from '@/components/brand';
+import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,12 +33,12 @@ export default function LoginPage() {
       router.replace('/dashboard');
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Falha ao entrar';
+        err instanceof Error ? err.message : 'Não foi possível entrar.';
       setError(
         message.includes('invalid-credential') ||
           message.includes('wrong-password') ||
           message.includes('user-not-found')
-          ? 'E-mail ou senha incorretos'
+          ? 'E-mail ou senha incorretos.'
           : message,
       );
     } finally {
@@ -47,7 +49,8 @@ export default function LoginPage() {
   if (!configured) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
-        <h1 className="text-[28px] font-semibold tracking-[-0.03em]">Entrar</h1>
+        <FregoWordmark height={28} href="/" />
+        <h1 className="mt-6 text-[32px] font-extrabold tracking-[-0.025em]">Entrar</h1>
         <p className="mt-2 text-[15px] text-[var(--color-neutral-500)]">
           Configure as variáveis <code>NEXT_PUBLIC_FIREBASE_*</code> em
           `.env.local`.
@@ -63,28 +66,19 @@ export default function LoginPage() {
         aria-hidden
       />
       <div className="relative mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
-        <div className="mb-8 flex items-center gap-3">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-[14px] text-[20px] font-bold text-white shadow-sm"
-            style={{ background: 'var(--color-primary-500)' }}
-          >
-            V
-          </div>
-          <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.05em] text-[var(--color-neutral-400)]">
-              Frego
-            </p>
-            <p className="text-[15px] font-semibold text-[var(--color-ink)]">
-              Estabelecimento
-            </p>
-          </div>
+        <div className="mb-8">
+          <FregoWordmark height={28} href="/" />
+          <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
+            Estabelecimento
+          </p>
         </div>
 
-        <h1 className="text-[30px] font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
+        <h1 className="text-[32px] font-extrabold tracking-[-0.025em] text-[var(--color-ink)]">
           Entrar
         </h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Conta da equipe com e-mail e senha. Clientes usam telefone no app.
+          Entre com o e-mail da equipe. No aplicativo, o cliente entra com o
+          telefone.
         </p>
 
         <form
@@ -98,7 +92,7 @@ export default function LoginPage() {
               autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 min-h-12 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3.5 text-[16px] text-[var(--color-ink)]"
+              className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3.5 text-[16px] text-[var(--color-ink)]"
               placeholder="voce@seucafe.com"
               required
             />
@@ -110,7 +104,7 @@ export default function LoginPage() {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-2 min-h-12 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3.5 text-[16px] text-[var(--color-ink)]"
+              className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3.5 text-[16px] text-[var(--color-ink)]"
               required
               minLength={6}
             />
@@ -123,7 +117,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={busy}
-          className="min-h-12 rounded-[14px] bg-[var(--color-primary-500)] text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] transition-[transform,background] enabled:active:scale-[0.98] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
+          className="min-h-11 rounded-[8px] bg-[var(--color-primary-500)] text-[14px] font-extrabold text-[var(--color-on-primary)] transition-[transform,background] enabled:active:scale-[0.98] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)]"
           >
             {busy ? 'Entrando…' : 'Entrar'}
           </button>
@@ -137,6 +131,19 @@ export default function LoginPage() {
           >
             Cadastre sua loja
           </Link>
+        </p>
+        <p className="mt-3 text-center text-[12px] text-[var(--color-neutral-400)]">
+          <Link href="/privacidade" className="hover:text-[var(--color-ink)]">
+            Privacidade
+          </Link>
+          {' · '}
+          <Link href="/termos" className="hover:text-[var(--color-ink)]">
+            Termos
+          </Link>
+          {' · '}
+          <a href={CONTACT_MAILTO} className="hover:text-[var(--color-ink)]">
+            {CONTACT_EMAIL}
+          </a>
         </p>
       </div>
     </main>

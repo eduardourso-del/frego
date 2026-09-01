@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<!--
+  ===========================================================================
+  Frego — Guia de estilos provisório · versão 1 · agosto de 2026
+
+  Documento, sistema de tokens e construção da assinatura desenvolvidos por
+  RAMPA · ESTÚDIO DE MARCA
+  https://rampabr.com · eduardo@rampabr.com · renata@rampabr.com
+
+  AUTORIA
+  A autoria deste documento, da estrutura de tokens e da construção da
+  assinatura é da Rampa. Obra intelectual protegida pela Lei 9.610/98. Os
+  direitos morais de autoria são inalienáveis e irrenunciáveis (art. 24) — a
+  atribuição deve ser preservada em cópias, adaptações e derivações deste
+  material, inclusive em versões futuras que partam dele.
+
+  USO
+  Os ativos de marca aqui documentados — assinatura, ícone e paleta — foram
+  construídos para o Frego e são de uso do Frego. Esta nota marca quem os
+  construiu; não restringe o uso deles pelo cliente.
+
+  TIPOGRAFIA DE TERCEIROS
+  Archivo — Copyright 2020 The Archivo Project Authors
+  (https://github.com/Omnibus-Type/Archivo), licenciada em SIL Open Font
+  License 1.1 (http://scripts.sil.org/OFL). Obra de terceiros: não é coberta
+  por esta nota, e a licença permite o uso comercial e a vetorização feitos
+  aqui.
+
+  PROVISÓRIO
+  Este guia existe para o intervalo até a construção da marca definitiva do
+  Frego. Quando ela chegar, este material é substituído, não emendado.
+  ===========================================================================
+-->
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frego — Guia de estilos provisório</title>
+<meta name="author" content="Rampa · Estúdio de marca">
+<meta name="copyright" content="© 2026 Rampa · Estúdio de marca — rampabr.com">
+<meta name="description" content="Guia de estilos provisório do Frego: assinatura, ícone, cor, tipografia, espaço, componentes e aplicação. Construído pela Rampa · Estúdio de marca.">
+<link rel="author" href="https://rampabr.com">
+<link rel="icon" href="assets/png/frego-favicon-32.png" sizes="32x32">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="tokens/tokens.css">
+<style>
+  /* Este documento é composto no sistema que ele documenta.
+     Cor, tipografia, espaço e forma vêm de tokens/tokens.css — nada aqui é
+     valor solto. Se um token mudar lá, este guia muda junto. */
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--color-bg); color: var(--color-ink);
+    font-size: var(--text-body); line-height: var(--text-body-lh);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- estrutura ---------- */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 var(--space-lg); }
+  nav {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: var(--border-width) solid var(--color-hairline);
+  }
+  .nav-in { display: flex; align-items: center; justify-content: space-between; gap: var(--space-md); height: 60px; }
+  .nav-in img { height: 20px; width: auto; }
+  .nav-links { display: flex; gap: var(--space-sm); overflow-x: auto; }
+  .nav-links a {
+    font-size: var(--text-label); font-weight: var(--weight-semibold);
+    letter-spacing: var(--text-label-ls); text-transform: uppercase;
+    color: var(--color-neutral-500); text-decoration: none; white-space: nowrap;
+    padding: 4px 0; border-bottom: 2px solid transparent;
+  }
+  .nav-links a:hover { color: var(--color-ink); border-bottom-color: var(--color-primary-500); }
+
+  section { padding: var(--space-3xl) 0 0; scroll-margin-top: var(--space-2xl); }
+  .sec-num {
+    font-size: var(--text-label); font-weight: var(--weight-extrabold);
+    letter-spacing: var(--text-label-ls); text-transform: uppercase;
+    color: var(--color-primary-500); margin-bottom: var(--space-sm);
+  }
+  h1 {
+    font-size: var(--text-display); line-height: var(--text-display-lh);
+    font-weight: var(--weight-extrabold); letter-spacing: var(--tracking-display);
+    margin-bottom: var(--space-md); text-wrap: balance;
+  }
+  h2 {
+    font-size: var(--text-title); line-height: var(--text-title-lh);
+    font-weight: var(--weight-extrabold); letter-spacing: var(--tracking-title);
+    margin-bottom: var(--space-sm); text-wrap: balance;
+  }
+  h3 {
+    font-size: var(--text-section); line-height: var(--text-section-lh);
+    font-weight: var(--weight-extrabold); letter-spacing: var(--tracking-tight);
+    margin: var(--space-xl) 0 var(--space-sm);
+  }
+  h4 {
+    font-size: var(--text-sub); line-height: var(--text-sub-lh);
+    font-weight: var(--weight-extrabold); margin-bottom: var(--space-xs);
+  }
+  p { color: var(--color-neutral-500); margin-bottom: var(--space-sm); max-width: 68ch; }
+  p:last-child { margin-bottom: 0; }
+  .lead { font-size: var(--text-sub); line-height: 1.6; color: var(--color-ink); font-weight: var(--weight-semibold); }
+  strong { font-weight: var(--weight-extrabold); color: var(--color-ink); }
+  code {
+    font-family: var(--font-mono); font-size: 0.86em;
+    background: var(--color-neutral-100); border: var(--border-width) solid var(--color-hairline);
+    padding: 1px 5px; border-radius: 4px; color: var(--color-neutral-700);
+  }
+  .rotulo {
+    font-size: var(--text-label); line-height: var(--text-label-lh);
+    font-weight: var(--weight-semibold); letter-spacing: var(--text-label-ls);
+    text-transform: uppercase; color: var(--color-neutral-500);
+  }
+
+  .card {
+    background: var(--color-card); border: var(--border-width) solid var(--color-hairline);
+    border-radius: var(--radius-md); padding: var(--space-md);
+  }
+  .card-destaque { background: var(--color-primary-50); border-color: var(--color-primary-200); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-md); }
+  .stack { display: flex; flex-direction: column; gap: var(--space-md); }
+  .row { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; }
+  .mt { margin-top: var(--space-md); }
+  @media (max-width: 880px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  ul.lista { list-style: none; }
+  ul.lista li {
+    color: var(--color-neutral-500); font-size: var(--text-support);
+    line-height: var(--text-support-lh); padding: 10px 0 10px 20px;
+    border-bottom: var(--border-width) solid var(--color-hairline); position: relative;
+  }
+  ul.lista li:last-child { border-bottom: none; }
+  ul.lista li::before {
+    content: ''; position: absolute; left: 0; top: 17px;
+    width: 8px; height: 8px; border-radius: 2px; background: var(--color-primary-200);
+  }
+  .aviso {
+    background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200);
+    border-radius: var(--radius-sm); padding: var(--space-sm) var(--space-md);
+    font-size: var(--text-support); line-height: var(--text-support-lh); color: var(--color-neutral-700);
+  }
+  .aviso strong { color: var(--color-primary-800); }
+
+  /* ---------- tabela ---------- */
+  .tabela-wrap { overflow-x: auto; border: var(--border-width) solid var(--color-hairline); border-radius: var(--radius-md); background: var(--color-card); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--text-support); min-width: 560px; }
+  th {
+    text-align: left; font-size: var(--text-label); font-weight: var(--weight-semibold);
+    letter-spacing: var(--text-label-ls); text-transform: uppercase; color: var(--color-neutral-500);
+    padding: 12px var(--space-sm); border-bottom: var(--border-width) solid var(--color-hairline); white-space: nowrap;
+  }
+  td { padding: 10px var(--space-sm); border-bottom: var(--border-width) solid var(--color-hairline); color: var(--color-neutral-500); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  td strong { color: var(--color-ink); }
+  .mono { font-family: var(--font-mono); font-size: 11.5px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .passa { color: var(--color-success); font-weight: var(--weight-extrabold); }
+  .amostra { display: inline-block; width: 16px; height: 16px; border-radius: 4px; border: var(--border-width) solid var(--color-hairline); vertical-align: -3px; margin-right: 8px; }
+
+  /* ---------- palcos de demonstração ---------- */
+  .palco {
+    background: var(--color-card); border: var(--border-width) solid var(--color-hairline);
+    border-radius: var(--radius-md); padding: var(--space-xl) var(--space-md);
+    display: flex; align-items: center; justify-content: center; gap: var(--space-xl); flex-wrap: wrap;
+  }
+  .palco-escuro { background: #0C0D10; border-color: #2A2E37; }
+  .palco-xadrez {
+    background-image: linear-gradient(45deg, var(--color-neutral-100) 25%, transparent 25%, transparent 75%, var(--color-neutral-100) 75%),
+                      linear-gradient(45deg, var(--color-neutral-100) 25%, transparent 25%, transparent 75%, var(--color-neutral-100) 75%);
+    background-size: 16px 16px; background-position: 0 0, 8px 8px;
+  }
+  .legenda { font-size: var(--text-label); color: var(--color-neutral-400); text-align: center; margin-top: var(--space-xs); }
+
+  .respiro { position: relative; display: inline-block; padding: 11%; outline: 1px dashed var(--color-primary-200); }
+  .respiro img { display: block; }
+  .respiro::after {
+    content: 'respiro'; position: absolute; top: 4px; left: 6px;
+    font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-primary-500);
+  }
+
+  .proibido { position: relative; }
+  .proibido::after {
+    content: ''; position: absolute; inset: -6px;
+    background: linear-gradient(to bottom right, transparent calc(50% - 1px), var(--color-danger) calc(50% - 1px), var(--color-danger) calc(50% + 1px), transparent calc(50% + 1px));
+    opacity: 0.55;
+  }
+
+  /* ---------- componentes documentados ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 44px; padding: 0 20px; border-radius: var(--radius-sm);
+    font-family: var(--font-sans); font-size: var(--text-support);
+    font-weight: var(--weight-extrabold); letter-spacing: 0.01em;
+    border: var(--border-width) solid transparent; cursor: pointer;
+  }
+  .btn-1 { background: var(--color-primary-500); color: var(--color-on-primary); }
+  .btn-1:hover { background: var(--color-primary-600); }
+  .btn-2 { background: transparent; color: var(--color-primary-500); border-color: var(--color-control); }
+  .btn-3 { background: var(--color-neutral-100); color: var(--color-neutral-400); border-color: var(--color-hairline); cursor: not-allowed; }
+  .campo {
+    height: 44px; padding: 0 14px; border-radius: var(--radius-sm);
+    border: var(--border-width) solid var(--color-control);
+    background: var(--color-card); color: var(--color-ink);
+    font-family: var(--font-sans); font-size: var(--text-body); width: 100%;
+  }
+  .campo::placeholder { color: var(--color-neutral-400); }
+  .campo-foco { outline: 2px solid var(--color-primary-500); outline-offset: 2px; }
+  .campo-erro { border-color: var(--color-danger); }
+  .pilula {
+    display: inline-flex; align-items: center; height: 26px; padding: 0 12px;
+    border-radius: var(--radius-pill); font-size: var(--text-label);
+    font-weight: var(--weight-extrabold); letter-spacing: 0.02em; font-variant-numeric: tabular-nums;
+  }
+  .pilula-pontos { background: var(--color-points-bg); color: var(--color-points); box-shadow: inset 0 0 0 1px var(--color-points-ring); }
+  .pilula-selos { background: var(--color-stamps-bg); color: var(--color-stamps); box-shadow: inset 0 0 0 1px var(--color-stamps-ring); }
+  .pilula-ok { background: var(--color-success-bg); color: var(--color-success); }
+  .pilula-erro { background: var(--color-danger-bg); color: var(--color-danger); }
+  .barra {
+    display: flex; background: var(--color-card);
+    border: var(--border-width) solid var(--color-hairline); border-radius: var(--radius-md); overflow: hidden;
+  }
+  .barra div {
+    flex: 1; text-align: center; padding: 12px 0;
+    font-size: var(--text-label); font-weight: var(--weight-semibold);
+    letter-spacing: 0.03em; color: var(--color-neutral-400);
+    border-top: 3px solid transparent;
+  }
+  .barra div.ativo { color: var(--color-primary-500); border-top-color: var(--color-primary-500); background: var(--color-primary-50); }
+
+  /* ---------- aplicação ---------- */
+  .tela {
+    background: var(--color-bg); border: var(--border-width) solid var(--color-hairline);
+    border-radius: var(--radius-lg); padding: var(--space-sm); display: flex; flex-direction: column; gap: var(--space-sm);
+  }
+  .valor { font-size: var(--text-number); line-height: var(--text-number-lh); font-weight: var(--weight-extrabold); letter-spacing: var(--tracking-title); font-variant-numeric: tabular-nums; }
+  .meta { font-size: var(--text-support); color: var(--color-neutral-500); }
+  .barra-nav-site { display: flex; align-items: center; justify-content: space-between; padding-bottom: var(--space-sm); border-bottom: var(--border-width) solid var(--color-hairline); }
+
+  footer {
+    margin-top: var(--space-3xl); padding: var(--space-lg) 0 var(--space-2xl);
+    border-top: var(--border-width) solid var(--color-hairline);
+    display: flex; justify-content: space-between; gap: var(--space-lg); flex-wrap: wrap;
+  }
+  footer p { font-size: var(--text-support); line-height: var(--text-support-lh); }
+
+  @media print {
+    nav { display: none; }
+    section { page-break-inside: avoid; padding-top: var(--space-xl); }
+    body { background: #fff; }
+    @page { margin: 14mm; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <img src="assets/frego-assinatura.svg" alt="Frego">
+    <div class="nav-links">
+      <a href="#assinatura">01 Assinatura</a>
+      <a href="#icone">02 Ícone</a>
+      <a href="#cor">03 Cor</a>
+      <a href="#tipografia">04 Tipografia</a>
+      <a href="#forma">05 Espaço e forma</a>
+      <a href="#componentes">06 Componentes</a>
+      <a href="#aplicacao">07 Aplicação</a>
+      <a href="#arquivos">08 Arquivos</a>
+    </div>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <section id="topo" style="padding-top: var(--space-2xl);">
+    <img src="assets/frego-assinatura.svg" alt="Frego" width="200" style="margin-bottom: var(--space-xl);">
+    <div class="row" style="margin-bottom: var(--space-md);">
+      <span class="pilula pilula-selos">Provisório</span>
+      <span class="rotulo">Agosto de 2026 · versão 1</span>
+    </div>
+    <h1>Guia de estilos<br>provisório</h1>
+    <p class="lead">O mínimo para que o app, o site e o material de venda do Frego pareçam da mesma casa — antes de a marca existir.</p>
+    <div class="grid-2 mt">
+      <div class="card">
+        <h4>Como usar</h4>
+        <p style="font-size: var(--text-support); line-height: var(--text-support-lh);">Cada seção traz a regra e o valor pronto para aplicar. Quem programa encontra tudo em <code>tokens/tokens.css</code> e <code>tokens/tokens.json</code>. Quem monta material usa os arquivos de <code>assets/</code>. Nenhuma decisão precisa ser tomada de novo a cada peça.</p>
+      </div>
+      <div class="card card-destaque">
+        <h4>O que este guia não é</h4>
+        <p style="font-size: var(--text-support); line-height: var(--text-support-lh);">Não é a identidade do Frego. Nada aqui vem de pesquisa, e nada aqui decide posicionamento, categoria ou nome — isso é o projeto de marca. Este guia é higiene de interface com origem declarada, feito para ser <strong>substituído</strong>, não emendado.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 01 ASSINATURA ============ -->
+  <section id="assinatura">
+    <div class="sec-num">01 · Assinatura</div>
+    <h2>A palavra é a marca</h2>
+    <p>A assinatura é a palavra <strong>frego</strong> em caixa baixa, sobre Archivo ExtraBold, com tracking de −0,035em e contornos vetorizados. O <strong>go</strong> aparece na cor de ação: é a ideia do nome — freguês + go — visível sem símbolo explicando nada.</p>
+    <p><strong>Uma intervenção de desenho, só uma:</strong> o terminal da cauda do "g" foi redesenhado à mão. O Archivo fecha essa cauda em base reta; aqui ela fecha em curva. É o que separa a assinatura de uma palavra apenas digitada na fonte — e é deliberadamente a única liberdade tomada, para que o resto continue previsível e trocável.</p>
+
+    <div class="palco mt">
+      <img src="assets/frego-assinatura.svg" alt="Frego" width="360">
+    </div>
+    <div class="legenda">Versão positiva · <span class="mono">frego-assinatura.svg</span></div>
+
+    <h3>Versões</h3>
+    <div class="grid-2">
+      <div>
+        <div class="palco" style="padding: var(--space-lg) var(--space-md);">
+          <img src="assets/frego-assinatura-mono-escura.svg" alt="Frego" width="220">
+        </div>
+        <div class="legenda">Monocromática escura — quando a cor de ação não pode entrar</div>
+      </div>
+      <div>
+        <div class="palco palco-escuro" style="padding: var(--space-lg) var(--space-md);">
+          <img src="assets/frego-assinatura-negativa.svg" alt="Frego" width="220">
+        </div>
+        <div class="legenda">Negativa — sobre fundo escuro, o go sobe para <code>--color-primary-500</code> do tema escuro</div>
+      </div>
+    </div>
+
+    <h3>Respiro e tamanho mínimo</h3>
+    <div class="grid-2">
+      <div class="card">
+        <div class="palco palco-xadrez" style="padding: var(--space-md);">
+          <span class="respiro"><img src="assets/frego-assinatura.svg" alt="Frego" width="200"></span>
+        </div>
+        <p class="mt" style="font-size: var(--text-support); line-height: var(--text-support-lh);"><strong>Respiro mínimo: 11% da largura da assinatura</strong>, nos quatro lados. É metade da altura da letra "o" — a medida acompanha a assinatura em qualquer tamanho, sem tabela de conversão. Nada entra nessa área: nem texto, nem foto, nem borda.</p>
+      </div>
+      <div class="card">
+        <div class="palco" style="padding: var(--space-md); gap: var(--space-md); align-items: flex-end;">
+          <div style="text-align: center;">
+            <img src="assets/frego-assinatura.svg" alt="Frego" width="120">
+            <div class="legenda">120 px</div>
+          </div>
+          <div style="text-align: center;">
+            <img src="assets/frego-assinatura.svg" alt="Frego" width="72">
+            <div class="legenda">72 px · mínimo</div>
+          </div>
+        </div>
+        <p class="mt" style="font-size: var(--text-support); line-height: var(--text-support-lh);"><strong>Mínimo: 72 px de largura em tela, 18 mm impresso.</strong> Abaixo disso o "g" fecha e a palavra perde a leitura. A proporção é fixa em <span class="num">2,561 : 1</span> — a assinatura nunca é redimensionada por altura e largura separadamente.</p>
+      </div>
+    </div>
+
+    <h3>O que não fazer</h3>
+    <div class="grid-2">
+      <div class="card">
+        <div class="row" style="gap: var(--space-xl); justify-content: center; padding: var(--space-md) 0;">
+          <div style="text-align: center;">
+            <span class="proibido" style="display: inline-block;"><img src="assets/frego-assinatura.svg" alt="" width="150" style="transform: scaleX(0.72);"></span>
+            <div class="legenda">Distorcer ou condensar</div>
+          </div>
+          <div style="text-align: center;">
+            <span class="proibido" style="display: inline-block;"><img src="assets/frego-assinatura.svg" alt="" width="150" style="filter: drop-shadow(3px 4px 3px rgba(0,0,0,.5));"></span>
+            <div class="legenda">Sombra, brilho ou contorno</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="row" style="gap: var(--space-xl); justify-content: center; padding: var(--space-md) 0;">
+          <div style="text-align: center;">
+            <span class="proibido" style="display: inline-block;"><img src="assets/frego-assinatura.svg" alt="" width="150" style="filter: hue-rotate(115deg) saturate(2);"></span>
+            <div class="legenda">Cor fora da paleta no "go"</div>
+          </div>
+          <div style="text-align: center;">
+            <span class="proibido" style="display: inline-block; font-size: 34px; font-weight: 400; letter-spacing: 0.06em; color: var(--color-primary-800);">frego</span>
+            <div class="legenda">Recompor em outro peso ou fonte</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="aviso mt"><strong>O arquivo tem folga proposital.</strong> O traço nunca toca a borda do arquivo: são <span class="num">20</span> unidades de folga na esquerda, na direita e no topo, e <span class="num">17</span> na base, onde a cauda do "g" desce um pouco mais. Serve para o desenho não ler como cortado quando a assinatura aparece grande ou encostada em outro elemento. Ao posicionar, alinhe pela caixa do arquivo, não pelo contorno da letra.</div>
+
+    <div class="aviso mt"><strong>Sobre a tipografia da assinatura:</strong> o Archivo é licenciado em SIL Open Font License 1.1, que permite uso comercial e obras derivadas — inclusive vetorizar os contornos numa assinatura, como foi feito aqui. Os arquivos entregues são vetores fechados: não dependem da fonte estar instalada.</div>
+  </section>
+
+  <!-- ============ 02 ÍCONE ============ -->
+  <section id="icone">
+    <div class="sec-num">02 · Ícone do app</div>
+    <h2>Um anel que sobrevive a 20 pixels</h2>
+    <p>O ícone é um anel, não uma letra. Letra nenhuma se lê em 20 px — e é nesse tamanho que o ícone aparece na aba do navegador e na lista de aplicativos. O traço do anel é <strong>25,4% do diâmetro</strong>, medida tirada do próprio "o" do Archivo, para que símbolo e assinatura tenham a mesma lógica de peso.</p>
+
+    <div class="palco mt" style="gap: var(--space-lg); align-items: flex-end;">
+      <div style="text-align: center;"><img src="assets/frego-icone-arredondado.svg" alt="Frego" width="128"><div class="legenda">128</div></div>
+      <div style="text-align: center;"><img src="assets/frego-icone-arredondado.svg" alt="" width="64"><div class="legenda">64</div></div>
+      <div style="text-align: center;"><img src="assets/frego-icone-arredondado.svg" alt="" width="40"><div class="legenda">40</div></div>
+      <div style="text-align: center;"><img src="assets/frego-icone-arredondado.svg" alt="" width="28"><div class="legenda">28</div></div>
+      <div style="text-align: center;"><img src="assets/frego-icone-arredondado.svg" alt="" width="20"><div class="legenda">20 · mínimo</div></div>
+    </div>
+
+    <div class="grid-3 mt">
+      <div class="card">
+        <h4>Loja</h4>
+        <div class="palco" style="padding: var(--space-md); background: var(--color-neutral-100);"><img src="assets/frego-icone-loja.svg" alt="" width="96"></div>
+        <p class="mt" style="font-size: var(--text-support);">Quadrado cheio, <strong>sem arredondar</strong>. iOS e Android aplicam a máscara do sistema — cantos arredondados no arquivo viram borda dupla.</p>
+      </div>
+      <div class="card">
+        <h4>Web e avatar</h4>
+        <div class="palco" style="padding: var(--space-md); background: var(--color-neutral-100);"><img src="assets/frego-icone-arredondado.svg" alt="" width="96"></div>
+        <p class="mt" style="font-size: var(--text-support);">Arredondado em <code>22,4%</code> do lado. Para favicon, avatar de rede e qualquer lugar onde ninguém aplica máscara.</p>
+      </div>
+      <div class="card">
+        <h4>Sobre escuro</h4>
+        <div class="palco palco-escuro" style="padding: var(--space-md);"><img src="assets/frego-icone-negativo.svg" alt="" width="96"></div>
+        <p class="mt" style="font-size: var(--text-support);">Fundo grafite com o anel na cor de ação do tema escuro. Para interface escura e material sobre preto.</p>
+      </div>
+    </div>
+
+    <h3>Tamanhos entregues</h3>
+    <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Onde</th><th>Tamanho</th><th>Arquivo</th><th>Observação</th></tr></thead>
+        <tbody>
+          <tr><td><strong>App Store · Play Store</strong></td><td class="num">1024</td><td class="mono">frego-icone-1024.png</td><td>Quadrado, sem transparência</td></tr>
+          <tr><td>Play Store · alta densidade</td><td class="num">512</td><td class="mono">frego-icone-512.png</td><td>Quadrado</td></tr>
+          <tr><td>Android · launcher</td><td class="num">192</td><td class="mono">frego-icone-192.png</td><td>Quadrado</td></tr>
+          <tr><td>iOS · tela inicial</td><td class="num">180</td><td class="mono">frego-icone-180.png</td><td>Quadrado</td></tr>
+          <tr><td>Favicon</td><td class="num">32 · 16</td><td class="mono">frego-favicon-32.png</td><td>Arredondado</td></tr>
+          <tr><td>Avatar de rede social</td><td class="num">400</td><td class="mono">frego-avatar-400.png</td><td>Arredondado; a rede corta em círculo e o anel continua centrado</td></tr>
+          <tr><td>Qualquer tamanho</td><td>vetor</td><td class="mono">frego-icone-*.svg</td><td>Preferir o SVG sempre que a plataforma aceitar</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 03 COR ============ -->
+  <section id="cor">
+    <div class="sec-num">03 · Cor</div>
+    <h2>Poucas cores, cada uma com um trabalho</h2>
+    <p>A primária é um <strong>azul de azulejo</strong> — o azul de parede de padaria, de balcão de bar, de fachada de comércio de bairro. É o mundo do freguês. Fora dela, só neutros, três estados e duas cores de domínio.</p>
+
+    <h3>Primária</h3>
+    <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Token</th><th>Valor</th><th>Papel</th><th>Contraste</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">--color-primary-500</td><td class="mono"><span class="amostra" style="background:#24479C"></span>#24479C</td><td><strong>Ação, link, foco.</strong> Botão principal, item ativo</td><td class="passa num">8,55:1</td></tr>
+          <tr><td class="mono">--color-primary-600</td><td class="mono"><span class="amostra" style="background:#1B3781"></span>#1B3781</td><td>Pressionado e hover do botão principal</td><td class="passa num">10,99:1</td></tr>
+          <tr><td class="mono">--color-primary-800</td><td class="mono"><span class="amostra" style="background:#101F45"></span>#101F45</td><td>Assinatura, título de destaque, fundo profundo</td><td class="passa num">15,16:1</td></tr>
+          <tr><td class="mono">--color-on-primary</td><td class="mono"><span class="amostra" style="background:#FFFFFF"></span>#FFFFFF <span style="color: var(--color-neutral-400);">claro</span> · <span class="amostra" style="background:#0C0D10"></span>#0C0D10 <span style="color: var(--color-neutral-400);">escuro</span></td><td><strong>Texto e ícone sobre a primária.</strong> Inverte no tema escuro — ver aviso abaixo</td><td class="passa num">8,55 · 5,28</td></tr>
+          <tr><td class="mono">--color-primary-200</td><td class="mono"><span class="amostra" style="background:#B4C4EA"></span>#B4C4EA</td><td>Anel de seleção, gráfico secundário, marcador</td><td>—</td></tr>
+          <tr><td class="mono">--color-primary-100</td><td class="mono"><span class="amostra" style="background:#DCE4F7"></span>#DCE4F7</td><td>Hover de superfície</td><td>—</td></tr>
+          <tr><td class="mono">--color-primary-50</td><td class="mono"><span class="amostra" style="background:#EEF2FB"></span>#EEF2FB</td><td>Fundo de destaque, linha selecionada</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Neutros</h3>
+    <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Token</th><th>Claro</th><th>Escuro</th><th>Papel</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">--color-bg</td><td class="mono"><span class="amostra" style="background:#F7F8FA"></span>#F7F8FA</td><td class="mono"><span class="amostra" style="background:#0C0D10"></span>#0C0D10</td><td>Fundo de tela</td></tr>
+          <tr><td class="mono">--color-card</td><td class="mono"><span class="amostra" style="background:#FFFFFF"></span>#FFFFFF</td><td class="mono"><span class="amostra" style="background:#15171C"></span>#15171C</td><td>Superfície de card</td></tr>
+          <tr><td class="mono">--color-hairline</td><td class="mono"><span class="amostra" style="background:#E4E8EE"></span>#E4E8EE</td><td class="mono"><span class="amostra" style="background:#2A2E37"></span>#2A2E37</td><td>Separador decorativo</td></tr>
+          <tr><td class="mono">--color-control</td><td class="mono"><span class="amostra" style="background:#868C96"></span>#868C96</td><td class="mono"><span class="amostra" style="background:#666D78"></span>#666D78</td><td><strong>Contorno de campo e botão de borda.</strong> Nunca usar o separador para isso</td></tr>
+          <tr><td class="mono">--color-neutral-400</td><td class="mono"><span class="amostra" style="background:#98A0AB"></span>#98A0AB</td><td class="mono"><span class="amostra" style="background:#5B616B"></span>#5B616B</td><td>Placeholder e desabilitado. <strong>Nunca como texto</strong></td></tr>
+          <tr><td class="mono">--color-neutral-500</td><td class="mono"><span class="amostra" style="background:#5F6672"></span>#5F6672</td><td class="mono"><span class="amostra" style="background:#9AA0AA"></span>#9AA0AA</td><td>Texto secundário, rótulo, metadado</td></tr>
+          <tr><td class="mono">--color-ink</td><td class="mono"><span class="amostra" style="background:#16181D"></span>#16181D</td><td class="mono"><span class="amostra" style="background:#E8EAED"></span>#E8EAED</td><td>Texto principal</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Estados e domínio</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Três estados</h4>
+        <div class="row mt" style="gap: var(--space-xs);">
+          <span class="pilula pilula-ok">Confirmado</span>
+          <span class="pilula pilula-erro">Falhou</span>
+          <span class="pilula" style="background: var(--color-info-bg); color: var(--color-info);">Informação</span>
+        </div>
+        <ul class="lista mt">
+          <li><strong>Sucesso</strong> <code>#12805A</code> escreve · <code>#2BB37E</code> preenche ícone e barra</li>
+          <li><strong>Erro</strong> <code>#C4342A</code> escreve · <code>#DF4138</code> preenche</li>
+          <li><strong>Informação</strong> usa a própria primária</li>
+        </ul>
+        <p class="mt" style="font-size: var(--text-support);">A regra vale em toda a paleta: <strong>a cor clara preenche, a escura escreve.</strong> Verde e vermelho claros não passam contraste como texto.</p>
+      </div>
+      <div class="card">
+        <h4>Duas cores de domínio</h4>
+        <div class="row mt" style="gap: var(--space-xs);">
+          <span class="pilula pilula-pontos">1.240 pts</span>
+          <span class="pilula pilula-selos">7 selos</span>
+        </div>
+        <ul class="lista mt">
+          <li><strong>Âmbar</strong> <code>#B45309</code> é <strong>pontos</strong>, e só pontos</li>
+          <li><strong>Teal</strong> <code>#0F766E</code> é <strong>selos</strong>, e só selos</li>
+          <li>Nenhuma das duas é usada como estado — nem quando o aviso é sobre pontos</li>
+        </ul>
+        <p class="mt" style="font-size: var(--text-support);">Aviso de saldo baixo continua em âmbar, porque é <em>sobre pontos</em>. Assim o cliente aprende uma coisa só: <strong>âmbar quer dizer pontos.</strong></p>
+      </div>
+    </div>
+
+    <h3>Proporção de uso</h3>
+    <div class="card">
+      <div style="display: flex; height: 40px; border-radius: var(--radius-sm); overflow: hidden; border: var(--border-width) solid var(--color-hairline);">
+        <div style="width: 15%; background: var(--color-primary-500);"></div>
+        <div style="width: 25%; background: var(--color-ink);"></div>
+        <div style="width: 60%; background: var(--color-bg); border-left: var(--border-width) solid var(--color-hairline);"></div>
+      </div>
+      <div style="display: flex; margin-top: var(--space-xs);">
+        <div style="width: 15%;" class="rotulo">Primária</div>
+        <div style="width: 25%;" class="rotulo">Texto e base</div>
+        <div style="width: 60%;" class="rotulo">Neutros e fundo</div>
+      </div>
+      <p class="mt" style="font-size: var(--text-support);">A primária é acento. Se ela cobre a tela, deixa de marcar o que importa — e a tela deixa de dizer onde clicar. Fundos coloridos em bloco: só <code>--color-primary-800</code>, e com parcimônia.</p>
+    </div>
+
+    <div class="aviso mt"><strong>Texto sobre a primária não é sempre branco.</strong> No tema claro a primária é escura e o texto é branco (8,55:1). No tema escuro ela clareia para <code>#5C82DE</code>, e aí branco cai para <span class="num">3,68:1</span> — reprova. Por isso existe <code>--color-on-primary</code>: quem escreve sobre a primária usa esse token e nunca <code>#fff</code> na mão.</div>
+
+    <div class="aviso mt"><strong>O que não fazer:</strong> gradiente na primária · cor de estado como decoração · âmbar ou teal fora de pontos e selos · tom novo "só nessa tela" · <code>--color-neutral-400</code> como texto · separador no lugar de contorno de campo.</div>
+  </section>
+
+  <!-- ============ 04 TIPOGRAFIA ============ -->
+  <section id="tipografia">
+    <div class="sec-num">04 · Tipografia</div>
+    <h2>Archivo, três pesos, escala fechada</h2>
+    <p><strong>Archivo</strong> (Google Fonts, licença SIL OFL 1.1 — livre para web, app e impresso). Uma família só, em três pesos: <strong>400 regular</strong>, <strong>600 semibold</strong> e <strong>800 extrabold</strong>. Quem for montar uma tela ou um slide escolhe de uma lista, não de um campo aberto.</p>
+
+    <div class="card mt">
+      <div class="row" style="gap: var(--space-lg); align-items: baseline;">
+        <span style="font-size: 40px; font-weight: 400;">Regular 400</span>
+        <span style="font-size: 40px; font-weight: 600;">Semibold 600</span>
+        <span style="font-size: 40px; font-weight: 800;">Extrabold 800</span>
+      </div>
+    </div>
+
+    <h3>Escala</h3>
+    <div class="tabela-wrap">
+      <table>
+        <thead><tr><th>Papel</th><th>Token</th><th>Tamanho / linha</th><th>Peso</th><th>Amostra</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Display</strong></td><td class="mono">--text-display</td><td class="num">40 / 44 · −0,03em</td><td class="num">800</td><td style="font-size: 28px; font-weight: 800; letter-spacing: -0.03em; color: var(--color-ink);">Seus clientes voltam</td></tr>
+          <tr><td><strong>Título</strong></td><td class="mono">--text-title</td><td class="num">32 / 38 · −0,025em</td><td class="num">800</td><td style="font-size: 24px; font-weight: 800; letter-spacing: -0.025em; color: var(--color-ink);">Programa em 5 minutos</td></tr>
+          <tr><td><strong>Seção</strong></td><td class="mono">--text-section</td><td class="num">24 / 30</td><td class="num">800</td><td style="font-size: 20px; font-weight: 800; letter-spacing: -0.015em; color: var(--color-ink);">Resgates deste mês</td></tr>
+          <tr><td><strong>Sub-seção</strong></td><td class="mono">--text-sub</td><td class="num">18 / 24</td><td class="num">800</td><td style="font-size: 17px; font-weight: 800; color: var(--color-ink);">Fregueses recorrentes</td></tr>
+          <tr><td><strong>Corpo</strong></td><td class="mono">--text-body</td><td class="num">16 / 26</td><td class="num">400</td><td style="font-size: 15px;">Texto de leitura em tela e documento.</td></tr>
+          <tr><td><strong>Apoio</strong></td><td class="mono">--text-support</td><td class="num">14 / 22</td><td class="num">400</td><td style="font-size: 14px;">Descrição, ajuda, metadado.</td></tr>
+          <tr><td><strong>Rótulo</strong></td><td class="mono">--text-label</td><td class="num">12 / 16 · +0,08em</td><td class="num">600</td><td class="rotulo">Saldo disponível</td></tr>
+          <tr><td><strong>Número</strong></td><td class="mono">--text-number</td><td class="num">32 / 34 · tabular</td><td class="num">800</td><td class="valor" style="font-size: 26px;">1.240 pts</td></tr>
+          <tr><td><strong>Número pequeno</strong></td><td class="mono">--text-number-sm</td><td class="num">20 / 24 · tabular</td><td class="num">600</td><td class="num" style="font-size: 19px; font-weight: 600;">R$ 62,00</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Números</h3>
+    <div class="grid-2">
+      <div class="card">
+        <h4>Todo número que muda é tabular</h4>
+        <p style="font-size: var(--text-support);">Saldo, pontos, valor, contagem de selos, data. Sem numeral tabular, o número muda de largura quando muda de valor e a interface parece tremer. Uma linha de CSS resolve:</p>
+        <div class="mono mt" style="background: var(--color-neutral-100); border-radius: var(--radius-sm); padding: var(--space-sm); font-size: 12px; line-height: 1.7;">font-variant-numeric: tabular-nums;</div>
+        <p class="mt" style="font-size: var(--text-support);">Já está aplicado nas classes <code>.num</code> e no atributo <code>[data-num]</code> do <code>tokens.css</code>.</p>
+      </div>
+      <div class="card">
+        <h4>Formato</h4>
+        <ul class="lista">
+          <li><strong>Pontos:</strong> <span class="num">1.240 pts</span> — ponto de milhar, "pts" em 400 e um corpo abaixo do número</li>
+          <li><strong>Valor:</strong> <span class="num">R$ 62,00</span> — sempre com centavos, sempre com espaço depois do R$</li>
+          <li><strong>Selos:</strong> <span class="num">7 de 10</span> — nunca fração, nunca porcentagem</li>
+          <li><strong>Abreviação</strong> só acima de mil em espaço curto: <span class="num">1,2 mil pts</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Regras de texto</h3>
+    <ul class="lista">
+      <li><strong>Mínimo legível:</strong> 14 px em app e web. 12 px só em rótulo em caixa alta, nunca em frase.</li>
+      <li><strong>Comprimento de linha:</strong> até 68 caracteres em texto corrido. Acima disso o olho perde a linha ao voltar.</li>
+      <li><strong>Caixa alta</strong> só em rótulo e botão, sempre com <code>+0,08em</code> de tracking. Nunca em frase inteira.</li>
+      <li><strong>Se a fonte não carregar,</strong> a pilha cai para a do sistema — já configurado em <code>--font-sans</code>. O layout não quebra porque a escala é em rem.</li>
+    </ul>
+  </section>
+
+  <!-- ============ 05 ESPAÇO E FORMA ============ -->
+  <section id="forma">
+    <div class="sec-num">05 · Espaço e forma</div>
+    <h2>Grade de 8, três raios, uma borda</h2>
+    <p>Boa parte da sensação de produto resolvido não vem de cor nem de marca — vem de espaçamento que se repete e de cantos que combinam. Todo espaço é múltiplo de 8. Nenhum valor fora da escada.</p>
+
+    <div class="grid-2 mt">
+      <div class="card">
+        <h4>Espaço</h4>
+        <div class="stack mt" style="gap: var(--space-xs);">
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">xs · 8</span><div style="height: 14px; width: 8px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">sm · 16</span><div style="height: 14px; width: 16px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">md · 24</span><div style="height: 14px; width: 24px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">lg · 32</span><div style="height: 14px; width: 32px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">xl · 48</span><div style="height: 14px; width: 48px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">2xl · 64</span><div style="height: 14px; width: 64px; background: var(--color-primary-500);"></div></div>
+          <div class="row" style="gap: var(--space-sm);"><span class="rotulo" style="width: 90px;">3xl · 96</span><div style="height: 14px; width: 96px; background: var(--color-primary-500);"></div></div>
+        </div>
+        <p class="mt" style="font-size: var(--text-support);">Dentro de card: <code>md</code>. Entre cards: <code>sm</code>. Entre seções: <code>xl</code> no app, <code>3xl</code> no site.</p>
+      </div>
+      <div class="card">
+        <h4>Forma</h4>
+        <div class="row mt" style="gap: var(--space-md); align-items: flex-end;">
+          <div style="text-align: center;"><div style="width: 64px; height: 48px; background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200); border-radius: var(--radius-sm);"></div><div class="legenda">sm · 8</div></div>
+          <div style="text-align: center;"><div style="width: 64px; height: 48px; background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200); border-radius: var(--radius-md);"></div><div class="legenda">md · 12</div></div>
+          <div style="text-align: center;"><div style="width: 64px; height: 48px; background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200); border-radius: var(--radius-lg);"></div><div class="legenda">lg · 16</div></div>
+          <div style="text-align: center;"><div style="width: 64px; height: 26px; background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200); border-radius: var(--radius-pill);"></div><div class="legenda">pílula</div></div>
+        </div>
+        <ul class="lista mt">
+          <li><strong>8</strong> campo, botão, etiqueta · <strong>12</strong> card · <strong>16</strong> bloco e modal · <strong>pílula</strong> pontos e selos</li>
+          <li><strong>Borda de 1 px</strong> em tudo. Sombra só em modal e menu suspenso — o que está na tela não flutua.</li>
+          <li><strong>Foco:</strong> contorno de 2 px na primária com 2 px de afastamento. Nunca remover sem substituir.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 06 COMPONENTES ============ -->
+  <section id="componentes">
+    <div class="sec-num">06 · Componentes</div>
+    <h2>Cinco peças cobrem quase tudo</h2>
+    <p>Botão, campo, card, pílula de status e barra de navegação. O resto das telas se resolve combinando essas cinco. Todas com <strong>44 px de altura mínima</strong> no que é clicável — é o alvo de toque que funciona no balcão, com a mão ocupada.</p>
+
+    <div class="grid-2 mt">
+      <div class="card">
+        <h4>Botão</h4>
+        <div class="row mt"><button class="btn btn-1">Resgatar</button><button class="btn btn-2">Ver histórico</button><button class="btn btn-3" disabled>Indisponível</button></div>
+        <ul class="lista mt">
+          <li><strong>Principal</strong> — fundo <code>primary-500</code>, texto branco. Um por tela.</li>
+          <li><strong>Secundário</strong> — contorno <code>control</code>, texto <code>primary-500</code>.</li>
+          <li><strong>Desabilitado</strong> — fundo <code>neutral-100</code>, texto <code>neutral-400</code>, cursor bloqueado.</li>
+          <li>Altura 44 · raio 8 · peso 800 · 14 px · respiro lateral 20</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Campo</h4>
+        <div class="stack mt" style="gap: var(--space-xs);">
+          <span class="rotulo">Telefone do cliente</span>
+          <input class="campo" placeholder="(19) 9 0000-0000">
+          <input class="campo campo-foco" value="(19) 9 9482-3170">
+          <input class="campo campo-erro" value="1948" aria-invalid="true">
+          <span style="font-size: var(--text-support); color: var(--color-danger);">Telefone incompleto — faltam dígitos.</span>
+        </div>
+        <ul class="lista mt">
+          <li>Contorno <code>control</code> em repouso — 3:1, não é o separador</li>
+          <li>Foco com contorno de 2 px na primária, afastado 2 px</li>
+          <li>Erro troca a borda e escreve embaixo o que fazer, nunca só "inválido"</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid-2 mt">
+      <div class="card">
+        <h4>Card e pílula</h4>
+        <div class="card mt" style="background: var(--color-bg);">
+          <div class="row" style="justify-content: space-between; align-items: flex-start;">
+            <div><div style="font-weight: 800;">Padaria Bela Vista</div><div class="meta">Última visita há 6 dias</div></div>
+            <span class="pilula pilula-pontos">1.240 pts</span>
+          </div>
+          <div class="valor mt">R$ 62,00</div>
+          <div class="meta">em crédito disponível</div>
+        </div>
+        <p class="mt" style="font-size: var(--text-support);">Card: raio 12, borda 1 px, respiro interno 24. A pílula fica no canto superior direito e nunca compete com o valor principal.</p>
+      </div>
+      <div class="card">
+        <h4>Barra de navegação</h4>
+        <div class="barra mt">
+          <div class="ativo">Início</div><div>Clientes</div><div>Resgates</div><div>Ajustes</div>
+        </div>
+        <p class="mt" style="font-size: var(--text-support);">O item ativo carrega <strong>duas marcas</strong>: cor e traço superior. Cor sozinha não basta — quem não distingue as duas cores continua sabendo onde está.</p>
+        <div class="barra mt" style="background: var(--color-primary-800); border-color: var(--color-primary-800);">
+          <div style="color: rgba(255,255,255,.55);">Início</div>
+          <div class="ativo" style="background: rgba(255,255,255,.08); color: #fff; border-top-color: #fff;">Clientes</div>
+          <div style="color: rgba(255,255,255,.55);">Resgates</div>
+        </div>
+        <p class="mt" style="font-size: var(--text-support);">Sobre fundo profundo, a mesma lógica com branco.</p>
+      </div>
+    </div>
+
+    <h3>No tema escuro</h3>
+    <div class="dark" style="background: var(--color-bg); border: var(--border-width) solid var(--color-hairline); border-radius: var(--radius-md); padding: var(--space-md); color: var(--color-ink);">
+      <div class="row" style="justify-content: space-between; margin-bottom: var(--space-sm);">
+        <span class="rotulo" style="color: var(--color-neutral-500);">Tema escuro · os mesmos tokens</span>
+        <span class="pilula pilula-selos">7 selos</span>
+      </div>
+      <div style="background: var(--color-card); border: var(--border-width) solid var(--color-hairline); border-radius: var(--radius-md); padding: var(--space-md);">
+        <div class="row" style="justify-content: space-between; align-items: flex-start;">
+          <div><div style="font-weight: 800;">Padaria Bela Vista</div><div class="meta">Última visita há 6 dias</div></div>
+          <span class="pilula pilula-pontos">1.240 pts</span>
+        </div>
+        <div class="valor mt">R$ 62,00</div>
+        <div class="meta">em crédito disponível</div>
+      </div>
+      <div class="row mt"><button class="btn btn-1">Resgatar</button><button class="btn btn-2">Ver histórico</button></div>
+      <div class="mt"><input class="campo" placeholder="Telefone do cliente"></div>
+    </div>
+    <div class="legenda">Nada foi redesenhado aqui: é o mesmo HTML dentro de <code>.dark</code>. O tema escuro é troca de token, não versão paralela.</div>
+  </section>
+
+  <!-- ============ 07 APLICAÇÃO ============ -->
+  <section id="aplicacao">
+    <div class="sec-num">07 · Aplicação</div>
+    <h2>As regras rodando em três peças</h2>
+    <p>Não é redesenho: é o gabarito. As três peças abaixo usam só o que está documentado acima — nenhum valor novo. Servem de referência para o resto do material.</p>
+
+    <div class="grid-3 mt">
+      <div>
+        <div class="rotulo" style="margin-bottom: var(--space-xs);">Tela do app</div>
+        <div class="tela">
+          <div class="row" style="justify-content: space-between;">
+            <img src="assets/frego-icone-arredondado.svg" alt="" width="28">
+            <span class="pilula pilula-selos">7 selos</span>
+          </div>
+          <div>
+            <div class="rotulo">Saldo do cliente</div>
+            <div class="valor">1.240 pts</div>
+            <div class="meta">equivalem a R$ 62,00</div>
+          </div>
+          <div class="card" style="padding: var(--space-sm);">
+            <div style="font-weight: 800; font-size: var(--text-support);">Resgatar café + pão</div>
+            <div class="meta">300 pts</div>
+          </div>
+          <div class="card" style="padding: var(--space-sm);">
+            <div style="font-weight: 800; font-size: var(--text-support);">Resgatar bandeja</div>
+            <div class="meta">900 pts</div>
+          </div>
+          <button class="btn btn-1" style="width: 100%;">Resgatar</button>
+          <div class="barra"><div class="ativo">Início</div><div>Clientes</div><div>Mais</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="rotulo" style="margin-bottom: var(--space-xs);">Topo do site</div>
+        <div class="tela" style="background: var(--color-card);">
+          <div class="barra-nav-site">
+            <img src="assets/frego-assinatura.svg" alt="Frego" width="88">
+            <div class="row" style="gap: var(--space-xs);">
+              <span class="rotulo">Preços</span>
+              <button class="btn btn-1" style="height: 34px; padding: 0 12px; font-size: var(--text-label);">Falar</button>
+            </div>
+          </div>
+          <h4 style="font-size: 26px; line-height: 1.1; letter-spacing: var(--tracking-title);">Transforme clientes em fregueses</h4>
+          <p style="font-size: var(--text-support); margin: 0;">Relacionamento para negócios locais — sem cartãozinho de papel e sem desconto constante.</p>
+          <div class="row" style="gap: var(--space-xs);">
+            <button class="btn btn-1">Começar</button>
+            <button class="btn btn-2">Ver como funciona</button>
+          </div>
+          <div style="background: var(--color-primary-50); border: var(--border-width) solid var(--color-primary-200); border-radius: var(--radius-md); height: 92px;"></div>
+        </div>
+      </div>
+      <div>
+        <div class="rotulo" style="margin-bottom: var(--space-xs);">Capa de apresentação</div>
+        <div class="tela" style="background: var(--color-primary-800); justify-content: space-between; min-height: 340px; border-color: var(--color-primary-800); padding: var(--space-md);">
+          <img src="assets/frego-assinatura-negativa.svg" alt="Frego" width="110">
+          <div>
+            <div class="rotulo" style="color: var(--color-primary-200);">Apresentação · 2026</div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: var(--tracking-title); line-height: 1.1; color: #fff; margin-top: var(--space-xs);">O programa que faz o cliente voltar</div>
+          </div>
+          <div style="border-top: var(--border-width) solid rgba(180,196,234,.3); padding-top: var(--space-sm); font-size: var(--text-support); color: var(--color-primary-200);">frego.com.br</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="aviso mt"><strong>Imagem de compartilhamento pronta:</strong> <code>assets/png/frego-compartilhamento-1200x630.png</code>. É o que aparece quando alguém manda o link do site no WhatsApp ou no LinkedIn. Sem ela, o preview fica em branco — e link sem preview parece link quebrado.</div>
+  </section>
+
+  <!-- ============ 08 ARQUIVOS ============ -->
+  <section id="arquivos">
+    <div class="sec-num">08 · Arquivos</div>
+    <h2>O que tem na pasta e quem usa</h2>
+
+    <div class="grid-3 mt">
+      <div class="card">
+        <h4>Quem programa</h4>
+        <ul class="lista">
+          <li><code>tokens/tokens.css</code> — cor, tipografia, espaço e forma como custom properties. Substitui o <code>:root</code> atual: os nomes de token foram mantidos.</li>
+          <li><code>tokens/tokens.json</code> — os mesmos valores para consumo no app.</li>
+          <li><code>assets/*.svg</code> — assinatura e ícone em vetor.</li>
+          <li>A pilha de fonte alternativa já está em <code>--font-sans</code>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Quem faz material</h4>
+        <ul class="lista">
+          <li><code>guia-de-estilos.html</code> — este documento. Abre em qualquer navegador.</li>
+          <li>PDF pelo próprio navegador: <strong>Cmd/Ctrl + P → Salvar como PDF</strong>.</li>
+          <li><code>assets/png/frego-assinatura-*</code> — 1200, 600 e 300 px, fundo transparente, versão para fundo claro e escuro.</li>
+          <li>Archivo se instala de graça em <code>fonts.google.com/specimen/Archivo</code>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Quem publica</h4>
+        <ul class="lista">
+          <li><code>frego-icone-1024/512/192/180.png</code> — lojas e launcher.</li>
+          <li><code>frego-favicon-32/16.png</code> — navegador.</li>
+          <li><code>frego-avatar-400.png</code> — redes sociais.</li>
+          <li><code>frego-compartilhamento-1200x630.png</code> — preview de link.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Quando a marca definitiva chegar</h3>
+    <div class="card card-destaque">
+      <p style="color: var(--color-neutral-700);">Este guia foi construído para sair de cena. O que muda, e o custo de cada troca:</p>
+      <ul class="lista mt">
+        <li><strong>Cor</strong> — trocar valores em <code>tokens.css</code>. Nenhuma tela precisa ser refeita, porque nada usa hex solto.</li>
+        <li><strong>Tipografia</strong> — trocar a família em <code>--font-sans</code> e conferir a escala.</li>
+        <li><strong>Assinatura e ícone</strong> — substituir os arquivos em <code>assets/</code>, mantendo os nomes.</li>
+        <li><strong>O que não volta atrás</strong> — grade de 8, contraste conferido, numeral tabular, alvo de toque de 44 px, foco visível. Isso não é estilo: é o que faz o produto funcionar, e continua valendo com qualquer marca em cima.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div>
+      <img src="assets/frego-assinatura.svg" alt="Frego" width="100" style="margin-bottom: var(--space-sm);">
+      <p>Guia de estilos provisório · versão 1 · agosto de 2026<br>Provisório por construção: quando a marca definitiva chegar, este guia é substituído.</p>
+    </div>
+    <div style="text-align: right;">
+      <p><strong>Construído pela Rampa · Estúdio de marca</strong><br>
+      <a href="https://rampabr.com" style="color: var(--color-primary-500); text-decoration: none; font-weight: var(--weight-semibold);">rampabr.com</a><br>
+      eduardo@rampabr.com · renata@rampabr.com<br>
+      Cortesia dentro do projeto de marca do Frego.<br>
+      <span style="color: var(--color-neutral-400);">Autoria do documento e do sistema: Rampa. Ativos de marca: uso do Frego.</span></p>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

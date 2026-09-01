@@ -34,6 +34,7 @@ async function seedBusiness(opts: {
     where: { id: opts.id },
     update: {
       name: opts.name,
+      type: opts.type,
       status: opts.status ?? 'active',
       primaryColor: opts.primaryColor,
       primaryColorDark: opts.primaryColorDark,
@@ -167,8 +168,8 @@ async function main() {
     id: 'seed_bloom_coffee',
     name: 'Bloom Coffee',
     type: 'café',
-    primaryColor: '#3B5BDB',
-    primaryColorDark: '#2F49C4',
+    primaryColor: '#24479C',
+    primaryColorDark: '#1B3781',
     slogan: 'Café que faz voltar',
     slug: 'bloom-coffee',
     locationId: 'seed_bloom_main',
@@ -187,8 +188,7 @@ async function main() {
   const burger = await seedBusiness({
     id: 'seed_burger_lab',
     name: 'Burger Lab',
-    type: 'restaurant',
-    primaryColor: '#C2410C',
+    type: 'hamburgueria',
     primaryColorDark: '#9A3412',
     slogan: 'Smash que vicia',
     slug: 'burger-lab',
@@ -208,8 +208,7 @@ async function main() {
   const oakberry = await seedBusiness({
     id: 'seed_oakberry',
     name: 'Oakberry',
-    type: 'café',
-    primaryColor: '#15803D',
+    type: 'acai',
     primaryColorDark: '#166534',
     slogan: 'Açaí bowl, sempre',
     slug: 'oakberry',

@@ -107,7 +107,7 @@ async function uploadBusinessImage(
 ): Promise<string> {
   assertImageFile(file);
   if (!getFirebaseAuth().currentUser) {
-    throw new Error('Faça login para enviar imagens');
+    throw new Error('Faça login para enviar imagens.');
   }
   const path = `businesses/${businessId}/${folder}/${Date.now()}.${storageExt(file)}`;
   try {
@@ -121,13 +121,13 @@ async function uploadBusinessImage(
         : '';
     if (code.includes('unauthorized') || code.includes('permission')) {
       throw new Error(
-        'Sem permissão no Storage. Publique as regras em infra/storage.rules.',
+        'Não foi possível enviar a imagem. Entre novamente e tente de novo.',
       );
     }
     if (code.includes('unauthenticated')) {
-      throw new Error('Sessão expirada — entre de novo e tente o upload');
+      throw new Error('Sessão expirada. Entre novamente e tente enviar a imagem.');
     }
-    throw err instanceof Error ? err : new Error('Falha no upload');
+    throw err instanceof Error ? err : new Error('Não foi possível enviar a imagem.');
   }
 }
 

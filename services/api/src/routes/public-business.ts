@@ -30,6 +30,8 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           primaryColorDark: true,
           slogan: true,
           slug: true,
+          cashbackPercent: true,
+          pointsPerReal: true,
           locations: {
             orderBy: { createdAt: 'asc' },
             select: {
@@ -47,6 +49,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
               type: true,
               stampsNeeded: true,
               pointsPerReal: true,
+              cashbackPercent: true,
               rewardTitle: true,
               rewardDescription: true,
               rewardImageUrl: true,
@@ -59,6 +62,18 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: 'NOT_FOUND' });
       }
 
+      const campaigns = [...business.campaigns].sort((a, b) => {
+        if (a.type === 'cashback' && b.type !== 'cashback') return -1;
+        if (a.type !== 'cashback' && b.type === 'cashback') return 1;
+        return (b.cashbackPercent ?? 0) - (a.cashbackPercent ?? 0);
+      });
+      const maxCashback = Math.max(
+        0,
+        ...campaigns
+          .filter((c) => c.type === 'cashback')
+          .map((c) => c.cashbackPercent ?? 0),
+      );
+
       return {
         business: {
           name: business.name,
@@ -69,14 +84,17 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           primaryColorDark: business.primaryColorDark,
           slogan: business.slogan,
           slug: business.slug,
+          cashbackPercent: maxCashback,
+          pointsPerReal: business.pointsPerReal,
         },
         locations: business.locations,
-        campaigns: business.campaigns.map((c) => ({
+        campaigns: campaigns.map((c) => ({
           id: c.id,
           name: c.name,
           type: c.type,
           stampsNeeded: c.stampsNeeded,
-          pointsPerReal: c.pointsPerReal,
+          pointsPerReal: c.pointsPerReal ?? business.pointsPerReal,
+          cashbackPercent: c.cashbackPercent ?? null,
           rewardTitle: c.rewardTitle,
           rewardDescription: c.rewardDescription,
           rewardImageUrl: c.rewardImageUrl,

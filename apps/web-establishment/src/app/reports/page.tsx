@@ -4,10 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Download } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
+import {
+  AudiencePresetCards,
+  campaignCreateHref,
+  audienceRulesQuery,
+} from '@/components/audience-preset-cards';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import {
+  PeriodPicker,
+  periodSearchParams,
+  type PeriodValue,
+} from '@/components/period-picker';
 
-type RangeKey = '7d' | '30d' | '90d';
+type RangeKey = '7d' | '30d' | '90d' | 'custom';
 
 type KpiNum = { value: number; deltaPct?: number | null; ofBasePct?: number; delta?: number };
 
@@ -65,11 +75,56 @@ type ReportsData = {
     type: string;
     status: string;
     rewardTitle: string | null;
+    audienceSegmentId: string | null;
+    audienceName: string | null;
     redeems: number;
-    earners: number;
     redeemers: number;
+    eligible: number;
     engagePct: number;
+    fulfillPct: number;
+    openVouchers: number;
+    usedVouchers: number;
+    expiredVouchers: number;
+    revenueFromRedeemersCents: number;
   }>;
+  audiences?: {
+    presets: Array<{
+      key: string;
+      name: string;
+      description: string;
+      rules: Record<string, unknown>;
+      memberCount: number;
+    }>;
+    spendTiers: Array<{
+      key: string;
+      label: string;
+      min: number;
+      max: number | null;
+      count: number;
+    }>;
+    saved: Array<{
+      id: string;
+      name: string;
+      memberCount: number;
+    }>;
+    insight: {
+      title: string;
+      body: string;
+      memberCount: number;
+      rules: Record<string, unknown>;
+    } | null;
+  };
+};
+
+type AudienceRulesForm = {
+  name: string;
+  spendCentsMin: string;
+  spendCentsMax: string;
+  windowDays: string;
+  inactiveDaysMin: string;
+  showBadge: boolean;
+  badgeTitle: string;
+  badgeMessage: string;
 };
 
 const RANGES: { key: RangeKey; label: string }[] = [
@@ -83,6 +138,7 @@ const TYPE_LABEL: Record<string, string> = {
   spend: 'Pontos',
   birthday: 'Aniversário',
   visits: 'Visitas',
+  cashback: 'Cashback',
 };
 
 function formatMoney(cents: number) {
@@ -96,7 +152,7 @@ function Delta({ value }: { value: number | null | undefined }) {
   if (value == null) {
     return (
       <span className="text-[12px] font-semibold text-[var(--color-neutral-400)]">
-        — novo
+        — sem comparação
       </span>
     );
   }
@@ -150,47 +206,226 @@ function KpiCard({
   );
 }
 
-function ActivityChart({ series }: { series: ReportsData['series'] }) {
-  const max = useMemo(
-    () => Math.max(1, ...series.map((d) => d.stamps + d.points + d.redeems)),
-    [series],
+type SeriesRow = ReportsData['series'][number];
+type ChartGrain = 'day' | 'week' | 'month';
+
+const PT_MONTHS_SHORT = [
+  'jan',
+  'fev',
+  'mar',
+  'abr',
+  'mai',
+  'jun',
+  'jul',
+  'ago',
+  'set',
+  'out',
+  'nov',
+  'dez',
+] as const;
+
+function parseIsoDay(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function formatIsoDay(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function formatDaySlash(iso: string) {
+  const d = parseIsoDay(iso);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+}
+
+function mondayOf(iso: string) {
+  const d = parseIsoDay(iso);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return formatIsoDay(d);
+}
+
+function monthLabel(ym: string, showYear: boolean) {
+  const [y, m] = ym.split('-').map(Number);
+  const name = PT_MONTHS_SHORT[(m ?? 1) - 1] ?? ym;
+  return showYear ? `${name}/${String(y).slice(2)}` : name;
+}
+
+function suggestedGrain(days: number): ChartGrain {
+  if (days > 90) return 'month';
+  if (days > 31) return 'week';
+  return 'day';
+}
+
+function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
+  if (grain === 'day') {
+    return series.map((d) => ({
+      key: d.date,
+      label: d.label,
+      stamps: d.stamps,
+      points: d.points,
+      redeems: d.redeems,
+      from: d.date,
+      to: d.date,
+    }));
+  }
+
+  const buckets = new Map<
+    string,
+    {
+      key: string;
+      stamps: number;
+      points: number;
+      redeems: number;
+      from: string;
+      to: string;
+    }
+  >();
+  const years = new Set<number>();
+
+  for (const d of series) {
+    years.add(parseIsoDay(d.date).getFullYear());
+    const key = grain === 'week' ? mondayOf(d.date) : d.date.slice(0, 7);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.stamps += d.stamps;
+      existing.points += d.points;
+      existing.redeems += d.redeems;
+      existing.to = d.date;
+    } else {
+      buckets.set(key, {
+        key,
+        stamps: d.stamps,
+        points: d.points,
+        redeems: d.redeems,
+        from: d.date,
+        to: d.date,
+      });
+    }
+  }
+
+  const showYear = years.size > 1;
+  return Array.from(buckets.values()).map((p) => ({
+    ...p,
+    label:
+      grain === 'week' ? formatDaySlash(p.key) : monthLabel(p.key, showYear),
+  }));
+}
+
+function ActivityChart({ series }: { series: SeriesRow[] }) {
+  const auto = suggestedGrain(series.length);
+  const [grain, setGrain] = useState<ChartGrain>(auto);
+
+  useEffect(() => {
+    setGrain(auto);
+  }, [auto]);
+
+  const points = useMemo(
+    () => aggregateSeries(series, grain),
+    [series, grain],
   );
-  // For 90d, sample every ~3 days for readability
-  const points =
-    series.length > 45
-      ? series.filter((_, i) => i % 3 === 0 || i === series.length - 1)
-      : series.length > 14
-        ? series.filter((_, i) => i % 2 === 0 || i === series.length - 1)
-        : series;
+  const max = useMemo(
+    () => Math.max(1, ...points.map((d) => d.stamps + d.points + d.redeems)),
+    [points],
+  );
+
+  const dense = grain === 'day' && points.length > 40;
+  const sparseAxis = points.length > 8;
+  const grainGap =
+    grain === 'month' ? 'gap-3' : grain === 'week' ? 'gap-2' : 'gap-px';
+  const subtitle =
+    grain === 'month'
+      ? 'Carimbos, pontos e resgates por mês'
+      : grain === 'week'
+        ? 'Carimbos, pontos e resgates por semana'
+        : 'Carimbos, pontos e resgates por dia';
 
   return (
-    <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-      <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-        Atividade no período
+    <div className="min-w-0 overflow-x-hidden rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
+        <div className="text-[15px] font-semibold text-[var(--color-ink)]">
+          Atividade no período
+        </div>
+        <div
+          className="flex shrink-0 rounded-[10px] bg-[var(--color-neutral-100)] p-0.5"
+          role="group"
+          aria-label="Agrupar atividade"
+        >
+          {(
+            [
+              { key: 'day', label: 'Dia' },
+              { key: 'week', label: 'Semana' },
+              { key: 'month', label: 'Mês' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setGrain(opt.key)}
+              className={`rounded-[8px] px-2.5 py-1 text-[12px] font-semibold transition-colors ${
+                grain === opt.key
+                  ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-sm'
+                  : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
       <p className="mb-4 text-[12px] text-[var(--color-neutral-400)]">
-        Carimbos, pontos e resgates por dia
+        {subtitle}
       </p>
-      <div className="flex h-[180px] items-end gap-1 sm:gap-1.5">
-        {points.map((d) => {
-          const total = d.stamps + d.points + d.redeems;
-          const h = Math.max(4, Math.round((total / max) * 100));
-          return (
-            <div
-              key={d.date}
-              className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1.5"
-              title={`${d.date}: ${d.stamps} carimbos · ${d.points} pts · ${d.redeems} resgates`}
-            >
+      <div className="min-w-0">
+        <div className={`flex h-[132px] min-w-0 items-end ${grainGap}`}>
+          {points.map((d) => {
+            const total = d.stamps + d.points + d.redeems;
+            const h =
+              total === 0
+                ? 0
+                : Math.max(dense ? 4 : 8, Math.round((total / max) * 124));
+            const range =
+              d.from === d.to
+                ? d.from
+                : `${formatDaySlash(d.from)}–${formatDaySlash(d.to)}`;
+            return (
               <div
-                className="w-full max-w-[28px] rounded-[5px] bg-[var(--color-primary-500)]"
-                style={{ height: `${h}%` }}
-              />
-              <span className="truncate text-[10px] text-[var(--color-neutral-400)]">
+                key={d.key}
+                className="flex h-full min-w-0 flex-1 items-end justify-center"
+                title={`${range}: ${d.stamps} carimbos · ${d.points} pontos · ${d.redeems} resgates`}
+              >
+                <div
+                  className={`w-full min-w-0 rounded-[3px] bg-[var(--color-primary-500)] ${
+                    dense ? '' : 'max-w-[36px] rounded-[5px]'
+                  }`}
+                  style={{ height: h }}
+                />
+              </div>
+            );
+          })}
+        </div>
+        {sparseAxis ? (
+          <div className="mt-2 flex min-h-5 items-end justify-between gap-2 text-[11px] leading-none text-[var(--color-neutral-400)]">
+            <span className="shrink-0">{points[0]?.label}</span>
+            <span className="shrink-0">
+              {points[Math.floor((points.length - 1) / 2)]?.label}
+            </span>
+            <span className="shrink-0">{points[points.length - 1]?.label}</span>
+          </div>
+        ) : (
+          <div className={`mt-2 flex min-h-5 min-w-0 items-end ${grainGap}`}>
+            {points.map((d) => (
+              <span
+                key={d.key}
+                className="min-w-0 flex-1 truncate text-center text-[11px] leading-none text-[var(--color-neutral-400)]"
+              >
                 {d.label}
               </span>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -199,20 +434,21 @@ function ActivityChart({ series }: { series: ReportsData['series'] }) {
 function CohortChart({ cohorts }: { cohorts: ReportsData['cohorts'] }) {
   const maxRate = Math.max(1, ...cohorts.map((c) => c.rate));
   return (
-    <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+    <div className="min-w-0 overflow-hidden rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
       <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-        Retenção por coorte
+        Retenção por mês de cadastro
       </div>
       <p className="mb-4 text-[12px] text-[var(--color-neutral-400)]">
-        % dos clientes associados em cada mês que voltaram no período
+        Porcentagem dos clientes cadastrados em cada mês que voltaram no período
       </p>
-      <div className="flex h-[200px] items-end gap-3">
+      <div className="flex h-[168px] items-end gap-3">
         {cohorts.map((c) => {
-          const h = c.size === 0 ? 8 : Math.max(8, Math.round((c.rate / maxRate) * 100));
+          const h =
+            c.size === 0 ? 8 : Math.max(12, Math.round((c.rate / maxRate) * 148));
           return (
             <div
               key={c.month}
-              className="flex h-full flex-1 flex-col items-center justify-end gap-2"
+              className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
               title={`${c.label}: ${c.retained}/${c.size} (${c.rate}%)`}
             >
               <span className="text-[11px] font-semibold text-[var(--color-neutral-500)]">
@@ -220,14 +456,21 @@ function CohortChart({ cohorts }: { cohorts: ReportsData['cohorts'] }) {
               </span>
               <div
                 className="w-full max-w-[38px] rounded-[6px] bg-[var(--color-primary-500)]"
-                style={{ height: `${h}%`, opacity: c.size === 0 ? 0.25 : 1 }}
+                style={{ height: h, opacity: c.size === 0 ? 0.25 : 1 }}
               />
-              <span className="text-[11px] text-[var(--color-neutral-400)]">
-                {c.label}
-              </span>
             </div>
           );
         })}
+      </div>
+      <div className="mt-2 flex gap-3">
+        {cohorts.map((c) => (
+          <span
+            key={c.month}
+            className="min-w-0 flex-1 text-center text-[11px] text-[var(--color-neutral-400)]"
+          >
+            {c.label}
+          </span>
+        ))}
       </div>
     </div>
   );
@@ -280,10 +523,21 @@ function downloadCsv(data: ReportsData) {
     );
   }
   lines.push('');
-  lines.push('Campanha;Tipo;Resgates;Engajamento %');
+  lines.push('Campanha;Tipo;Resgates;Quem resgatou;Elegíveis;Engajamento %;Conclusão %;Receita de quem resgatou');
   for (const c of data.campaigns) {
     lines.push(
-      [c.name, c.type, c.redeems, c.engagePct].map(csvEscape).join(';'),
+      [
+        c.name,
+        c.type,
+        c.redeems,
+        c.redeemers,
+        c.eligible,
+        c.engagePct,
+        c.fulfillPct,
+        c.revenueFromRedeemersCents,
+      ]
+        .map(csvEscape)
+        .join(';'),
     );
   }
 
@@ -293,17 +547,39 @@ function downloadCsv(data: ReportsData) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `frego-relatorios-${data.range}.csv`;
+  const fromDay = data.from.slice(0, 10);
+  const toDay = data.to.slice(0, 10);
+  a.download =
+    data.range === 'custom'
+      ? `frego-relatorios-${fromDay}_${toDay}.csv`
+      : `frego-relatorios-${data.range}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 export default function ReportsPage() {
   const { getToken, user, loading: authLoading } = useAuth();
-  const [range, setRange] = useState<RangeKey>('30d');
+  const [period, setPeriod] = useState<PeriodValue>({
+    mode: 'preset',
+    key: '30d',
+  });
   const [data, setData] = useState<ReportsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [builder, setBuilder] = useState<AudienceRulesForm>({
+    name: '',
+    spendCentsMin: '200',
+    spendCentsMax: '',
+    windowDays: '90',
+    inactiveDaysMin: '',
+    showBadge: true,
+    badgeTitle: 'Cliente da casa',
+    badgeMessage:
+      'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
+  });
+  const [builderBusy, setBuilderBusy] = useState(false);
+  const [builderMsg, setBuilderMsg] = useState<string | null>(null);
+  const [previewCount, setPreviewCount] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -311,57 +587,135 @@ export default function ReportsPage() {
     setError(null);
     try {
       const token = await getToken();
-      if (!token) throw new Error('Sessão expirada');
-      const res = await fetch(`${API_URL}/reports?range=${range}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      if (!token) throw new Error('Sessão expirada.');
+      const res = await fetch(
+        `${API_URL}/reports?${periodSearchParams(period)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      );
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(
           (body as { message?: string }).message ??
-            `Falha ao carregar (${res.status})`,
+            `Não foi possível carregar (${res.status})`,
         );
       }
       setData((await res.json()) as ReportsData);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar');
+      setError(e instanceof Error ? e.message : 'Não foi possível carregar.');
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [getToken, range, user]);
+  }, [getToken, period, user]);
 
   useEffect(() => {
     if (!authLoading && user) void load();
   }, [authLoading, user, load]);
 
+  const builderRules = useMemo(() => {
+    const spendMin = Number.parseFloat(builder.spendCentsMin);
+    const spendMax = Number.parseFloat(builder.spendCentsMax);
+    const windowDays = Number.parseInt(builder.windowDays, 10);
+    const inactive = Number.parseInt(builder.inactiveDaysMin, 10);
+    return {
+      version: 1 as const,
+      spendCentsMin: Number.isFinite(spendMin)
+        ? Math.round(spendMin * 100)
+        : null,
+      spendCentsMax: Number.isFinite(spendMax)
+        ? Math.round(spendMax * 100)
+        : null,
+      windowDays: Number.isFinite(windowDays) ? windowDays : null,
+      inactiveDaysMin: Number.isFinite(inactive) ? inactive : null,
+    };
+  }, [builder]);
+
+  async function previewAudience() {
+    setBuilderBusy(true);
+    setBuilderMsg(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sessão expirada.');
+      const res = await fetch(`${API_URL}/audiences/preview`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ rules: builderRules }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível estimar.');
+      setPreviewCount(json.memberCount as number);
+    } catch (e) {
+      setBuilderMsg(e instanceof Error ? e.message : 'Não foi possível estimar.');
+    } finally {
+      setBuilderBusy(false);
+    }
+  }
+
+  async function saveAudience() {
+    if (!builder.name.trim()) {
+      setBuilderMsg('Informe um nome para a audiência.');
+      return;
+    }
+    setBuilderBusy(true);
+    setBuilderMsg(null);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Sessão expirada.');
+      const res = await fetch(`${API_URL}/audiences`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: builder.name.trim(),
+          rules: builderRules,
+          showBadge: builder.showBadge,
+          badgeTitle: builder.showBadge
+            ? builder.badgeTitle.trim() || builder.name.trim()
+            : null,
+          badgeMessage: builder.showBadge
+            ? builder.badgeMessage.trim() || null
+            : null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
+      setBuilderMsg(
+        `Audiência salva · ${json.audience?.memberCount ?? 0} clientes`,
+      );
+      setBuilder((b) => ({ ...b, name: '' }));
+      await load();
+    } catch (e) {
+      setBuilderMsg(e instanceof Error ? e.message : 'Não foi possível salvar.');
+    } finally {
+      setBuilderBusy(false);
+    }
+  }
+
   const kpis = data?.kpis;
+  const audiences = data?.audiences;
 
   return (
     <AppShell
       title="Relatórios"
       topbar={
-        <header className="flex h-[60px] items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-card)]/90 px-4 backdrop-blur md:px-7">
+        <header className="flex min-h-[60px] flex-wrap items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-card)]/90 px-4 py-2 backdrop-blur md:px-7">
           <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">
             Relatórios
           </h1>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="flex rounded-[10px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] p-0.5">
-              {RANGES.map((r) => (
-                <button
-                  key={r.key}
-                  type="button"
-                  onClick={() => setRange(r.key)}
-                  className={`rounded-[8px] px-2.5 py-1.5 text-[12px] font-semibold transition-colors sm:px-3 sm:text-[13px] ${
-                    range === r.key
-                      ? 'bg-[var(--color-bg)] text-[var(--color-ink)]'
-                      : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
-                  }`}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <PeriodPicker
+              presets={RANGES}
+              value={period}
+              onChange={setPeriod}
+              compact
+            />
             <button
               type="button"
               disabled={!data}
@@ -375,7 +729,15 @@ export default function ReportsPage() {
         </header>
       }
     >
-      <div className="mx-auto max-w-6xl px-4 py-6 md:px-7 md:py-7">
+      <div className="mx-auto min-w-0 max-w-6xl px-4 py-6 md:px-7 md:py-7">
+        <div className="mb-4 md:hidden">
+          <PeriodPicker
+            presets={RANGES}
+            value={period}
+            onChange={setPeriod}
+            compact
+          />
+        </div>
         {loading || authLoading ? (
           <p className="text-[15px] text-[var(--color-neutral-500)]">
             Carregando…
@@ -388,7 +750,7 @@ export default function ReportsPage() {
               onClick={() => void load()}
               className="mt-3 text-[14px] font-semibold text-[var(--color-primary-500)]"
             >
-              Tentar de novo
+              Tentar novamente
             </button>
           </div>
         ) : !data || !kpis ? null : (
@@ -397,20 +759,20 @@ export default function ReportsPage() {
               <KpiCard
                 label="Clientes ativos"
                 value={kpis.activeCustomers.value.toLocaleString('pt-BR')}
-                hint={`${kpis.activeCustomers.ofBasePct ?? 0}% da base`}
+                hint={`${kpis.activeCustomers.ofBasePct ?? 0}% dos cadastrados`}
                 deltaPct={kpis.activeCustomers.deltaPct}
               />
               <KpiCard
-                label="Inativos (30d+)"
+                label="Inativos (30 dias ou mais)"
                 value={kpis.inactive.value.toLocaleString('pt-BR')}
                 hint={
                   kpis.inactive.value > 0
-                    ? 'prontos para reativação'
-                    : 'base aquecida'
+                    ? 'prontos para uma campanha de volta'
+                    : 'todos ativos recentemente'
                 }
               />
               <KpiCard
-                label="Média visitas / cliente"
+                label="Média de visitas por cliente"
                 value={kpis.avgVisits.value.toLocaleString('pt-BR', {
                   minimumFractionDigits: 0,
                   maximumFractionDigits: 1,
@@ -452,9 +814,291 @@ export default function ReportsPage() {
               />
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+            <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <ActivityChart series={data.series} />
               <CohortChart cohorts={data.cohorts} />
+            </div>
+
+            <div
+              id="audiencias"
+              className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
+            >
+              <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
+                Audiências
+              </div>
+              <p className="mb-4 text-[12px] text-[var(--color-neutral-400)]">
+                Agrupe por gasto e comportamento — depois crie campanhas só
+                para esses clientes.
+              </p>
+
+              {audiences?.insight && (
+                <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3">
+                  <p className="text-[14px] font-semibold text-[var(--color-ink)]">
+                    {audiences.insight.title}
+                  </p>
+                  <p className="mt-1 text-[13px] text-[var(--color-neutral-600)]">
+                    {audiences.insight.body}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href={`/customers?${audienceRulesQuery(audiences.insight.rules)}`}
+                      className="text-[13px] font-semibold text-[var(--color-primary-600)]"
+                    >
+                      Ver clientes →
+                    </Link>
+                    <Link
+                      href={campaignCreateHref(
+                        audiences.insight.rules,
+                        'Alto valor em risco',
+                      )}
+                      className="text-[13px] font-semibold text-[var(--color-primary-600)]"
+                    >
+                      Criar campanha →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-5">
+                <AudiencePresetCards presets={audiences?.presets ?? []} />
+              </div>
+
+              <div className="mb-5">
+                <div className="mb-2 text-[13px] font-semibold text-[var(--color-ink)]">
+                  Faixas de gasto (90 dias)
+                </div>
+                <div className="flex flex-col gap-2">
+                  {(audiences?.spendTiers ?? []).map((t) => {
+                    const max = Math.max(
+                      1,
+                      ...(audiences?.spendTiers ?? []).map((x) => x.count),
+                    );
+                    const pct = Math.round((t.count / max) * 100);
+                    return (
+                      <div key={t.key} className="flex items-center gap-3">
+                        <span className="w-28 shrink-0 text-[12px] text-[var(--color-neutral-500)]">
+                          {t.label}
+                        </span>
+                        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--color-neutral-100)]">
+                          <div
+                            className="h-full rounded-full bg-[var(--color-primary-500)]"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                        <span className="w-8 text-right text-[12px] font-semibold tabular-nums text-[var(--color-ink)]">
+                          {t.count}
+                        </span>
+                        <Link
+                          href={`/customers?spendCentsMin=${t.min}${t.max != null ? `&spendCentsMax=${t.max - 1}` : ''}&windowDays=90`}
+                          className="text-[11px] font-semibold text-[var(--color-primary-500)]"
+                        >
+                          Ver
+                        </Link>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4">
+                <div className="text-[13px] font-semibold text-[var(--color-ink)]">
+                  Criar audiência por gasto
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                    Nome
+                    <input
+                      value={builder.name}
+                      onChange={(e) =>
+                        setBuilder((b) => ({ ...b, name: e.target.value }))
+                      }
+                      placeholder="Ex.: clientes a partir de R$ 200"
+                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
+                    />
+                  </label>
+                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                    Gasto mínimo (R$)
+                    <input
+                      type="number"
+                      min={0}
+                      value={builder.spendCentsMin}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          spendCentsMin: e.target.value,
+                        }))
+                      }
+                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
+                    />
+                  </label>
+                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                    Gasto máximo (R$)
+                    <input
+                      type="number"
+                      min={0}
+                      value={builder.spendCentsMax}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          spendCentsMax: e.target.value,
+                        }))
+                      }
+                      placeholder="opcional"
+                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
+                    />
+                  </label>
+                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                    Janela (dias)
+                    <input
+                      type="number"
+                      min={1}
+                      value={builder.windowDays}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          windowDays: e.target.value,
+                        }))
+                      }
+                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
+                    />
+                  </label>
+                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                    Inativo há (dias)
+                    <input
+                      type="number"
+                      min={0}
+                      value={builder.inactiveDaysMin}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          inactiveDaysMin: e.target.value,
+                        }))
+                      }
+                      placeholder="opcional"
+                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-3">
+                  <label className="flex items-center gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={builder.showBadge}
+                      onChange={(e) =>
+                        setBuilder((b) => ({
+                          ...b,
+                          showBadge: e.target.checked,
+                        }))
+                      }
+                    />
+                    Mostrar selo no app do cliente
+                  </label>
+                  <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
+                    Quem entra nesta audiência vê, no aplicativo, um selo da
+                    loja e a mensagem de que desbloqueou promoções exclusivas.
+                  </p>
+                  {builder.showBadge && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                        Título do selo
+                        <input
+                          value={builder.badgeTitle}
+                          onChange={(e) =>
+                            setBuilder((b) => ({
+                              ...b,
+                              badgeTitle: e.target.value,
+                            }))
+                          }
+                          placeholder="Cliente da casa"
+                          className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-2.5 text-[14px]"
+                        />
+                      </label>
+                      <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                        Mensagem
+                        <input
+                          value={builder.badgeMessage}
+                          onChange={(e) =>
+                            setBuilder((b) => ({
+                              ...b,
+                              badgeMessage: e.target.value,
+                            }))
+                          }
+                          placeholder="Você desbloqueou condições exclusivas."
+                          className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-2.5 text-[14px]"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={builderBusy}
+                    onClick={() => void previewAudience()}
+                    className="min-h-9 rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] px-3 text-[13px] font-semibold disabled:opacity-50"
+                  >
+                    Estimar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={builderBusy}
+                    onClick={() => void saveAudience()}
+                    className="min-h-9 rounded-[10px] bg-[var(--color-primary-500)] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
+                  >
+                    Salvar audiência
+                  </button>
+                  <Link
+                    href={`/customers?${audienceRulesQuery(builderRules)}`}
+                    className="text-[13px] font-semibold text-[var(--color-primary-500)]"
+                  >
+                    Ver clientes
+                  </Link>
+                  {previewCount != null && (
+                    <span className="text-[13px] text-[var(--color-neutral-500)]">
+                      ≈ {previewCount} clientes
+                    </span>
+                  )}
+                  {builderMsg && (
+                    <span className="text-[13px] text-[var(--color-neutral-600)]">
+                      {builderMsg}
+                    </span>
+                  )}
+                </div>
+                {(audiences?.saved?.length ?? 0) > 0 && (
+                  <div className="mt-4 border-t border-[var(--color-hairline)] pt-3">
+                    <p className="mb-2 text-[12px] font-medium text-[var(--color-neutral-400)]">
+                      Audiências salvas
+                    </p>
+                    <ul className="flex flex-col gap-1.5">
+                      {audiences!.saved.map((s) => (
+                        <li
+                          key={s.id}
+                          className="flex items-center justify-between gap-2 text-[13px]"
+                        >
+                          <span className="font-medium text-[var(--color-ink)]">
+                            {s.name}
+                          </span>
+                          <span className="text-[var(--color-neutral-500)]">
+                            {s.memberCount}
+                          </span>
+                          <Link
+                            href={`/customers?audienceId=${s.id}`}
+                            className="font-semibold text-[var(--color-primary-500)]"
+                          >
+                            Ver
+                          </Link>
+                          <Link
+                            href={`/campaigns?audienceId=${s.id}&audienceName=${encodeURIComponent(s.name)}`}
+                            className="font-semibold text-[var(--color-primary-500)]"
+                          >
+                            Campanha
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -527,7 +1171,7 @@ export default function ReportsPage() {
                           {m.stamps > 0
                             ? `${m.stamps} carimbos`
                             : m.points > 0
-                              ? `${m.points} pts`
+                              ? `${m.points} pontos`
                               : `${m.redeems} resgates`}
                         </span>
                       </li>
@@ -540,7 +1184,7 @@ export default function ReportsPage() {
             <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="text-[15px] font-semibold text-[var(--color-ink)]">
-                  Campanhas por resgate
+                  Desempenho das campanhas
                 </div>
                 <Link
                   href="/campaigns"
@@ -555,44 +1199,65 @@ export default function ReportsPage() {
                 </p>
               ) : (
                 <div className="flex flex-col gap-3">
-                  <div className="hidden grid-cols-[minmax(0,2fr)_1fr_1fr_1.4fr] gap-3 text-[12px] font-medium text-[var(--color-neutral-400)] md:grid">
+                  <div className="hidden grid-cols-[minmax(0,2fr)_0.8fr_0.8fr_0.9fr_0.9fr_1fr] gap-3 text-[12px] font-medium text-[var(--color-neutral-400)] lg:grid">
                     <span>Campanha</span>
                     <span>Resgates</span>
+                    <span>Resgatadores</span>
                     <span>Engajamento</span>
-                    <span />
+                    <span>Entrega</span>
+                    <span>Receita</span>
                   </div>
                   {data.campaigns.map((c) => (
                     <div
                       key={c.id}
-                      className="grid grid-cols-1 gap-1.5 border-t border-[var(--color-hairline)] pt-3 first:border-0 first:pt-0 md:grid-cols-[minmax(0,2fr)_1fr_1fr_1.4fr] md:items-center md:gap-3"
+                      className="grid grid-cols-1 gap-1.5 border-t border-[var(--color-hairline)] pt-3 first:border-0 first:pt-0 lg:grid-cols-[minmax(0,2fr)_0.8fr_0.8fr_0.9fr_0.9fr_1fr] lg:items-center lg:gap-3"
                     >
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] font-medium text-[var(--color-ink)]">
+                        <Link
+                          href={`/campaigns?highlight=${c.id}`}
+                          className="truncate text-[13px] font-medium text-[var(--color-ink)] hover:text-[var(--color-primary-500)]"
+                        >
                           {c.name}
-                        </div>
+                        </Link>
                         <div className="text-[11px] text-[var(--color-neutral-400)]">
                           {TYPE_LABEL[c.type] ?? c.type}
+                          {c.audienceName ? ` · ${c.audienceName}` : ''}
                           {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                         </div>
                       </div>
                       <span className="text-[13px] text-[var(--color-neutral-500)]">
-                        {c.redeems.toLocaleString('pt-BR')} resgates
+                        {c.redeems.toLocaleString('pt-BR')}
+                      </span>
+                      <span className="text-[13px] text-[var(--color-neutral-500)]">
+                        {c.redeemers.toLocaleString('pt-BR')}
+                        <span className="text-[11px] text-[var(--color-neutral-400)]">
+                          {' '}
+                          / {c.eligible}
+                        </span>
                       </span>
                       <span
                         className={`text-[13px] font-semibold ${
-                          c.engagePct >= 50
+                          c.engagePct >= 20
                             ? 'text-[var(--color-success)]'
                             : 'text-[var(--color-neutral-500)]'
                         }`}
                       >
-                        {c.engagePct}% engaj.
+                        {c.engagePct}%
                       </span>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--color-neutral-100)]">
-                        <div
-                          className="h-full rounded-full bg-[var(--color-primary-500)]"
-                          style={{ width: `${Math.min(100, c.engagePct)}%` }}
-                        />
-                      </div>
+                      <span
+                        className={`text-[13px] font-semibold ${
+                          c.type !== 'cashback' && c.fulfillPct >= 70
+                            ? 'text-[var(--color-success)]'
+                            : 'text-[var(--color-neutral-500)]'
+                        }`}
+                      >
+                        {c.type === 'cashback'
+                          ? '— no caixa'
+                          : `${c.fulfillPct}% entrega`}
+                      </span>
+                      <span className="text-[13px] text-[var(--color-neutral-500)]">
+                        {formatMoney(c.revenueFromRedeemersCents)}
+                      </span>
                     </div>
                   ))}
                 </div>

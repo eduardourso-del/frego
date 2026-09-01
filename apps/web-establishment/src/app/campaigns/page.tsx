@@ -1,15 +1,15 @@
 'use client';
 
-import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Stamp, Coins, Cake, ImageIcon } from 'lucide-react';
+import { Stamp, Coins, Cake, ImageIcon, Banknote } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { CampaignCardPreview } from '@/components/campaign-card-preview';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { uploadCampaignRewardImage } from '@/lib/firebase';
 
-type CampaignType = 'stamps' | 'spend' | 'birthday';
+type CampaignType = 'stamps' | 'spend' | 'birthday' | 'cashback';
 type CampaignStatus = 'draft' | 'active' | 'paused' | 'archived';
 type StatusFilter = 'all' | 'active' | 'inactive';
 
@@ -20,9 +20,44 @@ type Campaign = {
   status: CampaignStatus | string;
   stampsNeeded: number | null;
   pointsPerReal: number | null;
+  cashbackPercent?: number | null;
   rewardTitle: string | null;
   rewardDescription: string | null;
   rewardImageUrl: string | null;
+  audienceSegmentId?: string | null;
+  audienceSegment?: { id: string; name: string; memberCount?: number | null } | null;
+  audienceMemberCount?: number | null;
+};
+
+type AudienceOption = {
+  id: string;
+  name: string;
+  memberCount: number;
+};
+
+type CampaignPerformance = {
+  eligible: number;
+  redeemers: number;
+  redeems: number;
+  fulfillPct: number;
+  engagePct: number;
+  revenueFromRedeemersCents: number;
+  cashbackSpentCents?: number;
+  cashbackEarnedCents?: number;
+  series: Array<{ date: string; redeems: number }>;
+};
+
+const emptyForm = {
+  name: '',
+  type: 'stamps' as CampaignType,
+  stampsNeeded: 10,
+  pointsPerReal: 1,
+  cashbackPercent: 5,
+  rewardTitle: '',
+  rewardDescription: '',
+  rewardImageUrl: '',
+  activate: true,
+  audienceSegmentId: '' as string,
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -49,16 +84,12 @@ function matchesFilter(c: Campaign, filter: StatusFilter) {
   return c.status !== 'active';
 }
 
-const emptyForm = {
-  name: '',
-  type: 'stamps' as CampaignType,
-  stampsNeeded: 10,
-  pointsPerReal: 1,
-  rewardTitle: '',
-  rewardDescription: '',
-  rewardImageUrl: '',
-  activate: true,
-};
+function formatMoney(cents: number) {
+  return (cents / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
 
 export default function CampaignsPage() {
   return (
@@ -83,7 +114,11 @@ function CampaignsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusFilter = parseStatusFilter(searchParams.get('status'));
+  const highlightId = searchParams.get('highlight');
+  const urlAudienceId = searchParams.get('audienceId');
+  const urlAudienceName = searchParams.get('audienceName');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [audiences, setAudiences] = useState<AudienceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -91,6 +126,12 @@ function CampaignsPageContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [uploading, setUploading] = useState(false);
+  const [perfById, setPerfById] = useState<Record<string, CampaignPerformance>>(
+    {},
+  );
+  const [perfOpenId, setPerfOpenId] = useState<string | null>(null);
+  const audienceBootstrapKey = `${urlAudienceId ?? ''}|${searchParams.get('fromAudience') ?? ''}|${urlAudienceName ?? ''}`;
+  const audienceBootstrapped = useRef<string | null>(null);
 
   const filteredCampaigns = useMemo(
     () => campaigns.filter((c) => matchesFilter(c, statusFilter)),
@@ -120,20 +161,60 @@ function CampaignsPageContent() {
     setError(null);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`${API_URL}/campaigns`, { headers });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const [campRes, audRes] = await Promise.all([
+        fetch(`${API_URL}/campaigns`, { headers }),
+        fetch(`${API_URL}/audiences`, { headers }),
+      ]);
+      const campJson = await campRes.json().catch(() => ({}));
+      const audJson = await audRes.json().catch(() => ({}));
+      if (!campRes.ok) {
         throw new Error(
-          (json as { error?: string }).error ?? `Falha ao listar (${res.status})`,
+          (campJson as { error?: string }).error ??
+            `Não foi possível listar as campanhas (${campRes.status})`,
         );
       }
-      setCampaigns(json.campaigns ?? []);
+      setCampaigns(campJson.campaigns ?? []);
+      setAudiences(
+        (audJson.audiences ?? []).map(
+          (a: { id: string; name: string; memberCount: number }) => ({
+            id: a.id,
+            name: a.name,
+            memberCount: a.memberCount,
+          }),
+        ),
+      );
+
+      const active = (campJson.campaigns ?? []).filter(
+        (c: Campaign) => c.status === 'active',
+      ) as Campaign[];
+      const perfEntries = await Promise.all(
+        active.slice(0, 8).map(async (c) => {
+          try {
+            const res = await fetch(
+              `${API_URL}/campaigns/${c.id}/performance?range=30d`,
+              { headers },
+            );
+            const json = await res.json();
+            if (!res.ok) return null;
+            return [c.id, json.performance as CampaignPerformance] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      const next: Record<string, CampaignPerformance> = {};
+      for (const entry of perfEntries) {
+        if (entry) next[entry[0]] = entry[1];
+      }
+      setPerfById(next);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro';
-      // Browser TypeError when API is down / CORS / wrong URL
       setError(
-        msg === 'Failed to fetch' || msg === 'Load failed' || msg === 'NetworkError when attempting to fetch resource.'
-          ? `Não foi possível conectar à API (${API_URL}). Confira se o serviço está no ar.`
+        msg === 'Failed to fetch' ||
+          msg === 'Load failed' ||
+          msg ===
+            'NetworkError when attempting to fetch resource.'
+          ? 'Não foi possível conectar ao servidor. Verifique se o serviço está no ar.'
           : msg,
       );
     } finally {
@@ -144,6 +225,118 @@ function CampaignsPageContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Open create form when arriving from Relatórios/Clientes with audience params
+  useEffect(() => {
+    const fromAudience = searchParams.get('fromAudience');
+    if (!urlAudienceId && !fromAudience) return;
+    if (audienceBootstrapped.current === audienceBootstrapKey) return;
+    audienceBootstrapped.current = audienceBootstrapKey;
+
+    let cancelled = false;
+
+    async function bootstrap() {
+      let segmentId = urlAudienceId ?? '';
+      if (!segmentId && fromAudience) {
+        try {
+          const headers = {
+            ...(await authHeaders()),
+            'Content-Type': 'application/json',
+          };
+          const rules: Record<string, unknown> = { version: 1 };
+          for (const key of [
+            'spendCentsMin',
+            'spendCentsMax',
+            'windowDays',
+            'inactiveDaysMin',
+            'visitsMin',
+            'visitsMax',
+            'nearReward',
+            'isVip',
+          ]) {
+            const v = searchParams.get(key);
+            if (v == null || v === '') continue;
+            if (key === 'nearReward' || key === 'isVip') {
+              rules[key] = v === 'true' || v === '1';
+            } else {
+              rules[key] = Number.parseInt(v, 10);
+            }
+          }
+          const name =
+            urlAudienceName?.trim() ||
+            `Audiência ${new Date().toLocaleDateString('pt-BR')}`;
+          const res = await fetch(`${API_URL}/audiences`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              name,
+              rules,
+              showBadge: true,
+              badgeTitle: (() => {
+                const n = (urlAudienceName ?? '').trim().toLowerCase();
+                if (n === 'alto valor') return 'Cliente da casa';
+                if (n === 'em risco') return 'De volta à casa';
+                if (n === 'quase prêmio' || n === 'quase premio') return 'Quase lá';
+                if (n === 'vip') return 'VIP da casa';
+                if (urlAudienceName?.trim()) {
+                  // Prefer friendly title over raw ops segment name
+                  const ops = ['alto valor', 'em risco', 'quase prêmio', 'quase premio', 'vip'];
+                  if (ops.includes(n)) return 'Cliente da casa';
+                  return urlAudienceName.trim();
+                }
+                return typeof rules.spendCentsMin === 'number'
+                  ? 'Cliente da casa'
+                  : name;
+              })(),
+              badgeMessage:
+                'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
+            }),
+          });
+          const json = await res.json();
+          if (res.ok && json.audience?.id) {
+            segmentId = json.audience.id as string;
+            setAudiences((prev) => {
+              if (prev.some((a) => a.id === segmentId)) return prev;
+              return [
+                {
+                  id: segmentId,
+                  name: json.audience.name as string,
+                  memberCount: json.audience.memberCount as number,
+                },
+                ...prev,
+              ];
+            });
+          }
+        } catch {
+          // fall through — form still opens without audience
+        }
+      }
+      if (cancelled) return;
+      setEditingId(null);
+      setForm({
+        ...emptyForm,
+        audienceSegmentId: segmentId,
+        name: urlAudienceName
+          ? `Campanha · ${urlAudienceName}`
+          : emptyForm.name,
+        rewardTitle: urlAudienceName
+          ? `Prêmio para ${urlAudienceName}`
+          : emptyForm.rewardTitle,
+      });
+      setShowForm(true);
+    }
+
+    void bootstrap();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    audienceBootstrapKey,
+    urlAudienceId,
+    urlAudienceName,
+    searchParams,
+    authHeaders,
+  ]);
 
   function closeForm() {
     setShowForm(false);
@@ -165,7 +358,9 @@ function CampaignsPageContent() {
         ? 'spend'
         : c.type === 'birthday'
           ? 'birthday'
-          : 'stamps';
+          : c.type === 'cashback'
+            ? 'cashback'
+            : 'stamps';
     setForm({
       name: c.name,
       type,
@@ -173,10 +368,13 @@ function CampaignsPageContent() {
         c.stampsNeeded ??
         (type === 'spend' ? 100 : type === 'birthday' ? 1 : 10),
       pointsPerReal: c.pointsPerReal ?? 1,
+      cashbackPercent: c.cashbackPercent ?? 5,
       rewardTitle: c.rewardTitle ?? '',
       rewardDescription: c.rewardDescription ?? '',
       rewardImageUrl: c.rewardImageUrl ?? '',
       activate: c.status === 'active',
+      audienceSegmentId:
+        c.audienceSegmentId ?? c.audienceSegment?.id ?? '',
     });
     setShowForm(true);
     setError(null);
@@ -211,11 +409,19 @@ function CampaignsPageContent() {
         name: form.name,
         type: form.type,
         stampsNeeded:
-          form.type === 'birthday' ? 1 : form.stampsNeeded,
-        pointsPerReal: form.type === 'spend' ? form.pointsPerReal : undefined,
+          form.type === 'birthday' || form.type === 'cashback'
+            ? 1
+            : form.stampsNeeded,
+        pointsPerReal:
+          form.type === 'spend'
+            ? (business?.pointsPerReal ?? form.pointsPerReal)
+            : undefined,
+        cashbackPercent:
+          form.type === 'cashback' ? form.cashbackPercent : undefined,
         rewardTitle: form.rewardTitle || undefined,
         rewardDescription: form.rewardDescription || undefined,
         rewardImageUrl: form.rewardImageUrl || null,
+        audienceSegmentId: form.audienceSegmentId || null,
         ...(status ? { status } : {}),
       };
 
@@ -229,6 +435,9 @@ function CampaignsPageContent() {
       );
       const json = await res.json();
       if (!res.ok) {
+        if (json.error === 'CASHBACK_PERCENT_REQUIRED') {
+          throw new Error('Informe a porcentagem de cashback (1 a 100).');
+        }
         if (json.error === 'BIRTHDAY_CAMPAIGN_EXISTS') {
           throw new Error(
             'Já existe um presente de aniversário ativo. Pause o atual antes de ativar outro.',
@@ -238,13 +447,13 @@ function CampaignsPageContent() {
           throw new Error('Informe o prêmio do aniversário.');
         }
         throw new Error(
-          json.error ?? (editingId ? 'Falha ao salvar' : 'Falha ao criar'),
+          json.error ?? (editingId ? 'Não foi possível salvar.' : 'Não foi possível criar.'),
         );
       }
       closeForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro');
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
     } finally {
       setBusy(false);
     }
@@ -264,11 +473,11 @@ function CampaignsPageContent() {
         body: JSON.stringify({ status }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao atualizar');
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível atualizar.');
       if (editingId === id) closeForm();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro');
+      setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
     } finally {
       setBusy(false);
     }
@@ -286,8 +495,8 @@ function CampaignsPageContent() {
               Campanhas
             </h1>
             <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
-              Crie campanhas de carimbos, pontos ou um presente de aniversário
-              opcional — o cliente vê e resgata no app.
+              Crie campanhas de carimbos, pontos, cashback ou um presente de
+              aniversário. O cliente vê e resgata no aplicativo.
             </p>
           </div>
           <button
@@ -349,13 +558,13 @@ function CampaignsPageContent() {
               <legend className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
                 Como fidelizar
               </legend>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {(
                   [
                     {
                       value: 'stamps' as const,
                       title: 'Carimbos',
-                      desc: 'Ideal para café e visitas repetidas. 1 visita = 1 carimbo.',
+                      desc: 'Ideal para café e visitas repetidas. Cada visita vale 1 carimbo.',
                       Icon: Stamp,
                       selectedClass:
                         'border-[var(--color-stamps)] bg-[var(--color-stamps-bg)] ring-1 ring-[var(--color-stamps)]/25',
@@ -365,7 +574,7 @@ function CampaignsPageContent() {
                     {
                       value: 'spend' as const,
                       title: 'Pontos por gasto',
-                      desc: 'Cliente acumula pontos no pool (taxa da loja) e escolhe este prêmio no app.',
+                      desc: 'O cliente acumula pontos pela compra (taxa da loja) e escolhe este prêmio no aplicativo.',
                       Icon: Coins,
                       selectedClass:
                         'border-[var(--color-points)] bg-[var(--color-points-bg)] ring-1 ring-[var(--color-points)]/25',
@@ -382,6 +591,16 @@ function CampaignsPageContent() {
                       iconWrap: 'bg-[var(--color-primary-500)] text-white',
                       titleClass: 'text-[var(--color-primary-600)]',
                     },
+                    {
+                      value: 'cashback' as const,
+                      title: 'Cashback',
+                      desc: 'Um percentual da compra volta em reais para a próxima visita. A taxa fica nesta campanha.',
+                      Icon: Banknote,
+                      selectedClass:
+                        'border-[var(--color-cashback)] bg-[var(--color-cashback-bg)] ring-1 ring-[var(--color-cashback)]/25',
+                      iconWrap: 'bg-[var(--color-cashback)] text-white',
+                      titleClass: 'text-[var(--color-cashback)]',
+                    },
                   ] as const
                 ).map((opt) => {
                   const selected = form.type === opt.value;
@@ -397,7 +616,8 @@ function CampaignsPageContent() {
                           stampsNeeded:
                             opt.value === 'spend'
                               ? 100
-                              : opt.value === 'birthday'
+                              : opt.value === 'birthday' ||
+                                  opt.value === 'cashback'
                                 ? 1
                                 : 10,
                           name:
@@ -406,14 +626,18 @@ function CampaignsPageContent() {
                               ? 'Pontos por compra'
                               : opt.value === 'birthday'
                                 ? 'Presente de aniversário'
-                                : 'Carimbo fidelidade'),
+                                : opt.value === 'cashback'
+                                  ? 'Cashback'
+                                  : 'Carimbo fidelidade'),
                           rewardTitle:
                             f.rewardTitle ||
                             (opt.value === 'spend'
                               ? 'Prêmio da casa'
                               : opt.value === 'birthday'
                                 ? 'Sobremesa grátis'
-                                : 'Item grátis'),
+                                : opt.value === 'cashback'
+                                  ? 'Volta em R$'
+                                  : 'Item grátis'),
                         }))
                       }
                       className={`rounded-[14px] border p-4 text-left transition ${
@@ -495,6 +719,34 @@ function CampaignsPageContent() {
                 aniversário e nos 6 dias seguintes, uma vez por ano. Quem não
                 informou a data no perfil vê o prêmio bloqueado.
               </div>
+            ) : form.type === 'cashback' ? (
+              <div className="mt-3 space-y-3">
+                <label className="text-[13px] font-semibold">
+                  Porcentagem de volta
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={form.cashbackPercent}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        cashbackPercent: Math.max(
+                          1,
+                          Math.min(100, Number(e.target.value) || 1),
+                        ),
+                      }))
+                    }
+                    className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
+                  />
+                </label>
+                <div className="rounded-[14px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-cashback)]">
+                  Pode haver várias campanhas ativas, cada uma com a própria
+                  porcentagem e audiência. Se o cliente entrar em mais de uma,
+                  vale a maior taxa. O saldo é único da loja e é usado no caixa
+                  — não gera voucher no aplicativo.
+                </div>
+              </div>
             ) : (
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 {form.type === 'stamps' ? (
@@ -517,7 +769,8 @@ function CampaignsPageContent() {
                 ) : (
                   <>
                     <div className="rounded-[14px] border border-[var(--color-points-ring)] bg-[var(--color-points-bg)] px-3 py-3 text-[13px] text-[var(--color-points)]">
-                      A taxa de acúmulo (pts / R$) é a da loja em{' '}
+                      A taxa de acúmulo (quantos reais geram 1 ponto) é a da
+                      loja, em{' '}
                       <a
                         href="/settings"
                         className="font-semibold underline"
@@ -561,7 +814,7 @@ function CampaignsPageContent() {
             <div className="mt-4">
               <p className="text-[13px] font-semibold">Foto do prêmio</p>
               <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                Upload no Firebase Storage — mostre o produto do prêmio.
+                Envie uma foto do prêmio — o cliente vê no cartão da campanha.
               </p>
               <div className="mt-3 flex flex-wrap items-start gap-4">
                 <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-[12px] border border-dashed border-[var(--color-neutral-200)] bg-[var(--color-neutral-200)]">
@@ -598,10 +851,10 @@ function CampaignsPageContent() {
                           );
                           setForm((f) => ({ ...f, rewardImageUrl: url }));
                         } catch (err) {
-                          setError(
+          setError(
                             err instanceof Error
                               ? err.message
-                              : 'Falha no upload',
+                              : 'Não foi possível enviar a foto.',
                           );
                         } finally {
                           setUploading(false);
@@ -637,6 +890,42 @@ function CampaignsPageContent() {
                 : 'Ativar agora'}
             </label>
 
+            <label className="mt-4 block text-[13px] font-semibold">
+              Somente para audiência
+              <span className="ml-1 font-normal text-[var(--color-neutral-400)]">
+                · opcional
+              </span>
+              <select
+                value={form.audienceSegmentId}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    audienceSegmentId: e.target.value,
+                  }))
+                }
+                className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
+              >
+                <option value="">Todos os clientes</option>
+                {audiences.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.memberCount})
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
+                Se escolhida, só os clientes dessa audiência{' '}
+                {form.type === 'cashback'
+                  ? 'ganham cashback.'
+                  : 'podem resgatar.'}
+                {form.audienceSegmentId
+                  ? ` Estimativa: ${
+                      audiences.find((a) => a.id === form.audienceSegmentId)
+                        ?.memberCount ?? '—'
+                    } clientes.`
+                  : ' Crie audiências em Relatórios.'}
+              </p>
+            </label>
+
             {/* Preview */}
             <div className="mt-5 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4">
               <CampaignCardPreview
@@ -649,7 +938,10 @@ function CampaignsPageContent() {
                 campaignName={form.name}
                 campaignType={form.type}
                 unitsNeeded={form.stampsNeeded}
-                pointsPerReal={form.pointsPerReal}
+                pointsPerReal={business?.pointsPerReal ?? form.pointsPerReal}
+                cashbackPercent={
+                  form.type === 'cashback' ? form.cashbackPercent : 0
+                }
                 rewardTitle={form.rewardTitle}
                 rewardDescription={form.rewardDescription}
                 rewardImageUrl={form.rewardImageUrl || null}
@@ -677,8 +969,8 @@ function CampaignsPageContent() {
         ) : campaigns.length === 0 ? (
           <div className="rounded-[16px] border border-dashed border-[var(--color-neutral-200)] p-8 text-center">
             <p className="text-[15px] text-[var(--color-neutral-500)]">
-              Nenhuma campanha ainda. Crie carimbos, pontos ou um presente de
-              aniversário.
+              Nenhuma campanha ainda. Crie carimbos, pontos, cashback ou um
+              presente de aniversário.
             </p>
           </div>
         ) : filteredCampaigns.length === 0 ? (
@@ -701,7 +993,12 @@ function CampaignsPageContent() {
             {filteredCampaigns.map((c) => (
               <li
                 key={c.id}
-                className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
+                id={`campaign-${c.id}`}
+                className={`rounded-[16px] border bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)] ${
+                  highlightId === c.id
+                    ? 'border-[var(--color-primary-500)] ring-2 ring-[var(--color-primary-500)]/20'
+                    : 'border-[var(--color-hairline)]'
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -717,6 +1014,11 @@ function CampaignsPageContent() {
                           <Cake size={13} strokeWidth={2.25} aria-hidden />
                           Aniversário
                         </span>
+                      ) : c.type === 'cashback' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-cashback-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-cashback)] ring-1 ring-inset ring-[var(--color-cashback-ring)]">
+                          <Banknote size={13} strokeWidth={2.25} aria-hidden />
+                          Cashback
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-stamps-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]">
                           <Stamp size={13} strokeWidth={2.25} aria-hidden />
@@ -726,15 +1028,144 @@ function CampaignsPageContent() {
                       <span className="rounded-full bg-[var(--color-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-neutral-600)] ring-1 ring-inset ring-[var(--color-hairline)]">
                         {STATUS_LABEL[c.status] ?? c.status}
                       </span>
+                      {(c.audienceSegment || c.audienceSegmentId) && (
+                        <span className="rounded-full bg-[var(--color-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-neutral-600)] ring-1 ring-inset ring-[var(--color-hairline)]">
+                          Audiência
+                          {c.audienceSegment?.name
+                            ? `: ${c.audienceSegment.name}`
+                            : ''}
+                          {c.audienceMemberCount != null
+                            ? ` (${c.audienceMemberCount})`
+                            : ''}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-2 text-[14px] text-[var(--color-neutral-500)]">
                       {c.type === 'spend'
-                        ? `Meta ${c.stampsNeeded} pts`
+                        ? `Meta ${c.stampsNeeded} pontos`
                         : c.type === 'birthday'
-                          ? 'Presente no aniversário · 1× ao ano'
-                          : `${c.stampsNeeded} carimbos`}
+                          ? 'Presente no aniversário · uma vez ao ano'
+                          : c.type === 'cashback'
+                            ? `Cashback ${c.cashbackPercent ?? 0}% · válido no caixa`
+                            : `${c.stampsNeeded} carimbos`}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
+                    {perfById[c.id] && (
+                      <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-[var(--color-neutral-500)]">
+                        {c.type === 'cashback' ? (
+                          <>
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {perfById[c.id].redeems}
+                              </strong>{' '}
+                              {perfById[c.id].redeems === 1
+                                ? 'uso no caixa (30d)'
+                                : 'usos no caixa (30d)'}
+                            </span>
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {formatMoney(
+                                  perfById[c.id].cashbackSpentCents ?? 0,
+                                )}
+                              </strong>{' '}
+                              usados
+                            </span>
+                            {(perfById[c.id].cashbackEarnedCents ?? 0) > 0 && (
+                              <span>
+                                {formatMoney(
+                                  perfById[c.id].cashbackEarnedCents ?? 0,
+                                )}{' '}
+                                creditados
+                              </span>
+                            )}
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {perfById[c.id].engagePct}%
+                              </strong>{' '}
+                              ganharam
+                            </span>
+                            <span>
+                              {formatMoney(
+                                perfById[c.id].revenueFromRedeemersCents,
+                              )}{' '}
+                              em vendas no caixa
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {perfById[c.id].redeems}
+                              </strong>{' '}
+                              resgates (30d)
+                            </span>
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {perfById[c.id].fulfillPct}%
+                              </strong>{' '}
+                              entrega
+                            </span>
+                            <span>
+                              <strong className="text-[var(--color-ink)]">
+                                {perfById[c.id].engagePct}%
+                              </strong>{' '}
+                              engaj.
+                            </span>
+                            <span>
+                              {formatMoney(
+                                perfById[c.id].revenueFromRedeemersCents,
+                              )}{' '}
+                              dos resgatadores
+                            </span>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPerfOpenId(
+                              perfOpenId === c.id ? null : c.id,
+                            )
+                          }
+                          className="font-semibold text-[var(--color-primary-500)]"
+                        >
+                          {perfOpenId === c.id ? 'Ocultar' : 'Detalhe'}
+                        </button>
+                      </div>
+                    )}
+                    {perfOpenId === c.id && perfById[c.id] && (
+                      <div className="mt-3 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
+                        <p className="text-[12px] text-[var(--color-neutral-500)]">
+                          Elegíveis {perfById[c.id].eligible} ·{' '}
+                          {c.type === 'cashback'
+                            ? `Ganharam ${perfById[c.id].redeemers}`
+                            : `Resgatadores ${perfById[c.id].redeemers}`}
+                        </p>
+                        <div className="mt-2 flex h-16 items-end gap-0.5">
+                          {perfById[c.id].series
+                            .filter((_, i, arr) =>
+                              arr.length > 40 ? i % 3 === 0 : true,
+                            )
+                            .map((d) => {
+                              const max = Math.max(
+                                1,
+                                ...perfById[c.id].series.map((x) => x.redeems),
+                              );
+                              const h = Math.max(
+                                2,
+                                Math.round((d.redeems / max) * 100),
+                              );
+                              return (
+                                <div
+                                  key={d.date}
+                                  className="min-w-0 flex-1 rounded-[2px] bg-[var(--color-primary-500)]"
+                                  style={{ height: `${h}%` }}
+                                  title={`${d.date}: ${d.redeems}`}
+                                />
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {c.rewardImageUrl && (
@@ -803,35 +1234,32 @@ function CampaignImageThumb({
   src: string;
   className?: string;
 }) {
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
-    setStatus('loading');
+    setFailed(false);
   }, [src]);
 
   return (
     <div
-      className={`relative overflow-hidden bg-[var(--color-neutral-300,#9CA3AF)] ${className ?? ''}`}
+      className={`relative overflow-hidden bg-[var(--color-neutral-200)] ${className ?? ''}`}
     >
-      {status !== 'ready' && (
+      {failed ? (
         <span
-          className="absolute inset-0 flex items-center justify-center text-white/55"
+          className="absolute inset-0 flex items-center justify-center text-[var(--color-neutral-400)]"
           aria-hidden
         >
           <ImageIcon size={18} strokeWidth={1.75} />
         </span>
-      )}
-      {status !== 'error' && (
+      ) : (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          key={src}
           src={src}
           alt=""
-          className={`h-full w-full object-cover transition-opacity ${
-            status === 'ready' ? 'opacity-100' : 'opacity-0'
-          }`}
-          onLoad={() => setStatus('ready')}
-          onError={() => setStatus('error')}
+          referrerPolicy="no-referrer"
+          decoding="async"
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
         />
       )}
     </div>

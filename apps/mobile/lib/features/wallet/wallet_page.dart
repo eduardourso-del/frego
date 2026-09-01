@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
+import '../../ui/campaign_order.dart';
+import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/voucher_sheet.dart';
 
 class WalletPage extends StatefulWidget {
@@ -75,14 +77,18 @@ class _WalletPageState extends State<WalletPage> {
       final reward = body['rewardTitle'] as String? ??
           campaign['rewardTitle'] as String? ??
           'Prêmio';
-      final shop = (_data?['business'] as Map?)?['name'] as String? ?? 'Loja';
+      final business = _data?['business'] as Map?;
+      final shop = business?['name'] as String? ?? 'Loja';
       if (voucher != null && voucher.isNotEmpty) {
         await showRedeemVoucherSheet(
           context,
           voucherDisplay: voucher,
           rewardTitle: reward,
           shopName: shop,
+          shopLogoUrl: business?['logoUrl'] as String?,
           campaignName: campaign['campaignName'] as String?,
+          expiresAt: body['voucherExpiresAt'] as String?,
+          status: body['voucherStatus'] as String?,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -112,13 +118,19 @@ class _WalletPageState extends State<WalletPage> {
         (_data?['wallet'] as Map<String, dynamic>?)?['pools']
             as Map<String, dynamic>? ??
         {'stamps': 0, 'points': 0};
-    final campaigns = (_data?['campaigns'] as List<dynamic>?) ??
-        (_data?['wallet'] as Map<String, dynamic>?)?['campaigns']
-            as List<dynamic>? ??
-        [];
+    final campaigns = sortCampaignsForCustomer(
+      ((_data?['campaigns'] as List<dynamic>?) ??
+              (_data?['wallet'] as Map<String, dynamic>?)?['campaigns']
+                  as List<dynamic>? ??
+              [])
+          .cast<Map<String, dynamic>>(),
+      campaignOf: (c) => c,
+    );
     final memberships = _data?['memberships'] as List<dynamic>? ?? [];
     final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
     final points = (pools['points'] as num?)?.toInt() ?? 0;
+    final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
+    final earnKinds = earnKindsFromCampaigns(campaigns);
 
     return Scaffold(
       body: SafeArea(
@@ -266,19 +278,43 @@ class _WalletPageState extends State<WalletPage> {
                                   const SizedBox(height: 20),
                                   Row(
                                     children: [
-                                      Expanded(
-                                        child: _PoolChip(
-                                          label: 'Carimbos',
-                                          value: '$stamps',
+                                      if (earnKinds.contains('stamps') ||
+                                          stamps > 0)
+                                        Expanded(
+                                          child: _PoolChip(
+                                            label: 'Carimbos',
+                                            value: '$stamps',
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: _PoolChip(
-                                          label: 'Pontos',
-                                          value: '$points',
+                                      if ((earnKinds.contains('stamps') ||
+                                              stamps > 0) &&
+                                          (earnKinds.contains('points') ||
+                                              points > 0))
+                                        const SizedBox(width: 12),
+                                      if (earnKinds.contains('points') ||
+                                          points > 0)
+                                        Expanded(
+                                          child: _PoolChip(
+                                            label: 'Pontos',
+                                            value: '$points',
+                                          ),
                                         ),
-                                      ),
+                                      if ((earnKinds.contains('stamps') ||
+                                              stamps > 0 ||
+                                              earnKinds.contains('points') ||
+                                              points > 0) &&
+                                          (earnKinds.contains('cashback') ||
+                                              cashbackCents > 0))
+                                        const SizedBox(width: 12),
+                                      if (earnKinds.contains('cashback') ||
+                                          cashbackCents > 0)
+                                        Expanded(
+                                          child: _PoolChip(
+                                            label: 'Cashback',
+                                            value:
+                                                'R\$ ${(cashbackCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ],
@@ -293,9 +329,11 @@ class _WalletPageState extends State<WalletPage> {
                               ),
                             ),
                             const SizedBox(height: 4),
-                            const Text(
-                              'Escolha onde gastar seus carimbos ou pontos.',
-                              style: TextStyle(
+                            Text(
+                              campaigns.any((c) => c['type'] == 'cashback')
+                                  ? 'Cashback aparece primeiro. Use o saldo no caixa.'
+                                  : 'Escolha onde gastar seus carimbos ou pontos.',
+                              style: const TextStyle(
                                 fontSize: 14,
                                 color: FregoColors.neutral500,
                               ),
@@ -318,20 +356,70 @@ class _WalletPageState extends State<WalletPage> {
                                 ),
                               )
                             else
-                              ...campaigns.map((raw) {
-                                final c = raw as Map<String, dynamic>;
+                              ...campaigns.map((c) {
                                 final canRedeem = c['canRedeem'] == true;
                                 final type = c['type'] as String? ?? 'stamps';
                                 final needed =
                                     (c['unitsNeeded'] as num?)?.toInt() ?? 0;
-                                final pool =
-                                    type == 'spend' ? points : stamps;
+                                final isCashback = type == 'cashback';
+                                final cashbackBalance =
+                                    (c['cashbackBalanceCents'] as num?)
+                                        ?.toInt() ??
+                                    (pools['cashbackCents'] as num?)?.toInt() ??
+                                    0;
+                                final pool = type == 'spend'
+                                    ? points
+                                    : isCashback
+                                        ? cashbackBalance
+                                        : stamps;
                                 final isBirthday = type == 'birthday';
                                 final lockedReason =
                                     c['lockedReason'] as String?;
                                 final daysUntil =
                                     (c['daysUntilBirthday'] as num?)?.toInt();
                                 final unlocksAt = c['unlocksAt'] as String?;
+
+                                if (isCashback) {
+                                  final primary = _parseHex(
+                                        business?['primaryColor'] as String?,
+                                      ) ??
+                                      0xFF3B5BDB;
+                                  final primaryDark = _parseHex(
+                                        business?['primaryColorDark']
+                                            as String?,
+                                      ) ??
+                                      0xFF2F49C4;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: LoyaltyCampaignCard(
+                                      businessName:
+                                          business?['name'] as String? ??
+                                              'Sua loja',
+                                      businessLogoUrl:
+                                          business?['logoUrl'] as String?,
+                                      primary: primary,
+                                      primaryDark: primaryDark,
+                                      campaignName: c['campaignName']
+                                              as String? ??
+                                          'Cashback',
+                                      campaignType: 'cashback',
+                                      unitsNeeded: 1,
+                                      currentUnits: cashbackBalance,
+                                      rewardTitle: c['rewardTitle']
+                                              as String? ??
+                                          'Volta em R\$',
+                                      canRedeem: false,
+                                      buttonLabel: lockedReason == 'audience'
+                                          ? 'Indisponível pra você'
+                                          : 'Use no caixa',
+                                      cashbackPercent: (c['cashbackPercent']
+                                              as num?)
+                                          ?.toInt(),
+                                      cashbackBalanceCents: cashbackBalance,
+                                      onRedeem: null,
+                                    ),
+                                  );
+                                }
 
                                 String subtitle;
                                 String buttonLabel;

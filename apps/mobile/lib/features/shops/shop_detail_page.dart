@@ -5,8 +5,11 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/balance_lots_section.dart';
+import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/voucher_sheet.dart';
+import 'shop_balance_page.dart';
 
 class ShopDetailPage extends StatefulWidget {
   const ShopDetailPage({super.key, required this.businessId});
@@ -32,9 +35,12 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
   }
 
   Future<void> _load() async {
+    final keepContent = _data != null;
     setState(() {
-      _loading = true;
-      _error = null;
+      if (!keepContent) {
+        _loading = true;
+        _error = null;
+      }
     });
     try {
       final data = await fetchMyWallet(businessId: widget.businessId);
@@ -44,13 +50,20 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         _data = data;
         _isFavorite = membership?['isFavorite'] == true;
         _loading = false;
+        _error = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
-        _loading = false;
-      });
+      final message = e.toString().replaceFirst('Exception: ', '');
+      if (keepContent) {
+        setState(() => _loading = false);
+        FregoAdaptive.showMessage(context, message);
+      } else {
+        setState(() {
+          _error = message;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -102,14 +115,18 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       final reward = body['rewardTitle'] as String? ??
           campaign['rewardTitle'] as String? ??
           'Prêmio';
-      final shop = (_data?['business'] as Map?)?['name'] as String? ?? 'Loja';
+      final business = _data?['business'] as Map?;
+      final shop = business?['name'] as String? ?? 'Loja';
       if (voucher != null && voucher.isNotEmpty) {
         await showRedeemVoucherSheet(
           context,
           voucherDisplay: voucher,
           rewardTitle: reward,
           shopName: shop,
+          shopLogoUrl: business?['logoUrl'] as String?,
           campaignName: campaign['campaignName'] as String?,
+          expiresAt: body['voucherExpiresAt'] as String?,
+          status: body['voucherStatus'] as String?,
         );
       } else {
         FregoAdaptive.showMessage(
@@ -135,12 +152,27 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         (_data?['wallet'] as Map<String, dynamic>?)?['pools']
             as Map<String, dynamic>? ??
         {'stamps': 0, 'points': 0};
-    final campaigns = (_data?['campaigns'] as List<dynamic>?) ??
-        (_data?['wallet'] as Map<String, dynamic>?)?['campaigns']
-            as List<dynamic>? ??
-        [];
+    final campaigns = sortCampaignsForCustomer(
+      ((_data?['campaigns'] as List<dynamic>?) ??
+              (_data?['wallet'] as Map<String, dynamic>?)?['campaigns']
+                  as List<dynamic>? ??
+              [])
+          .cast<Map<String, dynamic>>(),
+      campaignOf: (c) => c,
+    );
+    final lots = ((_data?['wallet'] as Map<String, dynamic>?)?['lots']
+                as List<dynamic>? ??
+            _data?['lots'] as List<dynamic>? ??
+            [])
+        .cast<Map<String, dynamic>>();
     final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
     final points = (pools['points'] as num?)?.toInt() ?? 0;
+    final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
+    final wallet = _data?['wallet'] as Map<String, dynamic>?;
+    final stampsExpireDays = (wallet?['stampsExpireDays'] as num?)?.toInt() ??
+        (business?['stampsExpireDays'] as num?)?.toInt();
+    final pointsExpireDays = (wallet?['pointsExpireDays'] as num?)?.toInt() ??
+        (business?['pointsExpireDays'] as num?)?.toInt();
     final primary = _parseHex(business?['primaryColor'] as String?) ?? 0xFF3B5BDB;
     final primaryDark =
         _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF2F49C4;
@@ -175,9 +207,9 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                     : FregoColors.ink,
               ),
             ),
-      child: _loading
+      child: _loading && _data == null
           ? const Center(child: FregoProgress())
-          : _error != null
+          : _error != null && _data == null
               ? ListView(
                   padding: const EdgeInsets.all(24),
                   children: [
@@ -194,7 +226,13 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                   business: business,
                   stamps: stamps,
                   points: points,
+                  cashbackCents: cashbackCents,
+                  stampsExpireDays: stampsExpireDays,
+                  pointsExpireDays: pointsExpireDays,
+                  lots: lots,
                   campaigns: campaigns,
+                  badges: (_data?['badges'] as List<dynamic>? ?? [])
+                      .cast<Map<String, dynamic>>(),
                   primary: primary,
                   primaryDark: primaryDark,
                 ),
@@ -206,12 +244,18 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     required Map<String, dynamic>? business,
     required int stamps,
     required int points,
-    required List<dynamic> campaigns,
+    required int cashbackCents,
+    required int? stampsExpireDays,
+    required int? pointsExpireDays,
+    required List<Map<String, dynamic>> lots,
+    required List<Map<String, dynamic>> campaigns,
+    required List<Map<String, dynamic>> badges,
     required int primary,
     required int primaryDark,
   }) {
     final name = business?['name'] as String? ?? 'Sua loja';
     final slogan = business?['slogan'] as String?;
+    final typeLabel = FregoBusinessTypes.labelOf(business?['type'] as String?);
     final logoUrl = business?['logoUrl'] as String?;
     final heroImageUrl = business?['heroImageUrl'] as String?;
     final locations = (business?['locations'] as List<dynamic>? ?? [])
@@ -219,10 +263,18 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     final letter = name.trim().isEmpty ? 'V' : name.trim()[0].toUpperCase();
     final addressLine = _primaryAddressLine(locations);
     final hasHero = heroImageUrl != null && heroImageUrl.isNotEmpty;
+    final earnKinds = earnKindsFromCampaigns(campaigns);
+
+    final expiryLine = _balanceExpiryLine(
+      stampsExpireDays:
+          earnKinds.contains('stamps') || stamps > 0 ? stampsExpireDays : null,
+      pointsExpireDays:
+          earnKinds.contains('points') || points > 0 ? pointsExpireDays : null,
+    );
 
     final brandHeader = Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         borderRadius: hasHero
             ? const BorderRadius.vertical(bottom: Radius.circular(16))
@@ -245,81 +297,140 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 ),
               ],
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ShopLogo(
-            letter: letter,
-            logoUrl: logoUrl,
-            size: 48,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                if (slogan != null && slogan.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    slogan,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.88),
-                      fontSize: 13,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-                if (addressLine != null) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(
-                        FregoIcons.location,
-                        size: 13,
-                        color: Colors.white.withValues(alpha: 0.85),
+          // Identity only — logo + name/slogan side by side
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              _ShopLogo(
+                letter: letter,
+                logoUrl: logoUrl,
+                size: 56,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                        height: 1.15,
                       ),
-                      const SizedBox(width: 4),
-                      Expanded(
-                        child: Text(
-                          addressLine,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 12,
-                            height: 1.3,
-                          ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      typeLabel,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.04,
+                      ),
+                    ),
+                    if (slogan != null && slogan.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        slogan,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          fontSize: 13,
+                          height: 1.3,
                         ),
                       ),
                     ],
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    _MiniStat(label: 'Carimbos', value: '$stamps'),
-                    const SizedBox(width: 8),
-                    _MiniStat(label: 'Pontos', value: '$points'),
                   ],
+                ),
+              ),
+            ],
+          ),
+          // Meta full-width — address, balance, expiry
+          if (addressLine != null) ...[
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    FregoIcons.location,
+                    size: 14,
+                    color: Colors.white.withValues(alpha: 0.85),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    addressLine,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
                 ),
               ],
             ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (earnKinds.contains('stamps') || stamps > 0)
+                _MiniStat(label: 'Carimbos', value: '$stamps'),
+              if (earnKinds.contains('points') || points > 0)
+                _MiniStat(label: 'Pontos', value: '$points'),
+              if (earnKinds.contains('cashback') || cashbackCents > 0)
+                _MiniStat(
+                  label: 'Cashback',
+                  value:
+                      'R\$ ${(cashbackCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+                ),
+            ],
           ),
+          if (expiryLine != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              expiryLine,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 12,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ],
       ),
     );
+
+    final achievementBadge = badges.isEmpty
+        ? null
+        : () {
+            final b = badges.first;
+            final title = b['badgeTitle'] as String? ?? 'Cliente da casa';
+            final message = b['badgeMessage'] as String? ??
+                'A loja reconhece você — condições especiais liberadas.';
+            final unlocked =
+                (b['unlockedCampaignCount'] as num?)?.toInt() ?? 0;
+            return _ShopAchievementBadge(
+              title: title,
+              message: message,
+              unlockedCampaignCount: unlocked,
+              accent: Color(primary),
+            );
+          }();
 
     final bodyChildren = <Widget>[
       // Compact shop header — optional hero + brand + address + balance
@@ -345,8 +456,12 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                   child: Image.network(
                     heroImageUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => ColoredBox(
-                      color: Color(primary),
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const ColoredBox(color: FregoColors.neutral200);
+                    },
+                    errorBuilder: (_, __, ___) => const ColoredBox(
+                      color: FregoColors.neutral200,
                     ),
                   ),
                 ),
@@ -357,6 +472,34 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         )
       else
         brandHeader,
+      if (achievementBadge != null) ...[
+        const SizedBox(height: 12),
+        achievementBadge,
+      ],
+      if (lots.isNotEmpty ||
+          stampsExpireDays != null ||
+          pointsExpireDays != null) ...[
+        const SizedBox(height: 20),
+        BalanceLotsSection(
+          lots: lots,
+          previewLimit: 3,
+          onSeeMore: lots.isEmpty
+              ? null
+              : () {
+                  FregoAdaptive.push(
+                    context,
+                    ShopBalancePage(
+                      businessId: widget.businessId,
+                      shopName: name,
+                      initialLots: lots,
+                    ),
+                  );
+                },
+          emptyLabel: stamps == 0 && points == 0 && cashbackCents == 0
+              ? 'Sem saldo nesta loja no momento.'
+              : 'Seu saldo atual não tem data de validade.',
+        ),
+      ],
       const SizedBox(height: 20),
       const Text(
         'Suas campanhas',
@@ -368,9 +511,11 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         ),
       ),
       const SizedBox(height: 4),
-      const Text(
-        'O mesmo cartão que a loja configura — progresso e prêmio ao vivo.',
-        style: TextStyle(
+      Text(
+        campaigns.any((c) => c['type'] == 'cashback')
+            ? 'Cashback primeiro — o saldo é descontado no caixa. Depois, carimbos e pontos.'
+            : 'O mesmo cartão que a loja configura — progresso e prêmio ao vivo.',
+        style: const TextStyle(
           fontSize: 13,
           height: 1.35,
           color: FregoColors.neutral500,
@@ -391,12 +536,18 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           ),
         )
       else
-        ...campaigns.map((raw) {
-          final c = raw as Map<String, dynamic>;
+        ...campaigns.map((c) {
           final canRedeem = c['canRedeem'] == true;
           final type = c['type'] as String? ?? 'stamps';
           final needed = (c['unitsNeeded'] as num?)?.toInt() ?? 0;
-          final pool = type == 'spend' ? points : stamps;
+          final isCashback = type == 'cashback';
+          final cashbackBalance =
+              (c['cashbackBalanceCents'] as num?)?.toInt() ?? cashbackCents;
+          final pool = type == 'spend'
+              ? points
+              : isCashback
+                  ? cashbackBalance
+                  : stamps;
           final isBirthday = type == 'birthday';
           final lockedReason = c['lockedReason'] as String?;
           final daysUntil = (c['daysUntilBirthday'] as num?)?.toInt();
@@ -404,6 +555,9 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
 
           late final String buttonLabel;
           String? statusHint;
+          final audienceEligible = c['audienceEligible'] == true;
+          final audienceLocked = c['lockedReason'] == 'audience';
+          final unlockMessage = c['audienceUnlockMessage'] as String?;
           if (isBirthday) {
             statusHint = _birthdayStatusLine(
               lockedReason: lockedReason,
@@ -418,7 +572,24 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                     : lockedReason == 'already_redeemed'
                         ? 'Já resgatado este ano'
                         : 'Ainda não liberou';
+          } else if (isCashback) {
+            statusHint = audienceLocked
+                ? 'Promo exclusiva para outro perfil de cliente'
+                : (unlockMessage ?? 'O saldo é descontado no caixa da loja');
+            buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
+          } else if (audienceLocked) {
+            statusHint = 'Promo exclusiva para outro perfil de cliente';
+            buttonLabel = 'Indisponível pra você';
           } else {
+            final expireDays =
+                type == 'spend' ? pointsExpireDays : stampsExpireDays;
+            if (unlockMessage != null && unlockMessage.isNotEmpty) {
+              statusHint = unlockMessage;
+            } else if (expireDays != null) {
+              statusHint = type == 'spend'
+                  ? 'Pontos válidos por $expireDays ${_daysWord(expireDays)}'
+                  : 'Carimbos válidos por $expireDays ${_daysWord(expireDays)}';
+            }
             buttonLabel = canRedeem
                 ? 'Resgatar e mostrar'
                 : needed > pool
@@ -444,8 +615,15 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               buttonLabel: buttonLabel,
               statusHint: statusHint,
               pointsPerReal: business?['pointsPerReal'] as int?,
+              cashbackPercent: (c['cashbackPercent'] as num?)?.toInt(),
+              cashbackBalanceCents: cashbackBalance,
               busy: _redeeming,
-              onRedeem: canRedeem && !_redeeming ? () => _redeem(c) : null,
+              audienceUnlocked: audienceEligible && !audienceLocked,
+                  audienceLabel: unlockMessage ??
+                      (audienceEligible ? 'Conquista liberada pra você' : null),
+              onRedeem: isCashback || !canRedeem || _redeeming
+                  ? null
+                  : () => _redeem(c),
             ),
           );
         }),
@@ -493,6 +671,23 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     }
     return null;
   }
+
+  String? _balanceExpiryLine({
+    required int? stampsExpireDays,
+    required int? pointsExpireDays,
+  }) {
+    final parts = <String>[];
+    if (stampsExpireDays != null) {
+      parts.add('Carimbos: $stampsExpireDays ${_daysWord(stampsExpireDays)}');
+    }
+    if (pointsExpireDays != null) {
+      parts.add('Pontos: $pointsExpireDays ${_daysWord(pointsExpireDays)}');
+    }
+    if (parts.isEmpty) return null;
+    return 'Validade · ${parts.join(' · ')}';
+  }
+
+  String _daysWord(int days) => days == 1 ? 'dia' : 'dias';
 
   String _birthdayStatusLine({
     required String? lockedReason,
@@ -553,6 +748,118 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
   }
 }
 
+class _ShopAchievementBadge extends StatelessWidget {
+  const _ShopAchievementBadge({
+    required this.title,
+    required this.message,
+    required this.unlockedCampaignCount,
+    required this.accent,
+  });
+
+  final String title;
+  final String message;
+  final int unlockedCampaignCount;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FregoColors.hairline),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFFFF6D8),
+                  Color(0xFFF0C43A),
+                ],
+              ),
+              border: Border.all(
+                color: const Color(0xFFFFE08A),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFF0C43A).withValues(alpha: 0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: const Icon(
+              FregoIcons.trophy,
+              size: 26,
+              color: Color(0xFF8A5A00),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CONQUISTA DESBLOQUEADA',
+                  style: TextStyle(
+                    color: accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.7,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: FregoColors.ink,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.2,
+                    height: 1.15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  unlockedCampaignCount > 0
+                      ? '$message · $unlockedCampaignCount promo${unlockedCampaignCount == 1 ? '' : 's'} exclusiva${unlockedCampaignCount == 1 ? '' : 's'}'
+                      : message,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: FregoColors.neutral500,
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ShopLogo extends StatelessWidget {
   const _ShopLogo({
     required this.letter,
@@ -566,12 +873,13 @@ class _ShopLogo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final radius = size * 0.28;
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(radius),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.12),
@@ -585,6 +893,10 @@ class _ShopLogo extends StatelessWidget {
           ? Image.network(
               logoUrl!,
               fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const ColoredBox(color: FregoColors.neutral200);
+              },
               errorBuilder: (_, __, ___) => _fallback(),
             )
           : _fallback(),

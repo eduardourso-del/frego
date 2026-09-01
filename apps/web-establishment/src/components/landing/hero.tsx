@@ -2,10 +2,8 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import {
-  DashboardSketch,
-  MockupPlaceholder,
-} from '@/components/landing/mockup-placeholder';
+import { ProductFrame } from '@/components/landing/product-frame';
+import { FregoWordmark } from '@/components/brand';
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -25,9 +23,8 @@ export function LandingHero() {
         aria-hidden
         style={{
           background: `
-            radial-gradient(ellipse 80% 60% at 70% 20%, rgba(59,91,219,0.16), transparent 55%),
-            radial-gradient(ellipse 50% 40% at 10% 80%, rgba(31,157,107,0.08), transparent 50%),
-            linear-gradient(180deg, #EEF1FD 0%, var(--color-bg) 72%)
+            radial-gradient(ellipse 80% 60% at 70% 20%, color-mix(in srgb, var(--color-primary-500) 14%, transparent), transparent 55%),
+            linear-gradient(180deg, var(--color-primary-50) 0%, var(--color-bg) 72%)
           `,
         }}
       />
@@ -41,22 +38,21 @@ export function LandingHero() {
         }}
       />
 
-      <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-16 pt-10 sm:px-8 sm:pb-20 sm:pt-14 lg:grid-cols-[1.05fr_0.95fr] lg:items-end lg:gap-10 lg:pb-24 lg:pt-16">
+      <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-12 pt-10 sm:px-8 sm:pb-16 sm:pt-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-10 lg:pb-16 lg:pt-14">
         <div>
-          <motion.p
+          <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, ease }}
-            className="text-[48px] font-semibold leading-none tracking-[-0.04em] text-[var(--color-ink)] sm:text-[64px] lg:text-[72px]"
           >
-            Frego
-          </motion.p>
+            <FregoWordmark height={64} />
+          </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, delay: 0.08, ease }}
-            className="mt-5 max-w-xl text-[28px] font-semibold leading-[1.15] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px] lg:text-[40px]"
+            className="mt-5 max-w-xl text-[28px] font-extrabold leading-[1.15] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px] lg:text-[40px]"
           >
             Transforme clientes em fregueses.
           </motion.h1>
@@ -67,8 +63,8 @@ export function LandingHero() {
             transition={{ duration: 0.6, delay: 0.16, ease }}
             className="mt-4 max-w-lg text-[16px] leading-relaxed text-[var(--color-neutral-500)] sm:text-[17px]"
           >
-            O Frego ajuda negócios locais a criar relacionamentos que fazem seus
-            clientes voltar — sem depender de marketplaces, cartões de papel ou
+            O Frego ajuda negócios locais a criar relacionamentos que fazem o
+            cliente voltar — sem marketplace, sem cartão de papel e sem
             desconto o tempo todo.
           </motion.p>
 
@@ -80,44 +76,56 @@ export function LandingHero() {
           >
             <Link
               href="/register"
-              className="inline-flex min-h-12 items-center justify-center rounded-[14px] bg-[var(--color-primary-500)] px-6 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] transition-[transform,background] hover:bg-[var(--color-primary-600)] active:scale-[0.98]"
+              className="inline-flex min-h-11 items-center justify-center rounded-[8px] bg-[var(--color-primary-500)] px-5 text-[14px] font-extrabold text-[var(--color-on-primary)] transition-[transform,background] hover:bg-[var(--color-primary-600)] active:scale-[0.98]"
             >
               Quero criar fregueses
             </Link>
             <a
               href="#como-funciona"
-              className="inline-flex min-h-12 items-center justify-center rounded-[14px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-6 text-[15px] font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-neutral-100)]"
+              className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[var(--color-control)] bg-transparent px-5 text-[14px] font-extrabold text-[var(--color-primary-500)] transition-colors hover:bg-[var(--color-primary-50)]"
             >
               Ver como funciona
             </a>
           </motion.div>
 
-          <motion.p
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.4 }}
-            className="mt-6 text-[13px] text-[var(--color-neutral-400)]"
+            className="mt-6"
           >
-            Para restaurantes, cafés, pizzarias e lojas locais ·{' '}
-            <span className="font-semibold text-[var(--color-neutral-700)]">
-              [DADO A CONFIRMAR]
-            </span>{' '}
-            negócios já usam
-          </motion.p>
+            <p className="text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+              Feito para o negócio local que vive de quem volta.
+            </p>
+            <ul className="mt-2.5 flex flex-wrap gap-1.5">
+              {['Padaria', 'Salão', 'Farmácia', 'Pet', 'Restaurante'].map(
+                (label) => (
+                  <li
+                    key={label}
+                    className="rounded-full border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-primary-600)]"
+                  >
+                    {label}
+                  </li>
+                ),
+              )}
+            </ul>
+          </motion.div>
         </div>
 
         <motion.div
           initial={{ opacity: 0, y: 36, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.85, delay: 0.18, ease }}
-          className="lg:-mb-4"
         >
-          <MockupPlaceholder
-            label="Painel · Frego"
-            caption="[MOCKUP] Dashboard do estabelecimento — substitua por captura real"
-          >
-            <DashboardSketch />
-          </MockupPlaceholder>
+          <ProductFrame
+            src="/landing/painel-hoje.png"
+            alt="Painel Frego com ação recomendada, campanhas e indicadores do dia"
+            label="frego.app.br/dashboard"
+            caption="Painel do estabelecimento — quem voltou, quem sumiu e o que fazer agora"
+            width={942}
+            height={1024}
+            priority
+          />
         </motion.div>
       </div>
     </section>

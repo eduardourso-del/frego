@@ -4,10 +4,11 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { FregoWordmark } from '@/components/brand';
 
 const nav = [
   { href: '/', label: 'Visão geral' },
-  { href: '/businesses', label: 'Negócios' },
+  { href: '/businesses', label: 'Estabelecimentos' },
 ];
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -35,16 +36,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-screen">
       <aside
         className="hidden w-[236px] shrink-0 flex-col px-4 py-6 md:flex"
-        style={{ background: '#0C0D10', color: '#E8EAED' }}
+        style={{
+          background: 'var(--color-primary-800)',
+          color: 'var(--color-card)',
+        }}
       >
-        <div className="mb-8 flex items-center gap-2 px-2">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-[10px] text-sm font-semibold text-white"
-            style={{ background: 'var(--color-primary-500)' }}
-          >
-            V
-          </div>
-          <span className="text-[15px] font-semibold">Frego Admin</span>
+        <div className="mb-8 px-2">
+          <FregoWordmark height={22} negative />
+          <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-200)]">
+            Admin
+          </p>
         </div>
         <nav className="flex flex-col gap-1 text-[15px]">
           {nav.map((item) => {
@@ -56,8 +57,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`rounded-[10px] px-3 py-2 ${
-                  active ? 'bg-[#1D2026] text-white' : 'text-[#9AA0AA]'
+                className={`rounded-[8px] px-3 py-2 ${
+                  active
+                    ? 'bg-[color-mix(in_srgb,white_10%,transparent)] text-white'
+                    : 'text-[color-mix(in_srgb,white_55%,transparent)] hover:text-white'
                 }`}
               >
                 {item.label}
@@ -65,7 +68,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-auto px-2 text-[12px] text-[#9AA0AA]">
+        <div className="mt-auto px-2 text-[12px] text-[color-mix(in_srgb,white_55%,transparent)]">
           <div className="truncate">{user.email}</div>
           <button
             type="button"

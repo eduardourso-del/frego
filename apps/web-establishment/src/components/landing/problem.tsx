@@ -9,11 +9,11 @@ const pains = [
   },
   {
     title: 'Perdê-lo custa ainda mais',
-    body: 'Sem um motivo claro para voltar e sem conversa depois da compra, o cliente ocasional some. Na próxima vez, escolhe o concorrente.',
+    body: 'Sem um motivo claro para voltar e sem conversa depois da compra, o cliente ocasional some. Na próxima vez, ele escolhe o concorrente.',
   },
   {
     title: 'Marketplace não cria freguês',
-    body: 'O app de delivery empresta a demanda e fica com a taxa — e com o relacionamento. Quem deveria voltar pra sua loja, volta pro feed do outro.',
+    body: 'O app de delivery empresta a demanda e fica com a taxa — e com o relacionamento. Quem deveria voltar para a sua loja volta para o feed do outro.',
   },
 ];
 
@@ -21,16 +21,16 @@ export function LandingProblem() {
   return (
     <section
       id="problema"
-      className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-28"
+      className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20"
       aria-labelledby="problema-heading"
     >
       <Reveal>
-        <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-[var(--color-primary-500)]">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
           O problema
         </p>
         <h2
           id="problema-heading"
-          className="mt-3 max-w-2xl text-[28px] font-semibold tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
+          className="mt-4 max-w-2xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
         >
           Cada cliente conquistado merece uma segunda visita.
         </h2>
@@ -41,7 +41,7 @@ export function LandingProblem() {
         </p>
       </Reveal>
 
-      <RevealGroup className="mt-14 grid gap-10 sm:grid-cols-3 sm:gap-8">
+      <RevealGroup className="mt-10 grid gap-8 sm:grid-cols-3 sm:gap-8">
         {pains.map((p) => (
           <RevealItem key={p.title}>
             <h3 className="text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">

@@ -25,7 +25,12 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.rewardImageUrl,
     this.statusHint,
     this.pointsPerReal,
+    this.cashbackPercent,
+    this.cashbackBalanceCents,
     this.busy = false,
+    this.audienceUnlocked = false,
+    this.audienceLabel,
+    this.onOpenShop,
   });
 
   final String businessName;
@@ -33,7 +38,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
   final int primary;
   final int primaryDark;
   final String campaignName;
-  final String campaignType; // stamps | spend | birthday
+  final String campaignType; // stamps | spend | birthday | cashback
   final int unitsNeeded;
   final int currentUnits;
   final String rewardTitle;
@@ -43,11 +48,19 @@ class LoyaltyCampaignCard extends StatelessWidget {
   final String buttonLabel;
   final String? statusHint;
   final int? pointsPerReal;
+  final int? cashbackPercent;
+  final int? cashbackBalanceCents;
   final bool busy;
   final VoidCallback? onRedeem;
+  /// Exclusive audience unlock chip (matched segment promo).
+  final bool audienceUnlocked;
+  final String? audienceLabel;
+  /// Optional “Ver loja” link next to the store name (e.g. Prêmios list).
+  final VoidCallback? onOpenShop;
 
   bool get _isBirthday => campaignType == 'birthday';
   bool get _isSpend => campaignType == 'spend' || campaignType == 'points';
+  bool get _isCashback => campaignType == 'cashback';
 
   @override
   Widget build(BuildContext context) {
@@ -63,16 +76,17 @@ class LoyaltyCampaignCard extends StatelessWidget {
     final accent = Color(primary);
     final hasImage =
         rewardImageUrl != null && rewardImageUrl!.trim().isNotEmpty;
-    final stampSlots = needed.clamp(2, 8);
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _isCashback ? FregoColors.cashbackBg : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: FregoColors.hairline),
+        border: Border.all(
+          color: _isCashback ? FregoColors.cashbackRing : FregoColors.hairline,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: Colors.black.withValues(alpha: _isCashback ? 0.04 : 0.06),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -83,8 +97,11 @@ class LoyaltyCampaignCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Thin brand accent — identity without painting the whole card
-            Container(height: 3, color: accent),
+            // Thin brand accent — cashback uses its own color
+            Container(
+              height: 3,
+              color: _isCashback ? FregoColors.cashback : accent,
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
               child: Column(
@@ -99,20 +116,54 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          businessName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: FregoColors.neutral500,
-                          ),
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                businessName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: FregoColors.neutral500,
+                                ),
+                              ),
+                            ),
+                            if (onOpenShop != null) ...[
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: onOpenShop,
+                                behavior: HitTestBehavior.opaque,
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 2),
+                                  child: Text(
+                                    'Ver loja',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: FregoColors.primary500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
+                      const SizedBox(width: 8),
                       _TypeChip(type: campaignType, accent: accent),
                     ],
                   ),
+                  if (audienceUnlocked) ...[
+                    const SizedBox(height: 8),
+                    _AudienceUnlockChip(
+                      label: audienceLabel?.trim().isNotEmpty == true
+                          ? audienceLabel!.trim()
+                          : 'Conquista liberada pra você',
+                      accent: accent,
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,6 +195,11 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 showReward: !hasImage,
                                 accent: accent,
                               )
+                            else if (_isCashback)
+                              _CashbackBody(
+                                balanceCents: cashbackBalanceCents ?? 0,
+                                percent: cashbackPercent ?? 0,
+                              )
                             else if (_isSpend)
                               _PointsBody(
                                 current: inCycle,
@@ -158,7 +214,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                             else
                               _StampsBody(
                                 filled: inCycle,
-                                needed: stampSlots,
+                                needed: needed,
                                 remaining: remaining,
                                 reward: reward,
                                 accent: accent,
@@ -172,7 +228,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (!_isBirthday && !hasImage) ...[
+                  if (!_isBirthday && !_isCashback && !hasImage) ...[
                     const SizedBox(height: 8),
                     Text(
                       reward,
@@ -186,12 +242,35 @@ class LoyaltyCampaignCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 12),
-                  _CardCta(
-                    label: buttonLabel,
-                    enabled: canRedeem && !busy && onRedeem != null,
-                    onPressed: onRedeem,
-                    accent: accent,
-                  ),
+                  if (_isCashback)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 10,
+                        horizontal: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: FregoColors.cashbackBg,
+                        borderRadius: BorderRadius.circular(11),
+                        border: Border.all(color: FregoColors.cashbackRing),
+                      ),
+                      child: const Text(
+                        'Peça no caixa para usar este saldo',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: FregoColors.cashback,
+                        ),
+                      ),
+                    )
+                  else
+                    _CardCta(
+                      label: buttonLabel,
+                      enabled: canRedeem && !busy && onRedeem != null,
+                      onPressed: onRedeem,
+                      accent: accent,
+                    ),
                 ],
               ),
             ),
@@ -302,26 +381,35 @@ class _TypeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSpend = type == 'spend' || type == 'points';
     final isBirthday = type == 'birthday';
+    final isCashback = type == 'cashback';
     final label = isBirthday
         ? 'Aniversário'
         : isSpend
             ? 'Pontos'
-            : 'Carimbos';
+            : isCashback
+                ? 'Cashback'
+                : 'Carimbos';
     final icon = isBirthday
         ? FregoIcons.birthday
         : isSpend
             ? FregoIcons.points
-            : FregoIcons.stamp;
+            : isCashback
+                ? FregoIcons.cashback
+                : FregoIcons.stamp;
     final bg = isSpend
         ? const Color(0xFFFFF8E8)
         : isBirthday
             ? const Color(0xFFFDF2F8)
-            : accent.withValues(alpha: 0.1);
+            : isCashback
+                ? FregoColors.cashbackBg
+                : accent.withValues(alpha: 0.1);
     final fg = isSpend
         ? const Color(0xFF92400E)
         : isBirthday
             ? const Color(0xFF9D174D)
-            : accent;
+            : isCashback
+                ? FregoColors.cashback
+                : accent;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -344,6 +432,107 @@ class _TypeChip extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AudienceUnlockChip extends StatelessWidget {
+  const _AudienceUnlockChip({required this.label, required this.accent});
+
+  final String label;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(FregoIcons.pointsFilled, size: 14, color: accent),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CashbackBody extends StatelessWidget {
+  const _CashbackBody({
+    required this.balanceCents,
+    required this.percent,
+  });
+
+  final int balanceCents;
+  final int percent;
+
+  String get _balance {
+    final v = balanceCents / 100;
+    return 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (percent > 0) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: FregoColors.cashbackRing),
+            ),
+            child: Text(
+              '$percent% de volta',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: FregoColors.cashback,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Text(
+          _balance,
+          style: const TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.6,
+            height: 1.1,
+            color: FregoColors.cashback,
+          ),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'Saldo para usar no caixa',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: FregoColors.neutral500,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -373,26 +562,32 @@ class _StampsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showFilled = canRedeem ? needed : filled.clamp(0, needed - 1);
+    // Progress circles match real stamp goal. Last slot is the gift and only
+    // fills when the reward is ready.
+    final stampCount = needed.clamp(1, 24);
+    final showFilled = canRedeem
+        ? stampCount
+        : filled.clamp(0, stampCount - 1);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
           spacing: 5,
           runSpacing: 5,
-          children: List.generate(needed, (i) {
-            final isGift = i == needed - 1;
-            final isFilled = i < showFilled || (canRedeem && isGift);
+          children: List.generate(stampCount, (i) {
+            final isGift = i == stampCount - 1;
+            final isFilled = canRedeem
+                ? true
+                : i < showFilled;
             return Container(
               width: 24,
               height: 24,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: isFilled || isGift
-                    ? accent
-                    : Colors.transparent,
-                border: isFilled || isGift
+                color: isFilled ? accent : Colors.transparent,
+                border: isFilled
                     ? null
                     : Border.all(
                         color: FregoColors.neutral200,
@@ -400,10 +595,10 @@ class _StampsBody extends StatelessWidget {
                       ),
               ),
               child: isGift
-                  ? const Icon(
+                  ? Icon(
                       FregoIcons.gift,
                       size: 12,
-                      color: Colors.white,
+                      color: isFilled ? Colors.white : FregoColors.neutral400,
                     )
                   : isFilled
                       ? const Icon(
@@ -510,7 +705,7 @@ class _PointsBody extends StatelessWidget {
         Text(
           canRedeem
               ? (showRewardInline ? 'Pronto · $reward' : 'Pronto para resgatar')
-              : '${pointsPerReal != null ? '$pointsPerReal pt/R\$1 · ' : ''}'
+              : '${pointsPerReal != null ? 'R\$ $pointsPerReal → 1 pt · ' : ''}'
                   'faltam $remaining',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

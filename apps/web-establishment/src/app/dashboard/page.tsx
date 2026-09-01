@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
+import { AudiencePresetCards } from '@/components/audience-preset-cards';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
+import {
+  PeriodPicker,
+  periodSearchParams,
+  type PeriodValue,
+} from '@/components/period-picker';
 
-type RangeKey = 'today' | '7d' | '30d';
+type RangeKey = 'today' | '7d' | '30d' | 'custom';
 
 type Kpi = { value: number; deltaPct: number | null };
 
@@ -48,7 +54,36 @@ type DashboardData = {
     redeemed: number;
     inactive: number;
   };
-  insight?: { title: string; body: string };
+  insight?: { title: string; body: string; href?: string; cta?: string };
+  audienceInsight?: {
+    key: string;
+    name: string;
+    memberCount: number;
+    href: string;
+  };
+  audiencePresets?: Array<{
+    key: string;
+    name: string;
+    description: string;
+    rules: Record<string, unknown>;
+    memberCount: number;
+  }>;
+  topCampaign?: {
+    id: string;
+    name: string;
+    type?: string;
+    redeems: number;
+    fulfillPct: number;
+    rewardTitle: string | null;
+    cashbackPercent?: number | null;
+  } | null;
+  weakCampaign?: {
+    id: string;
+    name: string;
+    type?: string;
+    redeems: number;
+    fulfillPct: number;
+  } | null;
   topCustomers?: TopCustomer[];
   weekSeries: Array<{
     date: string;
@@ -69,6 +104,8 @@ type DashboardData = {
     name: string;
     rewardTitle: string | null;
     stampsNeeded: number | null;
+    redeems?: number;
+    fulfillPct?: number;
   } | null;
   activeCampaigns?: Array<{
     id: string;
@@ -76,17 +113,20 @@ type DashboardData = {
     type: string;
     rewardTitle: string | null;
     stampsNeeded: number | null;
+    cashbackPercent?: number | null;
+    redeems?: number;
+    fulfillPct?: number;
   }>;
 };
 
 const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'today', label: 'Hoje' },
-  { key: '7d', label: '7d' },
-  { key: '30d', label: '30d' },
+  { key: '7d', label: '7 dias' },
+  { key: '30d', label: '30 dias' },
 ];
 
 const TIER_LABEL: Record<TopCustomer['tier'], string> = {
-  vip: 'Valioso',
+  vip: 'VIP',
   regular: 'Recorrente',
   new: 'Novo',
 };
@@ -102,11 +142,11 @@ function formatRelative(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'agora';
-  if (mins < 60) return `${mins} min atrás`;
+  if (mins < 60) return mins === 1 ? 'há 1 min' : `há ${mins} min`;
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} h atrás`;
+  if (hours < 24) return hours === 1 ? 'há 1 h' : `há ${hours} h`;
   const days = Math.floor(hours / 24);
-  return `${days} d atrás`;
+  return days === 1 ? 'há 1 dia' : `há ${days} dias`;
 }
 
 function formatMoney(cents: number) {
@@ -120,7 +160,7 @@ function Delta({ value }: { value: number | null }) {
   if (value === null) {
     return (
       <span className="text-[12px] font-semibold text-[var(--color-neutral-400)]">
-        — novo
+        — sem comparação
       </span>
     );
   }
@@ -185,7 +225,7 @@ function WeekChart({ series }: { series: DashboardData['weekSeries'] }) {
 
   return (
     <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-[15px] font-semibold text-[var(--color-ink)]">
           Visitas nesta semana
         </div>
@@ -206,11 +246,11 @@ function WeekChart({ series }: { series: DashboardData['weekSeries'] }) {
           </span>
         </div>
       </div>
-      <div className="flex h-[170px] items-end gap-3.5">
+      <div className="flex h-[132px] items-end gap-3">
         {series.map((d) => {
           const total = d.stamps + d.redeems;
-          const stampH = Math.round((d.stamps / max) * 140);
-          const redeemH = Math.round((d.redeems / max) * 140);
+              const stampH = Math.round((d.stamps / max) * 104);
+              const redeemH = Math.round((d.redeems / max) * 104);
           return (
             <div
               key={d.date}
@@ -295,7 +335,11 @@ export default function DashboardPage() {
     business,
     loading: businessLoading,
   } = useBusiness();
-  const [range, setRange] = useState<RangeKey>('today');
+  const kinds = business?.activeEarnKinds;
+  const [period, setPeriod] = useState<PeriodValue>({
+    mode: 'preset',
+    key: 'today',
+  });
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -313,19 +357,22 @@ export default function DashboardPage() {
     setError(null);
     try {
       const headers = await authHeaders();
-      const res = await fetch(`${API_URL}/dashboard?range=${range}`, {
-        headers,
-      });
+      const res = await fetch(
+        `${API_URL}/dashboard?${periodSearchParams(period)}`,
+        {
+          headers,
+        },
+      );
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao carregar painel');
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar o painel.');
       setData(json as DashboardData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao carregar');
+      setError(err instanceof Error ? err.message : 'Não foi possível carregar.');
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, range, businessId]);
+  }, [authHeaders, period, businessId]);
 
   useEffect(() => {
     if (authLoading || businessLoading) return;
@@ -342,28 +389,12 @@ export default function DashboardPage() {
   }, [authLoading, businessLoading, businessId, business?.status, load]);
 
   const topbar = (
-    <header className="flex h-[60px] shrink-0 items-center gap-4 border-b border-[var(--color-hairline)] bg-[var(--color-card)] px-5 md:px-7">
+    <header className="flex min-h-[60px] shrink-0 flex-wrap items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-card)] px-5 py-2 md:px-7">
       <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">
         {greeting()}, {firstName}
       </h1>
-      <div className="ml-auto flex gap-1 rounded-[12px] bg-[var(--color-neutral-100)] p-1" role="group" aria-label="Período">
-        {RANGES.map((r) => {
-          const active = range === r.key;
-          return (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRange(r.key)}
-              className={`min-h-9 rounded-[10px] px-3.5 text-[13px] font-semibold transition-all ${
-                active
-                  ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
-                  : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
-              }`}
-            >
-              {r.label}
-            </button>
-          );
-        })}
+      <div className="ml-auto">
+        <PeriodPicker presets={RANGES} value={period} onChange={setPeriod} />
       </div>
     </header>
   );
@@ -399,29 +430,7 @@ export default function DashboardPage() {
             {greeting()}, {firstName}
           </h1>
           <div className="mt-3">
-            <div
-              className="flex gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1"
-              role="group"
-              aria-label="Período"
-            >
-              {RANGES.map((r) => {
-                const active = range === r.key;
-                return (
-                  <button
-                    key={r.key}
-                    type="button"
-                    onClick={() => setRange(r.key)}
-                    className={`min-h-9 shrink-0 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
-                      active
-                        ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
-                        : 'text-[var(--color-neutral-500)]'
-                    }`}
-                  >
-                    {r.label}
-                  </button>
-                );
-              })}
-            </div>
+            <PeriodPicker presets={RANGES} value={period} onChange={setPeriod} />
           </div>
         </div>        {error && (
           <div
@@ -434,7 +443,7 @@ export default function DashboardPage() {
               className="font-semibold underline"
               onClick={() => void load()}
             >
-              Tentar de novo
+              Tentar novamente
             </button>
           </div>
         )}
@@ -450,25 +459,103 @@ export default function DashboardPage() {
           </div>
         ) : data ? (
           <>
-            {data.insight && (
-              <div className="mb-[18px] overflow-hidden rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+            {(data.insight ||
+              (data.audiencePresets && data.audiencePresets.length > 0)) && (
+              <div className="mb-[18px] rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
                 <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                  Por que campanhas importam
+                  Ação recomendada
                 </p>
-                <p className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-ink)] md:text-[20px]">
-                  {data.insight.title}
-                </p>
-                <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
-                  {data.insight.body}
-                </p>
-                {activeList.length === 0 && (
-                  <Link
-                    href="/campaigns"
-                    className="mt-3 inline-flex min-h-10 items-center text-[14px] font-semibold text-[var(--color-primary-500)]"
+                {data.insight && (
+                  <>
+                    <p className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-ink)] md:text-[20px]">
+                      {data.insight.title}
+                    </p>
+                    <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
+                      {data.insight.body}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <Link
+                        href={data.insight.href ?? '/reports#audiencias'}
+                        className="inline-flex min-h-10 items-center text-[14px] font-semibold text-[var(--color-primary-500)]"
+                      >
+                        {data.insight.cta ?? 'Ver detalhes'} →
+                      </Link>
+                    </div>
+                  </>
+                )}
+                {data.audiencePresets && data.audiencePresets.length > 0 && (
+                  <div
+                    className={
+                      data.insight
+                        ? 'mt-5 border-t border-[var(--color-hairline)] pt-4'
+                        : 'mt-4'
+                    }
                   >
-                    Criar campanha →
+                    <div className="mb-3 flex items-baseline justify-between gap-3">
+                      <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                        Oportunidades de campanha
+                      </p>
+                      <Link
+                        href="/reports#audiencias"
+                        className="shrink-0 text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
+                      >
+                        Ver todas
+                      </Link>
+                    </div>
+                    <AudiencePresetCards
+                      presets={data.audiencePresets}
+                      compact
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(data.topCampaign || data.weakCampaign) && (
+              <div className="mb-[18px] grid gap-3 sm:grid-cols-2">
+                {data.topCampaign && (
+                  <Link
+                    href={`/campaigns?highlight=${data.topCampaign.id}`}
+                    className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)] transition-colors hover:border-[var(--color-primary-200)]"
+                  >
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                      Campanha em destaque
+                    </p>
+                    <p className="mt-1 text-[15px] font-semibold text-[var(--color-ink)]">
+                      {data.topCampaign.name}
+                    </p>
+                    <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                      {data.topCampaign.type === 'cashback'
+                        ? `${data.topCampaign.redeems} uso${data.topCampaign.redeems === 1 ? '' : 's'} no caixa${
+                            data.topCampaign.cashbackPercent
+                              ? ` · ${data.topCampaign.cashbackPercent}%`
+                              : ''
+                          }`
+                        : `${data.topCampaign.redeems} resgates · ${data.topCampaign.fulfillPct}% concluíram`}
+                      {data.topCampaign.rewardTitle
+                        ? ` · ${data.topCampaign.rewardTitle}`
+                        : ''}
+                    </p>
                   </Link>
                 )}
+                {data.weakCampaign &&
+                  data.weakCampaign.id !== data.topCampaign?.id && (
+                    <Link
+                      href={`/campaigns?highlight=${data.weakCampaign.id}`}
+                      className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)] transition-colors hover:border-[var(--color-primary-200)]"
+                    >
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                        Precisa de atenção
+                      </p>
+                      <p className="mt-1 text-[15px] font-semibold text-[var(--color-ink)]">
+                        {data.weakCampaign.name}
+                      </p>
+                      <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                        {data.weakCampaign.redeems} resgates ·{' '}
+                        {data.weakCampaign.fulfillPct}% concluíram
+                      </p>
+                    </Link>
+                  )}
               </div>
             )}
 
@@ -477,14 +564,14 @@ export default function DashboardPage() {
                 label="Clientes ativos"
                 value={data.kpis.customers.value}
                 deltaPct={data.kpis.customers.deltaPct}
-                hint="com visita no período"
+                hint="com visita neste período"
               />
               <KpiCard
                 label="Taxa de retorno"
                 value={data.kpis.repeatRate.value}
                 deltaPct={data.kpis.repeatRate.deltaPct}
                 suffix="%"
-                hint="vieram 2+ vezes"
+                hint="vieram duas vezes ou mais"
               />
               <KpiCard
                 label="Visitas / cliente"
@@ -502,39 +589,47 @@ export default function DashboardPage() {
 
             <div className="mb-[18px] grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <KpiCard
-                label="Novos no período"
+                label="Novos clientes"
                 value={data.kpis.newCustomers?.value ?? 0}
                 deltaPct={data.kpis.newCustomers?.deltaPct ?? null}
               />
-              <KpiCard
-                label="Carimbos"
-                value={data.kpis.stamps.value}
-                deltaPct={data.kpis.stamps.deltaPct}
-              />
-              <KpiCard
-                label="Pontos acumulados"
-                value={data.kpis.points?.value ?? 0}
-                deltaPct={data.kpis.points?.deltaPct ?? null}
-              />
-              <KpiCard
-                label="Gasto registrado"
-                value={formatMoney(data.kpis.revenueCents?.value ?? 0)}
-                deltaPct={data.kpis.revenueCents?.deltaPct ?? null}
-                hint="via pontos no balcão"
-              />
+              {(kinds == null || kinds.includes('stamps')) && (
+                <KpiCard
+                  label="Carimbos"
+                  value={data.kpis.stamps.value}
+                  deltaPct={data.kpis.stamps.deltaPct}
+                />
+              )}
+              {(kinds == null || kinds.includes('points')) && (
+                <KpiCard
+                  label="Pontos acumulados"
+                  value={data.kpis.points?.value ?? 0}
+                  deltaPct={data.kpis.points?.deltaPct ?? null}
+                />
+              )}
+              {(kinds == null || kinds.includes('points')) && (
+                <KpiCard
+                  label="Gasto registrado"
+                  value={formatMoney(data.kpis.revenueCents?.value ?? 0)}
+                  deltaPct={data.kpis.revenueCents?.deltaPct ?? null}
+                  hint="via pontos no balcão"
+                />
+              )}
             </div>
 
-            <div className="mb-[18px] grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+            <div className="mb-[18px] grid items-start gap-4 lg:grid-cols-2">
+              <WeekChart series={data.weekSeries} />
+
               <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
                 <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
                   Funil de fidelidade
                 </div>
-                <p className="mb-5 text-[13px] text-[var(--color-neutral-500)]">
-                  Do cadastro ao retorno e ao resgate — o prêmio da campanha é o
-                  incentivo da próxima visita.
+                <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
+                  Do cadastro ao retorno e ao resgate. O prêmio da campanha é o
+                  motivo da próxima visita.
                 </p>
                 {funnel ? (
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3">
                     <FunnelBar
                       label="Base de clientes"
                       value={funnel.base}
@@ -559,7 +654,7 @@ export default function DashboardPage() {
                       <p className="text-[12px] text-[var(--color-neutral-400)]">
                         {funnel.inactive} cliente
                         {funnel.inactive > 1 ? 's' : ''} sem visita neste
-                        período — oportunidade de reativar com campanha.
+                        período — dá para reativar com uma campanha.
                       </p>
                     )}
                   </div>
@@ -569,7 +664,9 @@ export default function DashboardPage() {
                   </p>
                 )}
               </div>
+            </div>
 
+            <div className="mb-[18px] grid items-start gap-4 lg:grid-cols-2">
               <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
                 <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
                   Clientes mais valiosos
@@ -585,7 +682,7 @@ export default function DashboardPage() {
                       href="/counter"
                       className="font-semibold text-[var(--color-primary-500)]"
                     >
-                      Ir ao balcão
+                      Ir para o balcão
                     </Link>
                   </p>
                 ) : (
@@ -625,7 +722,7 @@ export default function DashboardPage() {
                           <div className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
                             {c.visits} visita{c.visits !== 1 ? 's' : ''}
                             {c.stamps > 0 ? ` · ${c.stamps} carimbos` : ''}
-                            {c.points > 0 ? ` · ${c.points} pts` : ''}
+                            {c.points > 0 ? ` · ${c.points} pontos` : ''}
                             {c.spendCents > 0
                               ? ` · ${formatMoney(c.spendCents)}`
                               : ''}
@@ -633,6 +730,15 @@ export default function DashboardPage() {
                               ? ` · ${c.redeems} resgate${c.redeems > 1 ? 's' : ''}`
                               : ''}
                           </div>
+                          {c.spendCents >= 20000 && (
+                            <Link
+                              href={`/customers?spendCentsMin=${Math.floor(c.spendCents / 10000) * 10000}&windowDays=90`}
+                              className="mt-1 inline-block text-[11px] font-semibold text-[var(--color-primary-500)]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Ver clientes parecidos →
+                            </Link>
+                          )}
                         </div>
                         <span className="shrink-0 text-[11px] text-[var(--color-neutral-400)]">
                           {formatRelative(c.lastVisitAt)}
@@ -642,115 +748,133 @@ export default function DashboardPage() {
                   </ul>
                 )}
               </div>
-            </div>
 
-            <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-              <WeekChart series={data.weekSeries} />
-
-              <div className="flex flex-col gap-4">
-                <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
-                  <div className="mb-3.5 text-[14px] font-semibold text-[var(--color-ink)]">
+              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
+                <div className="mb-1 flex items-baseline justify-between gap-2">
+                  <div className="text-[15px] font-semibold text-[var(--color-ink)]">
                     Ao vivo
                   </div>
-                  {data.live.length === 0 ? (
-                    <p className="text-[13px] text-[var(--color-neutral-500)]">
-                      Nenhuma atividade ainda.{' '}
-                      <Link
-                        href="/counter"
-                        className="font-semibold text-[var(--color-primary-500)]"
-                      >
-                        Ir ao balcão
-                      </Link>
-                    </p>
-                  ) : (
-                    <ul className="flex flex-col gap-3">
-                      {data.live.map((item) => (
-                        <li key={item.id} className="flex items-center gap-2.5">
-                          <span
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[var(--color-primary-500)]"
-                            style={{ background: 'var(--color-primary-50)' }}
-                            aria-hidden
-                          >
-                            {item.initials}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[13px] font-medium text-[var(--color-ink)]">
-                              {item.text}
-                            </div>
-                            <div className="text-[11px] text-[var(--color-neutral-400)]">
-                              {formatRelative(item.createdAt)} ·{' '}
-                              {item.locationName}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <Link
+                    href="/customers"
+                    className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
+                  >
+                    Ver clientes
+                  </Link>
                 </div>
-
-                {activePreview.length === 0 ? (
-                  <div className="rounded-[14px] border border-dashed border-[var(--color-hairline)] p-[18px] text-[13px] text-[var(--color-neutral-500)]">
-                    Nenhuma campanha ativa.{' '}
+                <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
+                  Últimas movimentações no balcão.
+                </p>
+                {data.live.length === 0 ? (
+                  <p className="text-[13px] text-[var(--color-neutral-500)]">
+                    Nenhuma atividade ainda.{' '}
                     <Link
-                      href="/campaigns"
+                      href="/counter"
                       className="font-semibold text-[var(--color-primary-500)]"
                     >
-                      Criar campanha
+                      Ir para o balcão
                     </Link>
-                  </div>
+                  </p>
                 ) : (
-                  <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
-                    <div className="mb-3.5 flex items-center justify-between gap-2">
-                      <div className="text-[14px] font-semibold text-[var(--color-ink)]">
-                        Campanhas ativas
-                        <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
-                          ({activeList.length})
+                  <ul className="flex flex-col gap-3">
+                    {data.live.map((item) => (
+                      <li key={item.id} className="flex items-center gap-2.5">
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[var(--color-primary-500)]"
+                          style={{ background: 'var(--color-primary-50)' }}
+                          aria-hidden
+                        >
+                          {item.initials}
                         </span>
-                      </div>
-                      <Link
-                        href="/campaigns?status=active"
-                        className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
-                      >
-                        Ver mais
-                      </Link>
-                    </div>
-                    <ul className="flex flex-col gap-2.5">
-                      {activePreview.map((c) => (
-                        <li
-                          key={c.id}
-                          className="rounded-[12px] px-3.5 py-3 text-white"
-                          style={{ background: 'var(--color-ink)' }}
-                        >
-                          <div className="text-[14px] font-semibold">
-                            {c.name}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[13px] font-medium text-[var(--color-ink)]">
+                            {item.text}
                           </div>
-                          <div className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-neutral-400)]">
-                            {c.type === 'spend' ? 'Pontos' : 'Carimbos'}
-                            {c.stampsNeeded
-                              ? c.type === 'spend'
-                                ? ` · meta ${c.stampsNeeded} pts`
-                                : ` · ${c.stampsNeeded} carimbos`
-                              : ''}
-                            {c.rewardTitle ? ` → ${c.rewardTitle}` : ''}
+                          <div className="text-[11px] text-[var(--color-neutral-400)]">
+                            {formatRelative(item.createdAt)} ·{' '}
+                            {item.locationName}
                           </div>
-                        </li>
-                      ))}
-                    </ul>
-                    {activeExtra > 0 && (
-                      <p className="mt-3 text-[12px] text-[var(--color-neutral-500)]">
-                        +{activeExtra} ativa{activeExtra > 1 ? 's' : ''} —{' '}
-                        <Link
-                          href="/campaigns?status=active"
-                          className="font-semibold text-[var(--color-primary-500)]"
-                        >
-                          ver todas
-                        </Link>
-                      </p>
-                    )}
-                  </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             </div>
+
+            {activePreview.length === 0 ? (
+              <div className="rounded-[14px] border border-dashed border-[var(--color-hairline)] p-[18px] text-[13px] text-[var(--color-neutral-500)]">
+                Nenhuma campanha ativa.{' '}
+                <Link
+                  href="/campaigns"
+                  className="font-semibold text-[var(--color-primary-500)]"
+                >
+                  Criar campanha
+                </Link>
+              </div>
+            ) : (
+              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
+                <div className="mb-3.5 flex items-center justify-between gap-2">
+                  <div className="text-[15px] font-semibold text-[var(--color-ink)]">
+                    Campanhas ativas
+                    <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
+                      ({activeList.length})
+                    </span>
+                  </div>
+                  <Link
+                    href="/campaigns?status=active"
+                    className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
+                  >
+                    Ver mais
+                  </Link>
+                </div>
+                <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                  {activePreview.map((c) => (
+                    <li
+                      key={c.id}
+                      className="rounded-[12px] px-3.5 py-3 text-white"
+                      style={{ background: 'var(--color-ink)' }}
+                    >
+                      <div className="text-[14px] font-semibold">{c.name}</div>
+                      <div className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-neutral-400)]">
+                        {c.type === 'spend'
+                          ? 'Pontos'
+                          : c.type === 'cashback'
+                            ? 'Cashback'
+                            : 'Carimbos'}
+                        {c.type === 'cashback' && c.cashbackPercent
+                          ? ` · ${c.cashbackPercent}%`
+                          : ''}
+                        {c.stampsNeeded && c.type !== 'cashback'
+                          ? c.type === 'spend'
+                            ? ` · meta ${c.stampsNeeded} pontos`
+                            : ` · ${c.stampsNeeded} carimbos`
+                          : ''}
+                        {c.rewardTitle ? ` → ${c.rewardTitle}` : ''}
+                        {c.redeems != null && c.redeems > 0
+                          ? c.type === 'cashback'
+                            ? ` · ${c.redeems} uso${c.redeems === 1 ? '' : 's'}`
+                            : ` · ${c.redeems} resgates`
+                          : ''}
+                        {c.type !== 'cashback' && c.fulfillPct != null
+                          ? ` · ${c.fulfillPct}% concluíram`
+                          : ''}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {activeExtra > 0 && (
+                  <p className="mt-3 text-[12px] text-[var(--color-neutral-500)]">
+                    +{activeExtra} ativa{activeExtra > 1 ? 's' : ''} —{' '}
+                    <Link
+                      href="/campaigns?status=active"
+                      className="font-semibold text-[var(--color-primary-500)]"
+                    >
+                      ver todas
+                    </Link>
+                  </p>
+                )}
+              </div>
+            )}
           </>
         ) : null}
       </div>

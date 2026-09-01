@@ -54,7 +54,7 @@ async function cropToFile(
 
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Falha ao gerar imagem'))),
+      (b) => (b ? resolve(b) : reject(new Error('Não foi possível gerar a imagem.'))),
       'image/jpeg',
       0.9,
     );
@@ -114,7 +114,7 @@ export function ImageCropDialog({
       });
       await onConfirm(file);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao cortar');
+      setError(err instanceof Error ? err.message : 'Não foi possível recortar.');
       setSaving(false);
     }
   }

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireFirebaseUser } from '../plugins/auth.js';
+import { businessTypeSchema } from '../lib/business-type.js';
 
 const hexColor = z
   .string()
@@ -11,7 +12,7 @@ const hexColor = z
 const registerBody = z.object({
   ownerName: z.string().min(2).max(80),
   businessName: z.string().min(2).max(80),
-  type: z.string().min(1).max(40),
+  type: businessTypeSchema,
   slogan: z.string().max(160).optional(),
   primaryColor: hexColor,
   primaryColorDark: hexColor,
@@ -79,8 +80,8 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(500).send({ error: 'TRIAL_PLAN_MISSING' });
     }
 
-    const primaryColor = body.primaryColor ?? '#3B5BDB';
-    const primaryColorDark = body.primaryColorDark ?? '#2F49C4';
+    const primaryColor = body.primaryColor ?? '#24479C';
+    const primaryColorDark = body.primaryColorDark ?? '#1B3781';
 
     const result = await prisma.$transaction(async (tx) => {
       const business = await tx.business.create({

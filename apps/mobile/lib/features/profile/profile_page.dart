@@ -227,6 +227,8 @@ class _ProfilePageState extends State<ProfilePage> {
                         (_stats!['stampsEarned'] as num?)?.toInt() ?? 0,
                     pointsEarned:
                         (_stats!['pointsEarned'] as num?)?.toInt() ?? 0,
+                    cashbackEarnedCents:
+                        (_stats!['cashbackEarnedCents'] as num?)?.toInt() ?? 0,
                   ),
                 ],
                 const SizedBox(height: 28),
@@ -347,47 +349,79 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+class _StatItem {
+  const _StatItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+}
+
 class _ProfileStats extends StatelessWidget {
   const _ProfileStats({
     required this.redeems,
     required this.visits,
     required this.stampsEarned,
     required this.pointsEarned,
+    this.cashbackEarnedCents = 0,
   });
 
   final int redeems;
   final int visits;
   final int stampsEarned;
   final int pointsEarned;
+  final int cashbackEarnedCents;
+
+  List<_StatItem> get _items => [
+        _StatItem(
+          icon: FregoIcons.trophy,
+          value: '$redeems',
+          label: redeems == 1 ? 'prêmio' : 'prêmios',
+        ),
+        _StatItem(
+          icon: FregoIcons.visits,
+          value: '$visits',
+          label: visits == 1 ? 'visita' : 'visitas',
+        ),
+        if (stampsEarned > 0)
+          _StatItem(
+            icon: FregoIcons.stampFilled,
+            value: '$stampsEarned',
+            label: 'carimbos',
+          ),
+        if (pointsEarned > 0)
+          _StatItem(
+            icon: FregoIcons.pointsFilled,
+            value: '$pointsEarned',
+            label: 'pontos',
+          ),
+        if (cashbackEarnedCents > 0)
+          _StatItem(
+            icon: FregoIcons.cashbackFilled,
+            value:
+                'R\$ ${(cashbackEarnedCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+            label: 'cashback',
+          ),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    final items = <({IconData icon, String value, String label})>[
-      (
-        icon: FregoIcons.trophy,
-        value: '$redeems',
-        label: redeems == 1 ? 'prêmio' : 'prêmios',
-      ),
-      (
-        icon: FregoIcons.visits,
-        value: '$visits',
-        label: visits == 1 ? 'visita' : 'visitas',
-      ),
-      (
-        icon: FregoIcons.stampFilled,
-        value: '$stampsEarned',
-        label: 'carimbos',
-      ),
-      if (pointsEarned > 0)
-        (
-          icon: FregoIcons.pointsFilled,
-          value: '$pointsEarned',
-          label: 'pontos',
-        ),
-    ];
+    final items = _items;
+    final int columns;
+    if (items.length <= 3) {
+      columns = items.isEmpty ? 1 : items.length;
+    } else if (items.length == 4) {
+      columns = 2;
+    } else {
+      columns = 3;
+    }
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 14),
       decoration: BoxDecoration(
         color: FregoColors.card,
         borderRadius: BorderRadius.circular(16),
@@ -397,7 +431,7 @@ class _ProfileStats extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Padding(
-            padding: EdgeInsets.fromLTRB(8, 0, 8, 12),
+            padding: EdgeInsets.fromLTRB(4, 0, 4, 4),
             child: Text(
               'Seu histórico na Frego',
               style: TextStyle(
@@ -408,51 +442,28 @@ class _ProfileStats extends StatelessWidget {
               ),
             ),
           ),
-          Row(
-            children: [
-              for (var i = 0; i < items.length; i++) ...[
-                if (i > 0)
-                  Container(
-                    width: 1,
-                    height: 36,
-                    color: FregoColors.hairline,
-                  ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Icon(
-                        items[i].icon,
-                        size: 18,
-                        color: FregoColors.primary500,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        items[i].value,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.3,
-                          color: FregoColors.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        items[i].label,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: FregoColors.neutral500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final cellWidth = constraints.maxWidth / columns;
+              return Wrap(
+                alignment: items.length > columns
+                    ? WrapAlignment.center
+                    : WrapAlignment.start,
+                runSpacing: 12,
+                children: [
+                  for (final item in items)
+                    SizedBox(
+                      width: cellWidth,
+                      child: _StatCell(item: item),
+                    ),
+                ],
+              );
+            },
           ),
           if (redeems > 0) ...[
             const SizedBox(height: 12),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
                 redeems == 1
                     ? 'Você já resgatou 1 prêmio — continue acumulando.'
@@ -465,6 +476,52 @@ class _ProfileStats extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatCell extends StatelessWidget {
+  const _StatCell({required this.item});
+
+  final _StatItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+      child: Column(
+        children: [
+          Icon(
+            item.icon,
+            size: 18,
+            color: FregoColors.primary500,
+          ),
+          const SizedBox(height: 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              item.value,
+              maxLines: 1,
+              softWrap: false,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+                color: FregoColors.ink,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            item.label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 11,
+              color: FregoColors.neutral500,
+            ),
+          ),
         ],
       ),
     );
