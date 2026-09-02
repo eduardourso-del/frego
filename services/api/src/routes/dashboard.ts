@@ -7,6 +7,7 @@ import {
 } from '../lib/audience.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
+import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import {
   addDays,
   periodQuerySchema,
@@ -32,6 +33,7 @@ type TxRow = {
   createdAt: Date;
   amountCents: number | null;
   unitKind: string | null;
+  metadata?: unknown;
 };
 
 type MemberAgg = {
@@ -47,6 +49,7 @@ type MemberAgg = {
 function buildMemberAggs(txs: TxRow[]) {
   const map = new Map<string, MemberAgg>();
   for (const tx of txs) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     let agg = map.get(tx.membershipId);
     if (!agg) {
       agg = {
@@ -96,6 +99,7 @@ function summarizePeriod(txs: TxRow[], firstVisitByMember: Map<string, Date>) {
   let redeemers = 0;
 
   for (const tx of txs) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     if (isCashbackUnit(tx.unitKind)) {
       continue;
     }
@@ -232,6 +236,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           createdAt: true,
           amountCents: true,
           unitKind: true,
+          metadata: true,
         },
       }),
       prisma.transaction.findMany({
@@ -242,7 +247,13 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
             lt: new Date(),
           },
         },
-        select: { type: true, quantity: true, createdAt: true, unitKind: true },
+        select: {
+          type: true,
+          quantity: true,
+          createdAt: true,
+          unitKind: true,
+          metadata: true,
+        },
       }),
       prisma.transaction.findMany({
         where: { businessId: auth.businessId },
@@ -357,6 +368,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       let stamps = 0;
       let redeems = 0;
       for (const tx of weekTxs) {
+        if (shouldOmitFromLedger(tx.metadata)) continue;
         if (dayKey(tx.createdAt) !== key) continue;
         if (isCashbackUnit(tx.unitKind)) continue;
         if (tx.type === 'stamp') stamps += tx.quantity;
@@ -370,7 +382,9 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    const live = liveTxs.map((tx) => {
+    const live = liveTxs
+      .filter((tx) => !shouldOmitFromLedger(tx.metadata))
+      .map((tx) => {
       const name =
         tx.membership.customer.displayName ??
         tx.membership.customer.phoneE164.slice(-4);
@@ -416,6 +430,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     for (const tx of currentTxs as Array<
       TxRow & { campaignId?: string | null; metadata?: unknown }
     >) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       if (tx.type !== 'redeem' || !tx.campaignId) continue;
       let s = campaignStats.get(tx.campaignId);
       if (!s) {

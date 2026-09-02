@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
+import '../../ui/adaptive.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/voucher_sheet.dart';
+import '../shops/campaign_detail_page.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key, required this.phoneE164});
@@ -109,6 +111,17 @@ class _WalletPageState extends State<WalletPage> {
     } finally {
       if (mounted) setState(() => _redeeming = false);
     }
+  }
+
+  Future<void> _openCampaign(Map<String, dynamic> campaign) async {
+    final businessId = _selectedBusinessId;
+    final campaignId = campaign['campaignId'] as String?;
+    if (businessId == null || campaignId == null || campaignId.isEmpty) return;
+    await FregoAdaptive.push(
+      context,
+      CampaignDetailPage(businessId: businessId, campaignId: campaignId),
+    );
+    if (mounted) _load(businessId: businessId);
   }
 
   @override
@@ -417,6 +430,7 @@ class _WalletPageState extends State<WalletPage> {
                                           ?.toInt(),
                                       cashbackBalanceCents: cashbackBalance,
                                       onRedeem: null,
+                                      onOpen: () => _openCampaign(c),
                                     ),
                                   );
                                 }
@@ -459,10 +473,15 @@ class _WalletPageState extends State<WalletPage> {
 
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
-                                  child: Container(
+                                  child: Material(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: InkWell(
+                                      onTap: () => _openCampaign(c),
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Container(
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
                                         color: isBirthday
@@ -503,8 +522,7 @@ class _WalletPageState extends State<WalletPage> {
                                                     : type == 'spend'
                                                         ? const Color(
                                                             0xFFFFFBEB)
-                                                        : const Color(
-                                                            0xFFF0FDFA),
+                                                        : FregoColors.stampsBg,
                                                 borderRadius:
                                                     BorderRadius.circular(999),
                                               ),
@@ -554,6 +572,8 @@ class _WalletPageState extends State<WalletPage> {
                                           ),
                                         ),
                                       ],
+                                    ),
+                                      ),
                                     ),
                                   ),
                                 );

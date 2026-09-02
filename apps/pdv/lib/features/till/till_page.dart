@@ -45,11 +45,13 @@ class _TillPageState extends State<TillPage> {
   EarnMode _mode = EarnMode.stamps;
   List<String> _earnKinds = const [];
   bool _loading = false;
-  bool _applyCashback = true;
+  bool _applyCashback = false;
   String? _error;
   LookupResult? _lookup;
   FulfillResult? _voucherResult;
   String? _fulfillingId;
+  CounterSale? _lastSale;
+  String? _reversingId;
   final List<RecentCustomer> _recents = [];
 
   StaffSession get _session => widget.session;
@@ -75,7 +77,7 @@ class _TillPageState extends State<TillPage> {
   bool get _saleMode =>
       _mode == EarnMode.points ||
       _mode == EarnMode.cashback ||
-      !_canEarn;
+      (!_canEarn && _cashbackBalance > 0);
 
   bool get _showAmount => _saleMode;
 
@@ -141,7 +143,21 @@ class _TillPageState extends State<TillPage> {
   }
 
   void _onMoneyChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    if (_applyCashback && _maxApplyCents > 0) {
+      final typed = parseMoneyToCents(_applyAmount.text);
+      if (typed != null && typed > _maxApplyCents) {
+        final next = formatCentsAsInput(_maxApplyCents);
+        if (_applyAmount.text != next) {
+          _applyAmount.value = TextEditingValue(
+            text: next,
+            selection: TextSelection.collapsed(offset: next.length),
+          );
+          return;
+        }
+      }
+    }
+    setState(() {});
   }
 
   @override
@@ -154,6 +170,76 @@ class _TillPageState extends State<TillPage> {
     _applyAmount.dispose();
     _voucher.dispose();
     super.dispose();
+  }
+
+  void _rememberSale(CounterSale? sale) {
+    if (sale == null || !sale.isValid) return;
+    setState(() {
+      _lastSale = sale;
+    });
+  }
+
+  Future<void> _reverseSale(CounterSale sale) async {
+    setState(() {
+      _reversingId = sale.anchorId;
+      _error = null;
+    });
+    try {
+      final result = await _api.reverseSale(sale.anchorId);
+      if (!mounted) return;
+      setState(() {
+        _lookup = _lookup?.copyWith(
+          stamps: result.stamps,
+          points: result.points,
+          cashbackCents: result.cashbackCents,
+          recentSales: (_lookup?.recentSales ?? const [])
+              .where(
+                (s) =>
+                    s.saleId != sale.saleId && s.anchorId != sale.anchorId,
+              )
+              .toList(),
+        );
+        if (_lastSale != null &&
+            (_lastSale!.saleId == sale.saleId ||
+                _lastSale!.anchorId == sale.anchorId)) {
+          _lastSale = null;
+        }
+      });
+      if (_lookup != null) _remember(_lookup!);
+      _toast(result.message);
+    } catch (e) {
+      if (mounted) {
+        final message = humanizeError(e);
+        setState(() => _error = message);
+        _toast(message);
+      }
+    } finally {
+      if (mounted) setState(() => _reversingId = null);
+    }
+  }
+
+  Future<void> _askReverse(CounterSale sale) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Desfazer lançamento?'),
+        content: Text(
+          '${sale.summary}\n\nSó funciona se o cliente ainda não usou o benefício.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: FregoColors.danger),
+            child: const Text('Desfazer'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) await _reverseSale(sale);
   }
 
   void _remember(LookupResult lookup) {
@@ -185,6 +271,9 @@ class _TillPageState extends State<TillPage> {
       _error = null;
       _lookup = null;
       _voucherResult = null;
+      _lastSale = null;
+      _applyCashback = false;
+      _applyAmount.clear();
     });
     try {
       final result = digits.length == 4
@@ -306,10 +395,16 @@ class _TillPageState extends State<TillPage> {
         return;
       }
       _remember(created);
-      if (withEarn && _mode == EarnMode.stamps) {
-        _toast('Carimbo adicionado — saldo ${created.stamps}');
-      } else {
-        _toast('Cliente adicionado à loja');
+      final firstSale = created.recentSales.isNotEmpty
+          ? created.recentSales.first
+          : null;
+      _rememberSale(firstSale);
+      if (firstSale == null) {
+        if (withEarn && _mode == EarnMode.stamps) {
+          _toast('Carimbo adicionado — saldo ${created.stamps}');
+        } else {
+          _toast('Cliente adicionado à loja');
+        }
       }
     } catch (e) {
       setState(() => _error = humanizeError(e));
@@ -329,7 +424,7 @@ class _TillPageState extends State<TillPage> {
             EarnMode.stamps => 'stamps',
           }
         : 'cashback';
-    final applyingLeftover = unitKind != 'stamps' && _applyCents > 0;
+    final applyingLeftover = _saleMode && _applyCents > 0;
     if (!earning && !applyingLeftover) {
       setState(() {
         _error = 'Nenhuma campanha ativa para registrar no caixa.';
@@ -366,12 +461,15 @@ class _TillPageState extends State<TillPage> {
           stamps: result.stamps,
           points: result.points,
           cashbackCents: result.cashbackCents,
+          recentSales: prependSale(_lookup?.recentSales ?? const [], result.sale),
         );
         _amount.clear();
         _applyAmount.clear();
+        _applyCashback = false;
       });
       if (_lookup != null) _remember(_lookup!);
-      _toast(result.message);
+      _rememberSale(result.sale);
+      if (result.sale == null) _toast(result.message);
     } catch (e) {
       setState(() => _error = humanizeError(e));
     } finally {
@@ -432,36 +530,35 @@ class _TillPageState extends State<TillPage> {
       _lookup = null;
       _error = null;
       _voucherResult = null;
+      _lastSale = null;
+      _applyCashback = false;
       _fullPhone.clear();
       _query.clear();
+      _applyAmount.clear();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final business = _session.business;
+    final title = _availableModes.isEmpty
+        ? 'Balcão'
+        : _mode == EarnMode.points
+            ? 'Pontos'
+            : _mode == EarnMode.cashback
+                ? 'Cashback'
+                : 'Carimbos';
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              business?.name ?? 'Frego PDV',
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              _mode == EarnMode.points
-                  ? 'Pontos'
-                  : _mode == EarnMode.cashback
-                  ? 'Cashback'
-                  : 'Carimbos',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: FregoColors.neutral500,
-              ),
-            ),
-          ],
+        title: Text(
+          'Balcão · ${business?.name ?? 'funcionário'}',
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.4,
+            color: FregoColors.neutral400,
+          ),
         ),
         actions: [
           PopupMenuButton<String>(
@@ -486,6 +583,25 @@ class _TillPageState extends State<TillPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
           children: [
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.6,
+                height: 1.15,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Digite os 4 últimos dígitos do celular. O acúmulo vai para o saldo do cliente — ele escolhe a campanha no aplicativo. Prêmios resgatados no app são confirmados aqui na entrega.',
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.45,
+                color: FregoColors.neutral500,
+              ),
+            ),
+            const SizedBox(height: 20),
             _VoucherSection(
               controller: _voucher,
               fulfilling: _fulfillingId != null,
@@ -517,12 +633,20 @@ class _TillPageState extends State<TillPage> {
             ] else if (_availableModes.isEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  'Nenhuma campanha ativa para registrar no caixa. Crie carimbos, pontos ou cashback em Campanhas.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    color: FregoColors.neutral500,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: FregoColors.neutral100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    'Nenhuma campanha ativa para registrar no caixa. Crie carimbos, pontos ou cashback em Campanhas.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.35,
+                      color: FregoColors.neutral500,
+                    ),
                   ),
                 ),
               ),
@@ -540,7 +664,13 @@ class _TillPageState extends State<TillPage> {
               width: double.infinity,
               child: FilledButton(
                 onPressed: _loading ? null : _lookupByQuery,
-                child: Text(_loading ? 'Consultando…' : 'Buscar'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(_loading ? 'Buscando…' : 'Buscar'),
               ),
             ),
             if (_lookup != null) ...[
@@ -718,11 +848,21 @@ class _TillPageState extends State<TillPage> {
                   }
                 },
                 onFulfill: (v) => _fulfill(transactionId: v.transactionId),
+                recentSales: _lookup!.recentSales,
+                reversingId: _reversingId,
+                onUndo: _askReverse,
               ),
             ],
           ],
         ),
       ),
+      bottomNavigationBar: _lastSale == null
+          ? null
+          : _UndoBar(
+              sale: _lastSale!,
+              busy: _reversingId == _lastSale!.anchorId,
+              onUndo: () => _askReverse(_lastSale!),
+            ),
     );
   }
 }
@@ -740,7 +880,10 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: FregoColors.card,
-      borderRadius: BorderRadius.circular(16),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: FregoColors.hairline),
+      ),
       child: Padding(padding: const EdgeInsets.all(16), child: child),
     );
   }
@@ -772,7 +915,12 @@ class _ModeToggle extends StatelessWidget {
               label: 'Carimbos',
               selected: mode == EarnMode.stamps,
               color: FregoColors.stamps,
-              icon: FregoIcons.stampFilled,
+              icon: FregoIcons.stamp(
+                size: 16,
+                color: mode == EarnMode.stamps
+                    ? Colors.white
+                    : FregoColors.neutral700,
+              ),
               onTap: () => onChanged(EarnMode.stamps),
             ),
           if (modes.contains(EarnMode.points))
@@ -780,7 +928,12 @@ class _ModeToggle extends StatelessWidget {
               label: 'Pontos',
               selected: mode == EarnMode.points,
               color: FregoColors.points,
-              icon: FregoIcons.pointsFilled,
+              icon: FregoIcons.points(
+                size: 16,
+                color: mode == EarnMode.points
+                    ? Colors.white
+                    : FregoColors.neutral700,
+              ),
               onTap: () => onChanged(EarnMode.points),
             ),
           if (modes.contains(EarnMode.cashback))
@@ -788,7 +941,12 @@ class _ModeToggle extends StatelessWidget {
               label: 'Cashback',
               selected: mode == EarnMode.cashback,
               color: FregoColors.cashback,
-              icon: FregoIcons.cashbackFilled,
+              icon: FregoIcons.cashback(
+                size: 16,
+                color: mode == EarnMode.cashback
+                    ? Colors.white
+                    : FregoColors.neutral700,
+              ),
               onTap: () => onChanged(EarnMode.cashback),
             ),
         ],
@@ -800,7 +958,7 @@ class _ModeToggle extends StatelessWidget {
     required String label,
     required bool selected,
     required Color color,
-    required IconData icon,
+    required Widget icon,
     required VoidCallback onTap,
   }) {
     return Expanded(
@@ -811,18 +969,14 @@ class _ModeToggle extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(11),
           child: SizedBox(
-            height: 48,
+            height: 44,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    icon,
-                    size: 16,
-                    color: selected ? Colors.white : FregoColors.neutral700,
-                  ),
-                  const SizedBox(width: 4),
+                  icon,
+                  const SizedBox(width: 6),
                   Flexible(
                     child: Text(
                       label,
@@ -859,30 +1013,47 @@ class _PhoneField extends StatelessWidget {
       builder: (context, value, _) {
         final d = digitsOnly(value.text);
         final isLast4 = d.length <= 4;
-        return TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w600,
-            letterSpacing: isLast4 ? 4 : 0,
-          ),
-          onChanged: (raw) {
-            final digits = digitsOnly(raw);
-            final next = digits.length <= 4 ? digits : formatPhoneBr(digits);
-            if (next != raw) {
-              controller.value = TextEditingValue(
-                text: next,
-                selection: TextSelection.collapsed(offset: next.length),
-              );
-            }
-          },
-          onSubmitted: (_) => onSubmitted(),
-          decoration: InputDecoration(
-            labelText: isLast4 ? 'Últimos 4 dígitos' : 'Telefone',
-            hintText: isLast4 ? '4321' : '(11) 98765-4321',
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              isLast4 ? 'ÚLTIMOS 4 DÍGITOS' : 'TELEFONE',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+                color: FregoColors.neutral700,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w600,
+                letterSpacing: isLast4 ? 4 : 0,
+              ),
+              onChanged: (raw) {
+                final digits = digitsOnly(raw);
+                final next = digits.length <= 4 ? digits : formatPhoneBr(digits);
+                if (next != raw) {
+                  controller.value = TextEditingValue(
+                    text: next,
+                    selection: TextSelection.collapsed(offset: next.length),
+                  );
+                }
+              },
+              onSubmitted: (_) => onSubmitted(),
+              decoration: InputDecoration(
+                hintText: isLast4 ? '4321' : '(11) 98765-4321',
+                filled: true,
+                fillColor: FregoColors.card,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+          ],
         );
       },
     );
@@ -1036,6 +1207,9 @@ class _CustomerCard extends StatelessWidget {
     required this.onApplyChanged,
     required this.onEarn,
     required this.onFulfill,
+    this.recentSales = const [],
+    this.reversingId,
+    this.onUndo,
   });
 
   final LookupResult lookup;
@@ -1058,6 +1232,9 @@ class _CustomerCard extends StatelessWidget {
   final ValueChanged<bool> onApplyChanged;
   final VoidCallback onEarn;
   final ValueChanged<OpenVoucher> onFulfill;
+  final List<CounterSale> recentSales;
+  final String? reversingId;
+  final ValueChanged<CounterSale>? onUndo;
 
   @override
   Widget build(BuildContext context) {
@@ -1130,6 +1307,7 @@ class _CustomerCard extends StatelessWidget {
                       value: '${lookup.stamps}',
                       color: FregoColors.stamps,
                       background: FregoColors.stampsBg,
+                      ring: FregoColors.stampsRing,
                     ),
                   ),
                 if (showStamps && showPoints) const SizedBox(width: 8),
@@ -1140,6 +1318,7 @@ class _CustomerCard extends StatelessWidget {
                       value: '${lookup.points}',
                       color: FregoColors.points,
                       background: FregoColors.pointsBg,
+                      ring: FregoColors.pointsRing,
                     ),
                   ),
               ],
@@ -1151,6 +1330,10 @@ class _CustomerCard extends StatelessWidget {
               value: formatBrl(lookup.cashbackCents),
               color: FregoColors.cashback,
               background: FregoColors.cashbackBg,
+              ring: FregoColors.cashbackRing,
+              caption: cashbackPercent > 0 && mode == EarnMode.cashback
+                  ? '$cashbackPercent% do valor pago'
+                  : null,
             ),
             if (lookup.cashbackCents > 0 && mode != EarnMode.stamps)
               Column(
@@ -1199,6 +1382,19 @@ class _CustomerCard extends StatelessWidget {
                         hintText: maxApplyCents > 0
                             ? formatCentsAsInput(maxApplyCents)
                             : '0,00',
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: FregoColors.cashbackRing,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: FregoColors.cashback,
+                            width: 1.5,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -1215,57 +1411,25 @@ class _CustomerCard extends StatelessWidget {
                 ],
               ),
           ],
-          if (lookup.openVouchers.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Vouchers abertos · ${lookup.openVouchers.length}',
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              mode == EarnMode.cashback
+                  ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
+                  : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher abaixo ao entregar o prêmio.',
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: FregoColors.neutral400,
+                fontSize: 13,
+                height: 1.4,
+                color: FregoColors.neutral500,
               ),
             ),
-            const SizedBox(height: 8),
-            ...lookup.openVouchers.map(
-              (v) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            v.rewardTitle,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          Text(
-                            v.voucherDisplay,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              color: FregoColors.neutral500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    FilledButton(
-                      onPressed: fulfillingId != null
-                          ? null
-                          : () => onFulfill(v),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: FregoColors.success,
-                        minimumSize: const Size(0, 40),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                      ),
-                      child: Text(
-                        fulfillingId == v.transactionId ? '…' : 'Usar',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          ),
+          if (lookup.openVouchers.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _OpenVouchers(
+              vouchers: lookup.openVouchers,
+              fulfillingId: fulfillingId,
+              onFulfill: onFulfill,
             ),
           ],
           if (showAmount)
@@ -1289,9 +1453,97 @@ class _CustomerCard extends StatelessWidget {
                           lookup.cashbackCents <= 0)
                   ? null
                   : onEarn,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
               child: Text(primary),
             ),
           ),
+          if (recentSales.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Divider(height: 1),
+            const SizedBox(height: 14),
+            const Text(
+              'Lançamentos deste cliente',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+                color: FregoColors.neutral400,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Errou o valor ou o carimbo? Desfaça. Só funciona se o cliente ainda não usou o benefício.',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.35,
+                color: FregoColors.neutral500,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...recentSales.map((sale) {
+              final busy = reversingId == sale.anchorId;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                  decoration: BoxDecoration(
+                    color: FregoColors.neutralBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: FregoColors.hairline),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              sale.summary,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (sale.createdAt != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  formatSaleClock(sale.createdAt!),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: FregoColors.neutral400,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: reversingId != null
+                            ? null
+                            : () => onUndo?.call(sale),
+                        icon: FregoIcons.undo(
+                          size: 16,
+                          color: FregoColors.neutral500,
+                        ),
+                        label: Text(busy ? '…' : 'Desfazer'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: FregoColors.neutral500,
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );
@@ -1304,12 +1556,16 @@ class _PoolTile extends StatelessWidget {
     required this.value,
     required this.color,
     required this.background,
+    required this.ring,
+    this.caption,
   });
 
   final String label;
   final String value;
   final Color color;
   final Color background;
+  final Color ring;
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -1318,6 +1574,7 @@ class _PoolTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: background,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ring),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1336,6 +1593,14 @@ class _PoolTile extends StatelessWidget {
             value,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
           ),
+          if (caption != null && caption!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                caption!,
+                style: TextStyle(fontSize: 12, color: color),
+              ),
+            ),
         ],
       ),
     );
@@ -1359,6 +1624,7 @@ class _RecentTile extends StatelessWidget {
           onTap: onTap,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: FregoColors.hairline),
           ),
           title: Text(recent.displayName ?? 'Cliente'),
           subtitle: Text(recent.phoneE164),
@@ -1398,13 +1664,22 @@ class _VoucherSection extends StatelessWidget {
           const Text(
             'CONFIRMAR VOUCHER',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.4,
               color: FregoColors.neutral400,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 4),
+          const Text(
+            'Digite o código que o cliente mostra no app e marque como usado.',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: FregoColors.neutral500,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -1431,9 +1706,15 @@ class _VoucherSection extends StatelessWidget {
                 onPressed: fulfilling ? null : onSubmit,
                 style: FilledButton.styleFrom(
                   backgroundColor: FregoColors.ink,
-                  minimumSize: const Size(72, 52),
+                  minimumSize: const Size(72, 44),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-                child: const Text('Usar'),
+                child: Text(
+                  fulfilling ? '…' : 'Usar',
+                  style: const TextStyle(fontSize: 14),
+                ),
               ),
             ],
           ),
@@ -1494,7 +1775,7 @@ class _VoucherResultBanner extends StatelessWidget {
     switch (result.kind) {
       case FulfillKind.used:
         border = FregoColors.success.withValues(alpha: 0.3);
-        bg = const Color(0xFFECFDF5);
+        bg = FregoColors.successBg;
         title = 'Voucher confirmado';
       case FulfillKind.alreadyUsed:
         border = FregoColors.neutral200;
@@ -1585,6 +1866,221 @@ class _VoucherResultBanner extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _OpenVouchers extends StatelessWidget {
+  const _OpenVouchers({
+    required this.vouchers,
+    required this.fulfillingId,
+    required this.onFulfill,
+  });
+
+  final List<OpenVoucher> vouchers;
+  final String? fulfillingId;
+  final ValueChanged<OpenVoucher> onFulfill;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: FregoColors.neutralBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FregoColors.hairline),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Vouchers em aberto · ${vouchers.length}'.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+              color: FregoColors.neutral400,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...vouchers.map((v) {
+            final busy = fulfillingId == v.transactionId;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                decoration: BoxDecoration(
+                  color: FregoColors.card,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: FregoColors.hairline),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            v.rewardTitle,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            v.voucherDisplay,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 13,
+                              letterSpacing: 0.8,
+                              color: FregoColors.neutral500,
+                            ),
+                          ),
+                          if (v.expiresAt != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Válido até ${formatVoucherUntil(v.expiresAt!)} · 24h',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: FregoColors.neutral400,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton(
+                      onPressed: fulfillingId != null
+                          ? null
+                          : () => onFulfill(v),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: FregoColors.success,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: Text(busy ? '…' : 'Confirmar'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+String formatVoucherUntil(DateTime at) {
+  const months = [
+    'jan',
+    'fev',
+    'mar',
+    'abr',
+    'mai',
+    'jun',
+    'jul',
+    'ago',
+    'set',
+    'out',
+    'nov',
+    'dez',
+  ];
+  final local = at.toLocal();
+  final day = local.day.toString().padLeft(2, '0');
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  return '$day de ${months[local.month - 1]}., $time';
+}
+
+String formatSaleClock(DateTime at) {
+  final local = at.toLocal();
+  final now = DateTime.now();
+  final sameDay =
+      local.year == now.year && local.month == now.month && local.day == now.day;
+  final time =
+      '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  if (sameDay) return 'Hoje, $time';
+  final day = local.day.toString().padLeft(2, '0');
+  final month = local.month.toString().padLeft(2, '0');
+  return '$day/$month · $time';
+}
+
+class _UndoBar extends StatelessWidget {
+  const _UndoBar({
+    required this.sale,
+    required this.busy,
+    required this.onUndo,
+  });
+
+  final CounterSale sale;
+  final bool busy;
+  final VoidCallback onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: FregoColors.ink,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Registrado',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.4,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    Text(
+                      sale.summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: busy ? null : onUndo,
+                icon: FregoIcons.undo(size: 16, color: Colors.white),
+                label: Text(
+                  busy ? '…' : 'Desfazer',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

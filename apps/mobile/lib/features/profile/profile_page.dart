@@ -3,6 +3,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
+import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
@@ -31,6 +32,8 @@ class _ProfilePageState extends State<ProfilePage> {
   DateTime? _birthday;
   int _membershipCount = 0;
   Map<String, dynamic>? _stats;
+  bool _notificationsEnabled = true;
+  bool _savingNotifications = false;
 
   @override
   void initState() {
@@ -82,6 +85,7 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _birthday = _parseBirthday(customer['birthday']);
         _membershipCount = (data['membershipCount'] as num?)?.toInt() ?? 0;
+        _notificationsEnabled = customer['notificationsEnabled'] != false;
         _stats = results[1];
         _loading = false;
       });
@@ -145,7 +149,35 @@ class _ProfilePageState extends State<ProfilePage> {
     });
   }
 
+  Future<void> _setNotificationsEnabled(bool value) async {
+    if (_savingNotifications) return;
+    final previous = _notificationsEnabled;
+    setState(() {
+      _notificationsEnabled = value;
+      _savingNotifications = true;
+      _error = null;
+    });
+    try {
+      await updateMyCustomer(notificationsEnabled: value);
+      if (value) {
+        await PushService.start();
+      } else {
+        await PushService.stop();
+      }
+      if (!mounted) return;
+      setState(() => _savingNotifications = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _notificationsEnabled = previous;
+        _savingNotifications = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   Future<void> _logout() async {
+    await PushService.stop();
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     // Reset root stack so AuthGate is always present (OTP used to remove it).
@@ -312,6 +344,12 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                   ),
                 ],
+                const SizedBox(height: 20),
+                _NotificationToggle(
+                  value: _notificationsEnabled,
+                  enabled: !_savingNotifications,
+                  onChanged: _setNotificationsEnabled,
+                ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -349,6 +387,72 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
+class _NotificationToggle extends StatelessWidget {
+  const _NotificationToggle({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final bool value;
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final cupertino = FregoAdaptive.useCupertino(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: FregoColors.neutral200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Notificações',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: FregoColors.ink,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Avisos quando uma loja lançar uma campanha para você.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    color: FregoColors.neutral500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          cupertino
+              ? CupertinoSwitch(
+                  value: value,
+                  activeTrackColor: FregoColors.primary500,
+                  onChanged: enabled ? onChanged : null,
+                )
+              : Switch(
+                  value: value,
+                  activeThumbColor: FregoColors.primary500,
+                  onChanged: enabled ? onChanged : null,
+                ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatItem {
   const _StatItem({
     required this.icon,
@@ -356,7 +460,7 @@ class _StatItem {
     required this.label,
   });
 
-  final IconData icon;
+  final Widget icon;
   final String value;
   final String label;
 }
@@ -378,30 +482,47 @@ class _ProfileStats extends StatelessWidget {
 
   List<_StatItem> get _items => [
         _StatItem(
-          icon: FregoIcons.trophy,
+          icon: const Icon(
+            FregoIcons.trophy,
+            size: 18,
+            color: FregoColors.primary500,
+          ),
           value: '$redeems',
           label: redeems == 1 ? 'prêmio' : 'prêmios',
         ),
         _StatItem(
-          icon: FregoIcons.visits,
+          icon: const Icon(
+            FregoIcons.visits,
+            size: 18,
+            color: FregoColors.primary500,
+          ),
           value: '$visits',
           label: visits == 1 ? 'visita' : 'visitas',
         ),
         if (stampsEarned > 0)
           _StatItem(
-            icon: FregoIcons.stampFilled,
+            icon: FregoIcons.stamp(
+              size: 18,
+              color: FregoColors.primary500,
+            ),
             value: '$stampsEarned',
             label: 'carimbos',
           ),
         if (pointsEarned > 0)
           _StatItem(
-            icon: FregoIcons.pointsFilled,
+            icon: FregoIcons.points(
+              size: 18,
+              color: FregoColors.primary500,
+            ),
             value: '$pointsEarned',
             label: 'pontos',
           ),
         if (cashbackEarnedCents > 0)
           _StatItem(
-            icon: FregoIcons.cashbackFilled,
+            icon: FregoIcons.cashback(
+              size: 18,
+              color: FregoColors.primary500,
+            ),
             value:
                 'R\$ ${(cashbackEarnedCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
             label: 'cashback',
@@ -493,11 +614,7 @@ class _StatCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
       child: Column(
         children: [
-          Icon(
-            item.icon,
-            size: 18,
-            color: FregoColors.primary500,
-          ),
+          item.icon,
           const SizedBox(height: 6),
           FittedBox(
             fit: BoxFit.scaleDown,

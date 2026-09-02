@@ -9,10 +9,15 @@ import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/voucher_sheet.dart';
+import 'campaign_detail_page.dart';
+import 'earn_detail_page.dart';
 import 'shop_balance_page.dart';
 
 class ShopDetailPage extends StatefulWidget {
-  const ShopDetailPage({super.key, required this.businessId});
+  const ShopDetailPage({
+    super.key,
+    required this.businessId,
+  });
 
   final String businessId;
 
@@ -495,6 +500,17 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                     ),
                   );
                 },
+          onLotTap: (lot) async {
+            await FregoAdaptive.push(
+              context,
+              EarnDetailPage(
+                businessId: widget.businessId,
+                unitKind: normalizeEarnKind(lot['unitKind'] as String?),
+                quantity: (lot['quantity'] as num?)?.toInt(),
+              ),
+            );
+            if (mounted) _load();
+          },
           emptyLabel: stamps == 0 && points == 0 && cashbackCents == 0
               ? 'Sem saldo nesta loja no momento.'
               : 'Seu saldo atual não tem data de validade.',
@@ -552,6 +568,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           final lockedReason = c['lockedReason'] as String?;
           final daysUntil = (c['daysUntilBirthday'] as num?)?.toInt();
           final unlocksAt = c['unlocksAt'] as String?;
+          final campaignId = c['campaignId'] as String? ?? '';
 
           late final String buttonLabel;
           String? statusHint;
@@ -619,11 +636,23 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               cashbackBalanceCents: cashbackBalance,
               busy: _redeeming,
               audienceUnlocked: audienceEligible && !audienceLocked,
-                  audienceLabel: unlockMessage ??
-                      (audienceEligible ? 'Conquista liberada pra você' : null),
+              audienceLabel: unlockMessage ??
+                  (audienceEligible ? 'Conquista liberada pra você' : null),
               onRedeem: isCashback || !canRedeem || _redeeming
                   ? null
                   : () => _redeem(c),
+              onOpen: campaignId.isEmpty
+                  ? null
+                  : () async {
+                      await FregoAdaptive.push(
+                        context,
+                        CampaignDetailPage(
+                          businessId: widget.businessId,
+                          campaignId: campaignId,
+                        ),
+                      );
+                      if (mounted) _load();
+                    },
             ),
           );
         }),

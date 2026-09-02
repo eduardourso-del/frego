@@ -483,6 +483,33 @@ function CampaignsPageContent() {
     }
   }
 
+  async function deleteCampaign(id: string, name: string) {
+    const label = name.trim() || 'esta campanha';
+    if (
+      !confirm(
+        `Excluir “${label}”? O histórico de carimbos da loja é mantido, mas a campanha some da lista e do app.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/campaigns/${id}`, {
+        method: 'DELETE',
+        headers: await authHeaders(),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Não foi possível excluir.');
+      if (editingId === id) closeForm();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Não foi possível excluir.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const primary = business?.primaryColor ?? 'var(--color-primary-500)';
   const isEditing = Boolean(editingId);
 
@@ -1215,6 +1242,14 @@ function CampaignsPageContent() {
                         Arquivar
                       </button>
                     )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteCampaign(c.id, c.name)}
+                      className="min-h-10 rounded-[10px] px-3 text-[13px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
+                    >
+                      Excluir
+                    </button>
                     </div>
                   </div>
                 </div>

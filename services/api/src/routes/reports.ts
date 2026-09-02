@@ -9,6 +9,7 @@ import {
 } from '../lib/audience.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
+import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import {
   addDays,
   periodQuerySchema,
@@ -84,6 +85,7 @@ function summarize(txs: TxLite[]) {
   const redeemers = new Set<string>();
 
   for (const tx of txs) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     activeMembers.add(tx.membershipId);
     let days = visitDaysByMember.get(tx.membershipId);
     if (!days) {
@@ -239,6 +241,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       let redeems = 0;
       const customers = new Set<string>();
       for (const tx of currentTxs) {
+        if (shouldOmitFromLedger(tx.metadata)) continue;
         if (dayKey(tx.createdAt) !== key) continue;
         customers.add(tx.membershipId);
         if (tx.type === 'redeem') redeems += tx.quantity;
@@ -267,6 +270,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     }
     const locVisitDays = new Map<string, Set<string>>();
     for (const tx of currentTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       let stats = locStats.get(tx.locationId);
       if (!stats) {
         stats = { visits: 0, stamps: 0, points: 0, redeems: 0 };
@@ -317,6 +321,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       { stamps: number; points: number; redeems: number }
     >();
     for (const tx of currentTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       if (!tx.actorTeamMemberId) continue;
       let s = teamStats.get(tx.actorTeamMemberId);
       if (!s) {
@@ -361,6 +366,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     const memberSpend = new Map<string, number>();
 
     for (const tx of currentTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       if (tx.type === 'redeem' && tx.campaignId) {
         const cashback = isCashbackUnit(tx.unitKind);
         campaignRedeems.set(

@@ -15,13 +15,17 @@ abstract final class FregoAdaptive {
     return platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
   }
 
-  static Future<T?> push<T>(BuildContext context, Widget page) {
+  static Future<T?> push<T>(
+    BuildContext context,
+    Widget page, {
+    bool rootNavigator = false,
+  }) {
     if (useCupertino(context)) {
-      return Navigator.of(context).push<T>(
+      return Navigator.of(context, rootNavigator: rootNavigator).push<T>(
         CupertinoPageRoute<T>(builder: (_) => page),
       );
     }
-    return Navigator.of(context).push<T>(
+    return Navigator.of(context, rootNavigator: rootNavigator).push<T>(
       MaterialPageRoute<T>(builder: (_) => page),
     );
   }

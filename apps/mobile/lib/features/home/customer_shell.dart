@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../history/history_page.dart';
 import '../profile/profile_page.dart';
 import '../rewards/rewards_page.dart';
+import '../shops/campaign_detail_page.dart';
+import '../shops/earn_detail_page.dart';
+import '../shops/shop_detail_page.dart';
 import '../shops/shops_page.dart';
+import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
@@ -30,12 +36,42 @@ class _CustomerShellState extends State<CustomerShell> {
   void initState() {
     super.initState();
     _cupertinoTabs = CupertinoTabController(initialIndex: 0);
+    PendingPushOpen.target.addListener(_openPendingPush);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PushService.syncIfAuthorized());
+      _openPendingPush();
+    });
   }
 
   @override
   void dispose() {
+    PendingPushOpen.target.removeListener(_openPendingPush);
     _cupertinoTabs.dispose();
     super.dispose();
+  }
+
+  void _openPendingPush() {
+    final target = PendingPushOpen.take();
+    if (target == null || !mounted) return;
+    debugPrint(
+      'CustomerShell open push ${target.type} ${target.businessId}',
+    );
+    final page = switch (target.type) {
+      'campaign_new' when target.campaignId != null &&
+          target.campaignId!.isNotEmpty =>
+        CampaignDetailPage(
+          businessId: target.businessId,
+          campaignId: target.campaignId!,
+        ),
+      'earn' => EarnDetailPage(
+          businessId: target.businessId,
+          unitKind: target.unitKind,
+          transactionId: target.transactionId,
+          quantity: target.quantity,
+        ),
+      _ => ShopDetailPage(businessId: target.businessId),
+    };
+    FregoAdaptive.push(context, page, rootNavigator: true);
   }
 
   void _onTab(int i) {

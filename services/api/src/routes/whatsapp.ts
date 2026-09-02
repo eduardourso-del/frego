@@ -17,12 +17,16 @@ import {
   subscribeWabaWebhooks,
 } from '../lib/whatsapp/meta-oauth.js';
 import {
+  CAMPAIGN_TEMPLATE_LANG,
+  CAMPAIGN_TEMPLATE_NAME,
   EARN_TEMPLATE_LANG,
   EARN_TEMPLATE_NAME,
   WELCOME_TEMPLATE_LANG,
   WELCOME_TEMPLATE_NAME,
+  ensureCampaignTemplate,
   ensureEarnTemplate,
   ensureWelcomeTemplate,
+  fetchCampaignTemplateState,
   fetchEarnTemplateState,
   fetchWelcomeTemplateState,
 } from '../lib/whatsapp/templates.js';
@@ -66,6 +70,11 @@ function connectionPublic(row: {
   templateWelcomeStatus: string;
   templateWelcomeId: string | null;
   templateWelcomeSyncedAt: Date | null;
+  templateCampaignName: string;
+  templateCampaignLang: string;
+  templateCampaignStatus: string;
+  templateCampaignId: string | null;
+  templateCampaignSyncedAt: Date | null;
   coexistence: boolean;
   smbSyncStartedAt: Date | null;
   connectedAt: Date;
@@ -90,6 +99,11 @@ function connectionPublic(row: {
     templateWelcomeStatus: row.templateWelcomeStatus,
     templateWelcomeId: row.templateWelcomeId,
     templateWelcomeSyncedAt: row.templateWelcomeSyncedAt,
+    templateCampaignName: row.templateCampaignName,
+    templateCampaignLang: row.templateCampaignLang,
+    templateCampaignStatus: row.templateCampaignStatus,
+    templateCampaignId: row.templateCampaignId,
+    templateCampaignSyncedAt: row.templateCampaignSyncedAt,
     coexistence: row.coexistence,
     smbSyncStartedAt: row.smbSyncStartedAt,
     connectedAt: row.connectedAt,
@@ -152,6 +166,32 @@ async function applyWelcomeTemplateState(
   });
 }
 
+async function applyCampaignTemplateState(
+  connectionId: string,
+  accessToken: string,
+  wabaId: string,
+  mode: 'ensure' | 'sync',
+) {
+  const result =
+    mode === 'ensure'
+      ? await ensureCampaignTemplate(wabaId, accessToken)
+      : await fetchCampaignTemplateState(wabaId, accessToken);
+
+  return prisma.businessWhatsAppConnection.update({
+    where: { id: connectionId },
+    data: {
+      templateCampaignName: CAMPAIGN_TEMPLATE_NAME,
+      templateCampaignLang: CAMPAIGN_TEMPLATE_LANG,
+      templateCampaignStatus: result.status,
+      templateCampaignId: result.templateId,
+      templateCampaignSyncedAt: new Date(),
+      ...(result.error && result.status === 'missing'
+        ? { lastError: result.error }
+        : {}),
+    },
+  });
+}
+
 async function applyAllTemplateStates(
   connectionId: string,
   accessToken: string,
@@ -159,7 +199,8 @@ async function applyAllTemplateStates(
   mode: 'ensure' | 'sync',
 ) {
   await applyEarnTemplateState(connectionId, accessToken, wabaId, mode);
-  return applyWelcomeTemplateState(connectionId, accessToken, wabaId, mode);
+  await applyWelcomeTemplateState(connectionId, accessToken, wabaId, mode);
+  return applyCampaignTemplateState(connectionId, accessToken, wabaId, mode);
 }
 
 export const whatsappRoutes: FastifyPluginAsync = async (app) => {
@@ -415,6 +456,12 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         templateEarnStatus: 'missing',
         templateEarnId: null,
         templateEarnSyncedAt: null,
+        templateWelcomeStatus: 'missing',
+        templateWelcomeId: null,
+        templateWelcomeSyncedAt: null,
+        templateCampaignStatus: 'missing',
+        templateCampaignId: null,
+        templateCampaignSyncedAt: null,
         coexistence: false,
         smbSyncStartedAt: null,
         smbContactsSyncRequestId: null,

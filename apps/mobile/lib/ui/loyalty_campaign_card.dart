@@ -31,6 +31,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.audienceUnlocked = false,
     this.audienceLabel,
     this.onOpenShop,
+    this.onOpen,
   });
 
   final String businessName;
@@ -58,6 +59,9 @@ class LoyaltyCampaignCard extends StatelessWidget {
   /// Optional “Ver loja” link next to the store name (e.g. Prêmios list).
   final VoidCallback? onOpenShop;
 
+  /// Opens the campaign detail. The redeem button still handles its own tap.
+  final VoidCallback? onOpen;
+
   bool get _isBirthday => campaignType == 'birthday';
   bool get _isSpend => campaignType == 'spend' || campaignType == 'points';
   bool get _isCashback => campaignType == 'cashback';
@@ -77,36 +81,9 @@ class LoyaltyCampaignCard extends StatelessWidget {
     final hasImage =
         rewardImageUrl != null && rewardImageUrl!.trim().isNotEmpty;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: _isCashback ? FregoColors.cashbackBg : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _isCashback ? FregoColors.cashbackRing : FregoColors.hairline,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: _isCashback ? 0.04 : 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Thin brand accent — cashback uses its own color
-            Container(
-              height: 3,
-              color: _isCashback ? FregoColors.cashback : accent,
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
                   Row(
                     children: [
                       _BizMark(
@@ -250,7 +227,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                         horizontal: 12,
                       ),
                       decoration: BoxDecoration(
-                        color: FregoColors.cashbackBg,
+                        color: Colors.white.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(11),
                         border: Border.all(color: FregoColors.cashbackRing),
                       ),
@@ -271,10 +248,44 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       onPressed: onRedeem,
                       accent: accent,
                     ),
-                ],
-              ),
+      ],
+    );
+
+    return Material(
+      color: _isCashback ? FregoColors.cashbackBg : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color:
+                  _isCashback ? FregoColors.cashbackRing : FregoColors.hairline,
             ),
-          ],
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: _isCashback ? 0.04 : 0.06),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: 3,
+                color: _isCashback ? FregoColors.cashback : accent,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: content,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -389,13 +400,6 @@ class _TypeChip extends StatelessWidget {
             : isCashback
                 ? 'Cashback'
                 : 'Carimbos';
-    final icon = isBirthday
-        ? FregoIcons.birthday
-        : isSpend
-            ? FregoIcons.points
-            : isCashback
-                ? FregoIcons.cashback
-                : FregoIcons.stamp;
     final bg = isSpend
         ? const Color(0xFFFFF8E8)
         : isBirthday
@@ -410,6 +414,13 @@ class _TypeChip extends StatelessWidget {
             : isCashback
                 ? FregoColors.cashback
                 : accent;
+    final icon = isBirthday
+        ? FregoIcons.birthday(size: 11, color: fg)
+        : isSpend
+            ? FregoIcons.points(size: 11, color: fg)
+            : isCashback
+                ? FregoIcons.cashback(size: 11, color: fg)
+                : FregoIcons.stamp(size: 11, color: fg);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -420,7 +431,7 @@ class _TypeChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: fg),
+          icon,
           const SizedBox(width: 3),
           Text(
             label,
@@ -454,7 +465,7 @@ class _AudienceUnlockChip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(FregoIcons.pointsFilled, size: 14, color: accent),
+          FregoIcons.points(size: 14, color: accent),
           const SizedBox(width: 6),
           Expanded(
             child: Text(

@@ -5,6 +5,7 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
 class ShopsPage extends StatefulWidget {
@@ -273,6 +274,27 @@ class _ShopsPageState extends State<ShopsPage> {
     _load();
   }
 
+  Future<void> _openCampaign({
+    required String businessId,
+    String? campaignId,
+  }) async {
+    if (campaignId != null && campaignId.isNotEmpty) {
+      await FregoAdaptive.push(
+        context,
+        CampaignDetailPage(
+          businessId: businessId,
+          campaignId: campaignId,
+        ),
+      );
+    } else {
+      await FregoAdaptive.push(
+        context,
+        ShopDetailPage(businessId: businessId),
+      );
+    }
+    if (mounted) _load();
+  }
+
   Future<void> _toggleFavorite(Map<String, dynamic> membership) async {
     final businessId = membership['businessId'] as String?;
     if (businessId == null || _togglingFavorite.contains(businessId)) return;
@@ -356,6 +378,7 @@ class _ShopsPageState extends State<ShopsPage> {
                   nextReward: _nextReward,
                   birthday: _birthdayHint(),
                   onOpenShop: _openShop,
+                  onOpenCampaign: _openCampaign,
                 ),
                 const SizedBox(height: 16),
                 _ShopSearchField(
@@ -709,6 +732,13 @@ class _ShopsPageState extends State<ShopsPage> {
                                               ? 'Resgatar agora'
                                               : '$redeemable prêmios prontos',
                                           tone: _PillTone.ready,
+                                          onTap: progress?['campaignId'] == null
+                                              ? null
+                                              : () => _openCampaign(
+                                                    businessId: businessId,
+                                                    campaignId: progress![
+                                                        'campaignId'] as String?,
+                                                  ),
                                         )
                                       else if (remaining != null &&
                                           progress != null &&
@@ -722,6 +752,13 @@ class _ShopsPageState extends State<ShopsPage> {
                                           tone: progressType == 'spend'
                                               ? _PillTone.points
                                               : _PillTone.stamps,
+                                          onTap: progress['campaignId'] == null
+                                              ? null
+                                              : () => _openCampaign(
+                                                    businessId: businessId,
+                                                    campaignId: progress[
+                                                        'campaignId'] as String?,
+                                                  ),
                                         )
                                       else ...[
                                         _Pill(
@@ -1052,11 +1089,13 @@ class _Pill extends StatelessWidget {
     required this.label,
     required this.tone,
     this.icon,
+    this.onTap,
   });
 
   final String label;
   final _PillTone tone;
   final IconData? icon;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,15 +1109,15 @@ class _Pill extends StatelessWidget {
           FregoColors.success,
         ),
       _PillTone.stamps => (
-          const Color(0xFFF0FDFA),
-          const Color(0xFF115E59),
+          FregoColors.stampsBg,
+          FregoColors.stamps,
         ),
       _PillTone.badge => (
           const Color(0xFFFFF8E1),
           const Color(0xFF8A5A00),
         ),
     };
-    return Container(
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: bg,
@@ -1105,6 +1144,12 @@ class _Pill extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return pill;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: pill,
+    );
   }
 }
 
@@ -1115,12 +1160,25 @@ class _InsightStrip extends StatelessWidget {
     required this.nextReward,
     required this.birthday,
     required this.onOpenShop,
+    required this.onOpenCampaign,
   });
 
   final int redeemableNow;
   final Map<String, dynamic>? nextReward;
   final Map<String, dynamic>? birthday;
   final Future<void> Function(String businessId) onOpenShop;
+  final Future<void> Function({
+    required String businessId,
+    String? campaignId,
+  }) onOpenCampaign;
+
+  VoidCallback? _tap({required String? shopId, String? campaignId}) {
+    if (shopId == null) return null;
+    if (campaignId != null && campaignId.isNotEmpty) {
+      return () => onOpenCampaign(businessId: shopId, campaignId: campaignId);
+    }
+    return () => onOpenShop(shopId);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1129,7 +1187,7 @@ class _InsightStrip extends StatelessWidget {
       final shopName = nextReward?['businessName'] as String?;
       final reward = nextReward?['rewardTitle'] as String?;
       return _InsightCard(
-        icon: FregoIcons.gift,
+        icon: Icon(FregoIcons.gift, color: FregoColors.success, size: 22),
         tint: FregoColors.success,
         soft: const Color(0xFFE6F6EE),
         title: redeemableNow == 1
@@ -1140,7 +1198,10 @@ class _InsightStrip extends StatelessWidget {
             : (shopName != null
                 ? 'Toque para resgatar em $shopName'
                 : 'Toque numa loja para resgatar'),
-        onTap: shopId != null ? () => onOpenShop(shopId) : null,
+        onTap: _tap(
+          shopId: shopId,
+          campaignId: nextReward?['campaignId'] as String?,
+        ),
       );
     }
 
@@ -1148,14 +1209,20 @@ class _InsightStrip extends StatelessWidget {
       final shopId = birthday!['businessId'] as String?;
       final shopName = birthday!['businessName'] as String?;
       return _InsightCard(
-        icon: FregoIcons.birthdayFilled,
+        icon: FregoIcons.birthday(
+          size: 22,
+          color: const Color(0xFF9D174D),
+        ),
         tint: const Color(0xFF9D174D),
         soft: const Color(0xFFFDF2F8),
         title: 'Presente de aniversário liberado',
         subtitle: shopName != null
             ? 'Resgate em $shopName'
             : 'Resgate na loja participante',
-        onTap: shopId != null ? () => onOpenShop(shopId) : null,
+        onTap: _tap(
+          shopId: shopId,
+          campaignId: birthday!['campaignId'] as String?,
+        ),
       );
     }
 
@@ -1165,7 +1232,10 @@ class _InsightStrip extends StatelessWidget {
       final shopName = birthday!['businessName'] as String?;
       if (days != null && days <= 14) {
         return _InsightCard(
-          icon: FregoIcons.birthday,
+          icon: FregoIcons.birthday(
+            size: 22,
+            color: const Color(0xFF9D174D),
+          ),
           tint: const Color(0xFF9D174D),
           soft: const Color(0xFFFDF2F8),
           title: days == 0
@@ -1176,7 +1246,10 @@ class _InsightStrip extends StatelessWidget {
           subtitle: shopName != null
               ? 'Presente disponível em $shopName'
               : 'Prepare-se para resgatar o presente',
-          onTap: shopId != null ? () => onOpenShop(shopId) : null,
+          onTap: _tap(
+            shopId: shopId,
+            campaignId: birthday!['campaignId'] as String?,
+          ),
         );
       }
     }
@@ -1190,7 +1263,11 @@ class _InsightStrip extends StatelessWidget {
       final shopName = next['businessName'] as String?;
       final reward = next['rewardTitle'] as String?;
       return _InsightCard(
-        icon: FregoIcons.trending,
+        icon: const Icon(
+          FregoIcons.trending,
+          color: FregoColors.primary500,
+          size: 22,
+        ),
         tint: FregoColors.primary500,
         soft: FregoColors.primary50,
         title: remaining == 1
@@ -1200,7 +1277,10 @@ class _InsightStrip extends StatelessWidget {
           if (reward != null && reward.isNotEmpty) reward,
           if (shopName != null) shopName,
         ].join(' · '),
-        onTap: shopId != null ? () => onOpenShop(shopId) : null,
+        onTap: _tap(
+          shopId: shopId,
+          campaignId: next['campaignId'] as String?,
+        ),
       );
     }
 
@@ -1218,7 +1298,7 @@ class _InsightCard extends StatelessWidget {
     this.onTap,
   });
 
-  final IconData icon;
+  final Widget icon;
   final Color tint;
   final Color soft;
   final String title;
@@ -1245,7 +1325,7 @@ class _InsightCard extends StatelessWidget {
                   color: Colors.white.withValues(alpha: 0.85),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: tint, size: 22),
+                child: icon,
               ),
               const SizedBox(width: 12),
               Expanded(

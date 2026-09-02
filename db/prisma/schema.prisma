@@ -216,14 +216,34 @@ model Customer {
   firebaseUid String?   @unique @map("firebase_uid")
   /// true depois que o cliente conclui o fluxo de perfil no app.
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
+  /// Opt-out de push no app. Default on — OS permission is still required.
+  notificationsEnabled Boolean @default(true) @map("notifications_enabled")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   memberships  Membership[]
+  deviceTokens DeviceToken[]
   transactions Transaction[] @relation("CustomerActorTransactions")
 
   @@index([phoneLast4])
   @@map("customers")
+}
+
+/// FCM registration token for the customer app. One current token per platform.
+model DeviceToken {
+  id         String   @id @default(cuid())
+  customerId String   @map("customer_id")
+  token      String   @unique
+  /// ios | android
+  platform   String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, platform])
+  @@index([customerId])
+  @@map("device_tokens")
 }
 
 /// Customer × business association. Stamps/transactions live here, not on Customer.
@@ -266,6 +286,8 @@ model Campaign {
   rewardImageUrl String?      @map("reward_image_url")
   /// Se definido, só membros da audiência podem resgatar.
   audienceSegmentId String?   @map("audience_segment_id")
+  /// Set when audience FCM was claimed/sent. Re-activate does not send again.
+  audiencePushSentAt DateTime? @map("audience_push_sent_at")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
@@ -377,6 +399,12 @@ model BusinessWhatsAppConnection {
   templateWelcomeStatus WhatsAppTemplateStatus   @default(missing) @map("template_welcome_status")
   templateWelcomeId     String?                  @map("template_welcome_id")
   templateWelcomeSyncedAt DateTime?              @map("template_welcome_synced_at")
+  /// Audience campaign announcement (same copy as push).
+  templateCampaignName   String                   @default("frego_campaign_new") @map("template_campaign_name")
+  templateCampaignLang   String                   @default("pt_BR") @map("template_campaign_lang")
+  templateCampaignStatus WhatsAppTemplateStatus   @default(missing) @map("template_campaign_status")
+  templateCampaignId     String?                  @map("template_campaign_id")
+  templateCampaignSyncedAt DateTime?              @map("template_campaign_synced_at")
   /// True when onboarded via WhatsApp Business app coexistence (keep app + Cloud API).
   coexistence        Boolean                  @default(false)
   smbSyncStartedAt   DateTime?                @map("smb_sync_started_at")

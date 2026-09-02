@@ -1,4 +1,5 @@
 import { prisma } from '@frego/db';
+import { shouldOmitFromLedger } from './ledger-meta.js';
 
 export type UnitKind = 'stamps' | 'points' | 'cashback_cents';
 
@@ -89,6 +90,8 @@ type CampaignMeta = {
   stampsNeeded: number | null;
 };
 
+export type { CampaignMeta as CampaignKindMeta };
+
 function utcDateOnly(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
@@ -178,18 +181,29 @@ function redeemedInYear(
 }
 
 type LedgerTx = {
+  id?: string;
   type: string;
   quantity: number;
   unitKind: string | null;
   campaignId: string | null;
   amountCents: number | null;
   createdAt: Date;
+  metadata?: unknown;
+};
+
+export type PoolEvent = {
+  kind: 'earn' | 'redeem';
+  quantity: number;
+  at: Date;
+  id?: string;
 };
 
 type Lot = {
   remaining: number;
   earnedAt: Date;
   expiresAt: Date | null;
+  sourceId?: string;
+  originalQuantity: number;
 };
 
 /**
@@ -198,10 +212,10 @@ type Lot = {
  * With expireDays=N, units earned on day D remain valid through day D+N (UTC).
  */
 export function poolLotsFifo(
-  events: Array<{ kind: 'earn' | 'redeem'; quantity: number; at: Date }>,
+  events: Array<PoolEvent>,
   expireDays: number | null,
   now = new Date(),
-): { balance: number; lots: Lot[] } {
+): { balance: number; lots: Lot[]; expiredLots: Lot[] } {
   const lots: Lot[] = [];
   const sorted = [...events].sort((a, b) => a.at.getTime() - b.at.getTime());
 
@@ -215,6 +229,8 @@ export function poolLotsFifo(
         remaining: event.quantity,
         earnedAt: event.at,
         expiresAt,
+        sourceId: event.id,
+        originalQuantity: event.quantity,
       });
       continue;
     }
@@ -233,14 +249,18 @@ export function poolLotsFifo(
 
   const today = utcDateOnly(now);
   const active: Lot[] = [];
+  const expiredLots: Lot[] = [];
   let balance = 0;
   for (const lot of lots) {
     if (lot.remaining <= 0) continue;
-    if (lot.expiresAt && today > lot.expiresAt) continue;
+    if (lot.expiresAt && today > lot.expiresAt) {
+      expiredLots.push(lot);
+      continue;
+    }
     active.push(lot);
     balance += lot.remaining;
   }
-  return { balance, lots: active };
+  return { balance, lots: active, expiredLots };
 }
 
 /** @deprecated prefer poolLotsFifo — kept for callers that only need the number. */
@@ -313,12 +333,14 @@ export async function deriveWallet(
     prisma.transaction.findMany({
       where: { membershipId, businessId },
       select: {
+        id: true,
         type: true,
         quantity: true,
         unitKind: true,
         campaignId: true,
         amountCents: true,
         createdAt: true,
+        metadata: true,
       },
       orderBy: { createdAt: 'asc' },
     }),
@@ -369,67 +391,8 @@ export async function deriveWallet(
     for (const c of extra) metaById.set(c.id, c);
   }
 
-  const stampEvents: Array<{
-    kind: 'earn' | 'redeem';
-    quantity: number;
-    at: Date;
-  }> = [];
-  const pointEvents: Array<{
-    kind: 'earn' | 'redeem';
-    quantity: number;
-    at: Date;
-  }> = [];
-  const cashbackEvents: Array<{
-    kind: 'earn' | 'redeem';
-    quantity: number;
-    at: Date;
-  }> = [];
-
-  for (const tx of transactions as LedgerTx[]) {
-    if (tx.type === 'stamp') {
-      const kind = resolveEarnUnitKind(tx, metaById);
-      if (kind === 'points') {
-        pointEvents.push({ kind: 'earn', quantity: tx.quantity, at: tx.createdAt });
-      } else if (kind === 'cashback_cents') {
-        cashbackEvents.push({ kind: 'earn', quantity: tx.quantity, at: tx.createdAt });
-      } else if (kind === 'stamps') {
-        stampEvents.push({ kind: 'earn', quantity: tx.quantity, at: tx.createdAt });
-      }
-      continue;
-    }
-
-    if (tx.type === 'redeem' && tx.unitKind === 'cashback_cents') {
-      cashbackEvents.push({
-        kind: 'redeem',
-        quantity: tx.quantity,
-        at: tx.createdAt,
-      });
-      continue;
-    }
-
-    if (tx.type === 'redeem' && tx.campaignId) {
-      const campaign = metaById.get(tx.campaignId);
-      if (!campaign) continue;
-      const kind = campaignUnitKind(campaign.type);
-      if (!kind) continue; // birthday / visits — sem consumo de pool
-      if (kind === 'cashback_cents') {
-        cashbackEvents.push({
-          kind: 'redeem',
-          quantity: tx.quantity,
-          at: tx.createdAt,
-        });
-        continue;
-      }
-      const needed =
-        campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
-      const cost = tx.quantity * needed;
-      if (kind === 'points') {
-        pointEvents.push({ kind: 'redeem', quantity: cost, at: tx.createdAt });
-      } else {
-        stampEvents.push({ kind: 'redeem', quantity: cost, at: tx.createdAt });
-      }
-    }
-  }
+  const { stamps: stampEvents, points: pointEvents, cashback: cashbackEvents } =
+    ledgerPoolEvents(transactions as LedgerTx[], metaById);
 
   const stampPool = poolLotsFifo(stampEvents, stampsExpireDays);
   const pointPool = poolLotsFifo(pointEvents, pointsExpireDays);
@@ -594,6 +557,72 @@ export function presentCustomerCampaigns(
     return 0;
   });
   return next;
+}
+
+export function ledgerPoolEvents(
+  transactions: LedgerTx[],
+  metaById: Map<string, CampaignMeta>,
+): { stamps: PoolEvent[]; points: PoolEvent[]; cashback: PoolEvent[] } {
+  const stamps: PoolEvent[] = [];
+  const points: PoolEvent[] = [];
+  const cashback: PoolEvent[] = [];
+
+  for (const tx of transactions) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
+
+    if (tx.type === 'stamp') {
+      const kind = resolveEarnUnitKind(tx, metaById);
+      const event: PoolEvent = {
+        kind: 'earn',
+        quantity: tx.quantity,
+        at: tx.createdAt,
+        id: tx.id,
+      };
+      if (kind === 'points') points.push(event);
+      else if (kind === 'cashback_cents') cashback.push(event);
+      else if (kind === 'stamps') stamps.push(event);
+      continue;
+    }
+
+    if (tx.type === 'redeem' && tx.unitKind === 'cashback_cents') {
+      cashback.push({
+        kind: 'redeem',
+        quantity: tx.quantity,
+        at: tx.createdAt,
+        id: tx.id,
+      });
+      continue;
+    }
+
+    if (tx.type === 'redeem' && tx.campaignId) {
+      const campaign = metaById.get(tx.campaignId);
+      if (!campaign) continue;
+      const kind = campaignUnitKind(campaign.type);
+      if (!kind) continue;
+      if (kind === 'cashback_cents') {
+        cashback.push({
+          kind: 'redeem',
+          quantity: tx.quantity,
+          at: tx.createdAt,
+          id: tx.id,
+        });
+        continue;
+      }
+      const needed =
+        campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
+      const cost = tx.quantity * needed;
+      const event: PoolEvent = {
+        kind: 'redeem',
+        quantity: cost,
+        at: tx.createdAt,
+        id: tx.id,
+      };
+      if (kind === 'points') points.push(event);
+      else stamps.push(event);
+    }
+  }
+
+  return { stamps, points, cashback };
 }
 
 function resolveEarnUnitKind(

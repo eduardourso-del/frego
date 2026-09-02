@@ -7,6 +7,10 @@ import {
   countMembershipsByRules,
   parseAudienceRules,
 } from '../lib/audience.js';
+import {
+  queueCampaignAudiencePush,
+  shouldQueueCampaignAudiencePush,
+} from '../lib/push/campaign-notify.js';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -228,6 +232,20 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       },
     });
 
+    if (
+      shouldQueueCampaignAudiencePush({
+        previousStatus: null,
+        nextStatus: campaign.status,
+        audienceSegmentId: campaign.audienceSegmentId,
+      })
+    ) {
+      queueCampaignAudiencePush({
+        campaignId: campaign.id,
+        businessId: auth.businessId,
+        log: (msg, extra) => request.log.info(extra ?? {}, msg),
+      });
+    }
+
     return reply.code(201).send({ campaign });
   });
 
@@ -340,6 +358,25 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       });
     });
 
+    const nextAudienceId =
+      audienceSegmentId !== undefined
+        ? audienceSegmentId
+        : existing.audienceSegmentId;
+    if (
+      shouldQueueCampaignAudiencePush({
+        previousStatus: existing.status,
+        nextStatus: campaign.status,
+        audienceSegmentId: nextAudienceId,
+        alreadySent: Boolean(existing.audiencePushSentAt),
+      })
+    ) {
+      queueCampaignAudiencePush({
+        campaignId: campaign.id,
+        businessId: auth.businessId,
+        log: (msg, extra) => request.log.info(extra ?? {}, msg),
+      });
+    }
+
     return { campaign };
   });
 
@@ -355,10 +392,7 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
     if (!existing) {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
-    const campaign = await prisma.campaign.update({
-      where: { id },
-      data: { status: CampaignStatus.archived },
-    });
-    return { campaign };
+    await prisma.campaign.delete({ where: { id } });
+    return { ok: true };
   });
 };

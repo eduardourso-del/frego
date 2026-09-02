@@ -9,11 +9,16 @@ import {
 } from '../lib/customer-stats.js';
 import { deriveWallet } from '../lib/wallet.js';
 import { createVoucherMeta, voucherFromMetadata } from '../lib/voucher.js';
+import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import {
   membershipMatchesAudience,
   parseAudienceRules,
   resolveMembershipRecognition,
 } from '../lib/audience.js';
+import {
+  deleteCustomerDeviceTokens,
+  replaceCustomerDeviceToken,
+} from '../lib/push/device-token.js';
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -30,7 +35,27 @@ const updateCustomerBody = z.object({
     .optional(),
   /** Marca o onboarding do app como concluído. */
   onboardingCompleted: z.boolean().optional(),
+  notificationsEnabled: z.boolean().optional(),
 });
+
+const deviceTokenBody = z.object({
+  token: z.string().min(10).max(4096),
+  platform: z.enum(['ios', 'android']),
+});
+
+const deleteDeviceTokenBody = z.object({
+  token: z.string().min(10).max(4096),
+});
+
+const customerPublicSelect = {
+  id: true,
+  displayName: true,
+  phoneE164: true,
+  birthday: true,
+  onboardingCompleted: true,
+  notificationsEnabled: true,
+  createdAt: true,
+} as const;
 
 export const meRoutes: FastifyPluginAsync = async (app) => {
   /** Lojas em que o staff autenticado é membro ativo. */
@@ -103,14 +128,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     const auth = requireCustomerAuth(request);
     const customer = await prisma.customer.findUniqueOrThrow({
       where: { id: auth.customerId },
-      select: {
-        id: true,
-        displayName: true,
-        phoneE164: true,
-        birthday: true,
-        onboardingCompleted: true,
-        createdAt: true,
-      },
+      select: customerPublicSelect,
     });
     const membershipCount = await prisma.membership.count({
       where: { customerId: auth.customerId },
@@ -130,7 +148,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     if (
       body.displayName === undefined &&
       body.birthday === undefined &&
-      body.onboardingCompleted === undefined
+      body.onboardingCompleted === undefined &&
+      body.notificationsEnabled === undefined
     ) {
       return reply.code(400).send({ error: 'NOTHING_TO_UPDATE' });
     }
@@ -149,15 +168,16 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         ...(body.onboardingCompleted !== undefined
           ? { onboardingCompleted: body.onboardingCompleted }
           : {}),
+        ...(body.notificationsEnabled !== undefined
+          ? { notificationsEnabled: body.notificationsEnabled }
+          : {}),
       },
-      select: {
-        id: true,
-        displayName: true,
-        phoneE164: true,
-        birthday: true,
-        onboardingCompleted: true,
-      },
+      select: customerPublicSelect,
     });
+
+    if (body.notificationsEnabled === false) {
+      await deleteCustomerDeviceTokens(auth.customerId);
+    }
 
     const membershipCount = await prisma.membership.count({
       where: { customerId: auth.customerId },
@@ -168,6 +188,36 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       membershipCount,
       needsOnboarding: !customer.onboardingCompleted,
     };
+  });
+
+  /** Register or replace this customer's FCM token for the platform. */
+  app.put('/me/device-token', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const body = deviceTokenBody.parse(request.body);
+    const deviceToken = await replaceCustomerDeviceToken({
+      customerId: auth.customerId,
+      token: body.token,
+      platform: body.platform,
+    });
+    request.log.info(
+      {
+        customerId: auth.customerId,
+        platform: body.platform,
+        tokenId: deviceToken.id,
+      },
+      'device_token_upserted',
+    );
+    return { deviceToken };
+  });
+
+  /** Drop this device's FCM token (logout). */
+  app.delete('/me/device-token', async (request) => {
+    const auth = requireCustomerAuth(request);
+    const body = deleteDeviceTokenBody.parse(request.body);
+    await prisma.deviceToken.deleteMany({
+      where: { token: body.token, customerId: auth.customerId },
+    });
+    return { ok: true };
   });
 
   /** Memberships do cliente (lojas) + pools de carimbos/pontos. */
@@ -236,6 +286,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           progress,
           birthday: birthday
             ? {
+                campaignId: birthday.campaignId,
                 canRedeem: birthday.canRedeem,
                 daysUntilBirthday: birthday.daysUntilBirthday ?? null,
                 lockedReason: birthday.lockedReason ?? null,
@@ -596,7 +647,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         return a.expiresAt.localeCompare(b.expiresAt);
       });
 
-    const items = txs.map((tx) => {
+    const items = txs
+      .filter((tx) => !shouldOmitFromLedger(tx.metadata))
+      .map((tx) => {
       const voucher = voucherFromMetadata(tx.metadata, {
         createdAt: tx.createdAt,
       });

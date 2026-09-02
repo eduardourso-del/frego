@@ -25,6 +25,13 @@ class ApiException implements Exception {
         return 'Voucher não encontrado nesta loja';
       case 'VOUCHER_EXPIRED':
         return message ?? 'Voucher expirou (válido por 24h)';
+      case 'ALREADY_REVERSED':
+        return message ?? 'Este lançamento já foi desfeito.';
+      case 'REVERSE_USED':
+      case 'REVERSE_EXPIRED':
+      case 'REVERSE_VOUCHER':
+      case 'REVERSE_NOT_STAFF':
+        return message ?? 'Não foi possível desfazer.';
       case 'INVALID_VOUCHER':
         return 'Voucher inválido';
       default:

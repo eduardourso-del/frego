@@ -5,6 +5,7 @@ import {
   applicationDefault,
 } from 'firebase-admin/app';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
+import { getMessaging, type Messaging } from 'firebase-admin/messaging';
 
 let initialized = false;
 
@@ -41,4 +42,9 @@ export async function verifyFirebaseIdToken(
 ): Promise<DecodedIdToken> {
   ensureFirebase();
   return getAuth().verifyIdToken(idToken);
+}
+
+export function getFirebaseMessaging(): Messaging {
+  ensureFirebase();
+  return getMessaging();
 }

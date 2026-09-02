@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Banknote, Coins, Stamp } from 'lucide-react';
+import { Banknote, Coins, Stamp, Undo2 } from 'lucide-react';
 import { useBusiness } from '@/lib/business-context';
 import { AppShell } from '@/components/app-shell';
 import { API_URL } from '@/lib/api';
@@ -26,6 +26,21 @@ function formatVoucherInput(raw: string): string {
   const clean = normalizeVoucherCode(raw);
   if (clean.length <= 3) return clean;
   return `${clean.slice(0, 3)}-${clean.slice(3)}`;
+}
+
+function formatSaleClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return sameDay ? `Hoje, ${time}` : `${d.toLocaleDateString('pt-BR')} · ${time}`;
 }
 
 type EarnMode = 'stamps' | 'points' | 'cashback';
@@ -62,6 +77,13 @@ type OpenVoucher = {
   campaignName: string | null;
 };
 
+type CounterSale = {
+  saleId: string;
+  anchorId: string;
+  createdAt: string;
+  summary: string;
+};
+
 type LookupResult = {
   found: boolean;
   multiple?: boolean;
@@ -86,6 +108,7 @@ type LookupResult = {
   };
   matches?: Match[];
   openVouchers?: OpenVoucher[];
+  recentSales?: CounterSale[];
   activeEarnKinds?: EarnMode[];
   error?: string;
 };
@@ -119,8 +142,11 @@ export default function CounterPage() {
   const [error, setError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<LookupResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [lastSale, setLastSale] = useState<CounterSale | null>(null);
+  const [pendingUndo, setPendingUndo] = useState<CounterSale | null>(null);
+  const [reversingId, setReversingId] = useState<string | null>(null);
   const [voucherCode, setVoucherCode] = useState('');
-  const [applyCashback, setApplyCashback] = useState(true);
+  const [applyCashback, setApplyCashback] = useState(false);
   const [applyAmount, setApplyAmount] = useState('');
   const [fulfillingId, setFulfillingId] = useState<string | null>(null);
   const [fetchedKinds, setFetchedKinds] = useState<EarnMode[] | null>(null);
@@ -140,7 +166,7 @@ export default function CounterPage() {
   const cashbackPercent =
     lookup?.cashback?.percent ?? lookup?.cashbackPercent ?? 0;
   const cashbackBalance =
-    lookup?.cashback?.balanceCents ?? poolsFrom(lookup).cashbackCents ?? 0;
+    poolsFrom(lookup).cashbackCents ?? lookup?.cashback?.balanceCents ?? 0;
   const earnKinds = useMemo(() => {
     if (lookup?.activeEarnKinds) return parseEarnKinds(lookup.activeEarnKinds);
     if (fetchedKinds) return fetchedKinds;
@@ -224,6 +250,82 @@ export default function CounterPage() {
     };
   }
 
+  function prependSale(
+    prev: LookupResult,
+    sale: CounterSale | null | undefined,
+  ): LookupResult {
+    if (!sale?.anchorId) return prev;
+    const rest = (prev.recentSales ?? []).filter(
+      (s) => s.saleId !== sale.saleId && s.anchorId !== sale.anchorId,
+    );
+    return { ...prev, recentSales: [sale, ...rest].slice(0, 8) };
+  }
+
+  function rememberSale(sale: CounterSale | null | undefined) {
+    if (!sale?.anchorId) return;
+    setLastSale(sale);
+    setPendingUndo(null);
+  }
+
+  async function reverseSale(sale: CounterSale) {
+    setReversingId(sale.anchorId);
+    setPendingUndo(null);
+    setError(null);
+    try {
+      const res = await fetch(
+        `${API_URL}/transactions/${sale.anchorId}/reverse`,
+        {
+          method: 'POST',
+          headers: await authHeaders(),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.message ?? data.error ?? 'Não foi possível desfazer.',
+        );
+      }
+      const nextPools = data.wallet?.pools ?? data.pools;
+      const nextCashbackCents =
+        data.cashback?.balanceCents ?? nextPools?.cashbackCents;
+      setLookup((prev) =>
+        prev
+          ? {
+              ...prev,
+              wallet: data.wallet ?? prev.wallet,
+              pools: nextPools ?? prev.pools,
+              cashback: prev.cashback
+                ? {
+                    ...prev.cashback,
+                    balanceCents:
+                      nextCashbackCents ?? prev.cashback.balanceCents,
+                  }
+                : prev.cashback,
+              recentSales: (prev.recentSales ?? []).filter(
+                (s) =>
+                  s.saleId !== sale.saleId && s.anchorId !== sale.anchorId,
+              ),
+            }
+          : prev,
+      );
+      if (
+        lastSale &&
+        (lastSale.saleId === sale.saleId || lastSale.anchorId === sale.anchorId)
+      ) {
+        setLastSale(null);
+      }
+      setPendingUndo(null);
+      setToast(data.message ?? 'Lançamento desfeito.');
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Não foi possível desfazer.';
+      setError(message);
+      setToast(message);
+    } finally {
+      setReversingId(null);
+    }
+  }
+
   async function doLookup(e?: FormEvent) {
     e?.preventDefault();
     setLoading(true);
@@ -231,6 +333,9 @@ export default function CounterPage() {
     setLookup(null);
     setVoucherResult(null);
     setApplyAmount('');
+    setApplyCashback(false);
+    setLastSale(null);
+    setPendingUndo(null);
     try {
       const payload =
         qDigits.length === 4
@@ -362,7 +467,9 @@ export default function CounterPage() {
         pointsPerReal,
         cashbackPercent,
         cashback: data.cashback,
+        recentSales: data.sale ? [data.sale as CounterSale] : [],
       });
+      rememberSale(data.sale as CounterSale | undefined);
 
       if (
         withEarn &&
@@ -374,10 +481,12 @@ export default function CounterPage() {
       }
 
       setToast(
-        earnMode === 'stamps' && withEarn
-          ? data.message ??
+        data.sale
+          ? null
+          : earnMode === 'stamps' && withEarn
+            ? data.message ??
               `Carimbo adicionado — saldo ${data.pools?.stamps ?? data.wallet?.pools?.stamps ?? 1}.`
-          : 'Cliente adicionado à loja.',
+            : 'Cliente adicionado à loja.',
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível cadastrar.');
@@ -426,20 +535,39 @@ export default function CounterPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Não foi possível registrar.');
-      setLookup((prev) =>
-        prev
-          ? {
-              ...prev,
-              associatedHere: true,
-              membership: prev.membership ?? { id: mid, isVip: false },
-              wallet: data.wallet,
-              pools: data.wallet?.pools ?? data.pools,
-            }
-          : prev,
-      );
-      setToast(data.message);
+      const sale = data.sale as CounterSale | undefined;
+      setLookup((prev) => {
+        if (!prev) return prev;
+        const nextPools = data.wallet?.pools ?? data.pools;
+        const nextCashbackCents =
+          data.cashback?.balanceCents ?? nextPools?.cashbackCents;
+        return prependSale(
+          {
+            ...prev,
+            associatedHere: true,
+            membership: prev.membership ?? { id: mid, isVip: false },
+            wallet: data.wallet,
+            pools: nextPools,
+            cashback: prev.cashback
+              ? {
+                  ...prev.cashback,
+                  balanceCents:
+                    nextCashbackCents ?? prev.cashback.balanceCents,
+                }
+              : {
+                  campaignId: null,
+                  percent: prev.cashbackPercent ?? 0,
+                  balanceCents: nextCashbackCents ?? 0,
+                },
+          },
+          sale,
+        );
+      });
+      rememberSale(sale);
+      setToast(sale ? null : data.message);
       setAmount('');
       setApplyAmount('');
+      setApplyCashback(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível registrar.');
     } finally {
@@ -770,8 +898,8 @@ export default function CounterPage() {
                   key === 'points'
                     ? 'bg-[var(--color-points)] text-white shadow-[0_8px_18px_-10px_rgba(180,83,9,0.55)]'
                     : key === 'cashback'
-                      ? 'bg-[var(--color-cashback)] text-white shadow-[0_8px_18px_-10px_rgba(4,120,87,0.55)]'
-                      : 'bg-[var(--color-stamps)] text-white shadow-[0_8px_18px_-10px_rgba(15,118,110,0.55)]';
+                      ? 'bg-[var(--color-cashback)] text-white shadow-[0_8px_18px_-10px_rgba(15,118,110,0.55)]'
+                      : 'bg-[var(--color-stamps)] text-white shadow-[0_8px_18px_-10px_rgba(109,40,217,0.55)]';
                 return (
                   <button
                     key={key}
@@ -1104,17 +1232,135 @@ export default function CounterPage() {
                       ? 'Adicionar à loja e registrar cashback'
                       : 'Adicionar à loja e carimbar'}
             </button>
+
+            {(lookup.recentSales?.length ?? 0) > 0 && (
+              <div className="mt-5 border-t border-[var(--color-hairline)] pt-4">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                  Lançamentos deste cliente
+                </p>
+                <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                  Errou o valor ou o carimbo? Desfaça. Só funciona se o
+                  cliente ainda não usou o benefício.
+                </p>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {lookup.recentSales!.map((sale) => {
+                    const busy = reversingId === sale.anchorId;
+                    return (
+                      <li
+                        key={sale.saleId}
+                        className="rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] px-3 py-2.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[14px] font-semibold text-[var(--color-ink)]">
+                              {sale.summary}
+                            </p>
+                            <p className="mt-0.5 text-[12px] text-[var(--color-neutral-400)]">
+                              {formatSaleClock(sale.createdAt)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={reversingId != null}
+                            onClick={() => setPendingUndo(sale)}
+                            className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-[8px] px-2.5 text-[12px] font-semibold text-[var(--color-neutral-600)] hover:bg-[var(--color-card)] hover:text-[var(--color-ink)] disabled:opacity-60"
+                          >
+                            <Undo2 size={14} strokeWidth={2.25} aria-hidden />
+                            {busy ? '…' : 'Desfazer'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
           </section>
         )}
 
-        {toast && (
+        {toast ? (
           <div
-            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-40 w-[min(92vw,24rem)] -translate-x-1/2 rounded-full bg-[var(--color-ink)] px-4 py-3 text-center text-[14px] text-white shadow-[var(--shadow-raised)] md:bottom-6"
+            className={`fixed left-1/2 z-50 w-[min(92vw,24rem)] -translate-x-1/2 rounded-full bg-[var(--color-ink)] px-4 py-3 text-center text-[14px] text-white shadow-[var(--shadow-raised)] ${
+              lastSale
+                ? 'bottom-[calc(9.75rem+env(safe-area-inset-bottom))] md:bottom-[6.5rem]'
+                : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-6'
+            }`}
             role="status"
           >
             {toast}
           </div>
-        )}
+        ) : null}
+
+        {lastSale ? (
+          <div
+            className="fixed bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex w-[min(92vw,24rem)] -translate-x-1/2 items-center gap-3 rounded-[16px] bg-[var(--color-ink)] px-4 py-3 text-white shadow-[var(--shadow-raised)] md:bottom-6"
+            role="status"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-white/60">
+                Registrado
+              </p>
+              <p className="truncate text-[14px] font-semibold">
+                {lastSale.summary}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={reversingId != null}
+              onClick={() => setPendingUndo(lastSale)}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-[8px] bg-white/10 px-3 text-[13px] font-semibold text-white"
+            >
+              <Undo2 size={15} strokeWidth={2.25} aria-hidden />
+              {reversingId === lastSale.anchorId ? '…' : 'Desfazer'}
+            </button>
+          </div>
+        ) : null}
+
+        {pendingUndo ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="undo-title"
+            onClick={() => reversingId == null && setPendingUndo(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-[16px] bg-[var(--color-card)] p-5 shadow-[var(--shadow-raised)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p
+                id="undo-title"
+                className="text-[16px] font-semibold text-[var(--color-ink)]"
+              >
+                Desfazer lançamento?
+              </p>
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--color-neutral-600)]">
+                {pendingUndo.summary}
+              </p>
+              <p className="mt-2 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                Só funciona se o cliente ainda não usou o benefício.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={reversingId != null}
+                  onClick={() => setPendingUndo(null)}
+                  className="min-h-10 rounded-[10px] px-3 text-[14px] font-semibold text-[var(--color-neutral-600)]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={reversingId != null}
+                  onClick={() => void reverseSale(pendingUndo)}
+                  className="min-h-10 rounded-[10px] bg-[var(--color-danger)] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+                >
+                  {reversingId === pendingUndo.anchorId ? '…' : 'Desfazer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </main>
     </AppShell>
   );

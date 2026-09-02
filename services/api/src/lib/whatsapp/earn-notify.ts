@@ -1,20 +1,13 @@
 import { prisma } from '@frego/db';
-import type { WalletSnapshot } from '../wallet.js';
 import { sendWhatsAppTemplate } from './client.js';
 import { decryptToken } from './crypto.js';
-import { buildEarnWhatsAppLines } from './earn-message.js';
+import {
+  buildEarnWhatsAppLines,
+  type EarnNotifyInput,
+} from './earn-message.js';
+import { queueEarnPush } from '../push/earn-notify.js';
 
-export type EarnNotifyInput = {
-  businessId: string;
-  businessName: string;
-  toE164: string;
-  unitKind: 'stamps' | 'points' | 'cashback';
-  quantity: number;
-  amountCents?: number | null;
-  cashbackCents?: number | null;
-  wallet: WalletSnapshot;
-  log?: (msg: string, extra?: Record<string, unknown>) => void;
-};
+export type { EarnNotifyInput };
 
 /**
  * Send earn summary via the business's connected WABA phone.
@@ -107,4 +100,10 @@ export function queueEarnWhatsAppForBusiness(input: EarnNotifyInput): void {
       error: result.error,
     });
   });
+}
+
+/** WhatsApp + push, same earn copy. Fire-and-forget. */
+export function queueEarnNotify(input: EarnNotifyInput): void {
+  queueEarnWhatsAppForBusiness(input);
+  queueEarnPush(input);
 }

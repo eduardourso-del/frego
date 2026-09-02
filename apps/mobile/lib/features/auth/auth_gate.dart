@@ -2,13 +2,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
+import '../../notifications/push_service.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../home/customer_shell.dart';
+import 'notification_onboarding_page.dart';
 import 'phone_entry_page.dart';
 import 'profile_setup_page.dart';
 
-/// Decide para onde ir após login: onboarding de nome ou lista de lojas.
+/// Decide para onde ir após login: nome, avisos, ou lista de lojas.
 class CustomerHomeGate extends StatefulWidget {
   const CustomerHomeGate({super.key});
 
@@ -20,6 +22,7 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
   bool _loading = true;
   String? _error;
   bool _needsOnboarding = false;
+  bool _needsNotificationPrompt = false;
   String? _phoneE164;
 
   @override
@@ -36,9 +39,14 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
     try {
       final data = await fetchMyCustomer();
       final customer = data['customer'] as Map<String, dynamic>;
+      final needsOnboarding = data['needsOnboarding'] == true;
+      final needsNotificationPrompt = needsOnboarding
+          ? false
+          : await PushService.shouldShowPrePrompt();
       if (!mounted) return;
       setState(() {
-        _needsOnboarding = data['needsOnboarding'] == true;
+        _needsOnboarding = needsOnboarding;
+        _needsNotificationPrompt = needsNotificationPrompt;
         _phoneE164 = customer['phoneE164'] as String?;
         _loading = false;
       });
@@ -88,6 +96,7 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
               FregoSecondaryButton(
                 label: 'Sair',
                 onPressed: () async {
+                  await PushService.stop();
                   await FirebaseAuth.instance.signOut();
                   if (!context.mounted) return;
                   await FregoAdaptive.pushAndRemoveUntil(
@@ -106,8 +115,21 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
     if (_needsOnboarding) {
       return ProfileSetupPage(
         phoneE164: _phoneE164 ?? '',
-        onCompleted: () {
-          setState(() => _needsOnboarding = false);
+        onCompleted: () async {
+          final showPrompt = await PushService.shouldShowPrePrompt();
+          if (!mounted) return;
+          setState(() {
+            _needsOnboarding = false;
+            _needsNotificationPrompt = showPrompt;
+          });
+        },
+      );
+    }
+
+    if (_needsNotificationPrompt) {
+      return NotificationOnboardingPage(
+        onDone: () {
+          setState(() => _needsNotificationPrompt = false);
         },
       );
     }

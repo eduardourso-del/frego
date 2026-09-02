@@ -1,7 +1,7 @@
 name: frego_mobile
 description: Frego — app do cliente e balcão do funcionário.
 publish_to: "none"
-version: 1.0.0+20260831161928
+version: 1.0.0+20260902161100
 
 environment:
   sdk: ^3.12.2
@@ -20,9 +20,9 @@ dependencies:
   firebase_crashlytics: ^4.3.4
   google_fonts: ^8.2.1
   flutter_svg: ^2.2.0
+  shared_preferences: ^2.5.3
   frego_tokens:
     path: ../../packages/tokens
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -30,3 +30,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icons/

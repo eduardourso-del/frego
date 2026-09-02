@@ -42,6 +42,7 @@ Future<Map<String, dynamic>> updateMyCustomer({
   String? birthday,
   bool clearBirthday = false,
   bool onboardingCompleted = true,
+  bool? notificationsEnabled,
 }) async {
   final headers = await customerAuthHeaders();
   final res = await http.patch(
@@ -52,6 +53,8 @@ Future<Map<String, dynamic>> updateMyCustomer({
       'onboardingCompleted': onboardingCompleted,
       if (clearBirthday) 'birthday': null,
       if (!clearBirthday && birthday != null) 'birthday': birthday,
+      if (notificationsEnabled != null)
+        'notificationsEnabled': notificationsEnabled,
     }),
   );
   return _decode(res);
@@ -123,6 +126,32 @@ Future<Map<String, dynamic>> setMembershipFavorite({
     Uri.parse('$apiBaseUrl/me/memberships/$businessId/favorite'),
     headers: headers,
     body: jsonEncode({'isFavorite': isFavorite}),
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> putDeviceToken({
+  required String token,
+  required String platform,
+}) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.put(
+    Uri.parse('$apiBaseUrl/me/device-token'),
+    headers: headers,
+    body: jsonEncode({
+      'token': token,
+      'platform': platform,
+    }),
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> deleteDeviceToken(String token) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.delete(
+    Uri.parse('$apiBaseUrl/me/device-token'),
+    headers: headers,
+    body: jsonEncode({'token': token}),
   );
   return _decode(res);
 }

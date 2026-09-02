@@ -27,6 +27,11 @@ type Connection = {
   templateWelcomeStatus?: string;
   templateWelcomeId?: string | null;
   templateWelcomeSyncedAt?: string | null;
+  templateCampaignName?: string;
+  templateCampaignLang?: string;
+  templateCampaignStatus?: string;
+  templateCampaignId?: string | null;
+  templateCampaignSyncedAt?: string | null;
   coexistence: boolean;
   smbSyncStartedAt: string | null;
   connectedAt: string;
@@ -247,6 +252,15 @@ export function WhatsAppSettingsCard() {
   const welcomeTone = connection
     ? templateStatusLabel(connection.templateWelcomeStatus ?? 'missing')
     : null;
+  const campaignTone = connection
+    ? templateStatusLabel(connection.templateCampaignStatus ?? 'missing')
+    : null;
+  const needsTemplate = Boolean(
+    connection &&
+      (connection.templateEarnStatus !== 'approved' ||
+        (connection.templateWelcomeStatus ?? 'missing') !== 'approved' ||
+        (connection.templateCampaignStatus ?? 'missing') !== 'approved'),
+  );
 
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
@@ -347,6 +361,25 @@ export function WhatsAppSettingsCard() {
             </p>
           )}
           <p>
+            <span className="text-[var(--color-neutral-500)]">
+              Template de campanha:{' '}
+            </span>
+            <code className="text-[13px]">
+              {connection.templateCampaignName ?? 'frego_campaign_new'} (
+              {connection.templateCampaignLang ?? 'pt_BR'})
+            </code>
+          </p>
+          {campaignTone && (
+            <p>
+              <span className="text-[var(--color-neutral-500)]">
+                Status campanha:{' '}
+              </span>
+              <span className={`font-semibold ${campaignTone.tone}`}>
+                {campaignTone.label}
+              </span>
+            </p>
+          )}
+          <p>
             <a
               href={`https://business.facebook.com/latest/whatsapp_manager/message_templates?asset_id=${encodeURIComponent(connection.wabaId)}`}
               target="_blank"
@@ -359,7 +392,7 @@ export function WhatsAppSettingsCard() {
           {connection.templateEarnStatus === 'pending' && (
             <p className="text-[13px] text-[var(--color-neutral-500)]">
               A Meta analisa o template (geralmente minutos a algumas horas).
-              Avisos de carimbo só saem depois de aprovado.
+              Avisos de acúmulo e de campanha só saem depois de aprovados.
             </p>
           )}
 
@@ -402,7 +435,7 @@ export function WhatsAppSettingsCard() {
             </p>
           )}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            {connection.templateEarnStatus !== 'approved' && (
+            {needsTemplate && (
               <button
                 type="button"
                 disabled={busy}
@@ -412,7 +445,7 @@ export function WhatsAppSettingsCard() {
                 {busy ? 'Aguarde…' : 'Criar / sincronizar template'}
               </button>
             )}
-            {connection.templateEarnStatus === 'approved' && (
+            {!needsTemplate && (
               <button
                 type="button"
                 disabled={busy}

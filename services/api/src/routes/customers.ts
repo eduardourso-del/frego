@@ -7,9 +7,11 @@ import { deriveWallet } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
 import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
-import { queueEarnWhatsAppForBusiness } from '../lib/whatsapp/earn-notify.js';
+import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
+import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { groupCounterSales, newSaleId } from '../lib/tx-reverse.js';
 import {
   filterMembershipsByRules,
   parseAudienceRules,
@@ -114,6 +116,29 @@ async function serializeCustomerLookup(
         .filter((v): v is NonNullable<typeof v> => v != null)
     : [];
 
+  const recentSales = membershipHere
+    ? groupCounterSales(
+        await prisma.transaction.findMany({
+          where: {
+            membershipId: membershipHere.id,
+            businessId,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 40,
+          select: {
+            id: true,
+            type: true,
+            quantity: true,
+            unitKind: true,
+            amountCents: true,
+            createdAt: true,
+            metadata: true,
+            actorTeamMemberId: true,
+          },
+        }),
+      )
+    : [];
+
   return {
     found: true as const,
     phoneE164: customer.phoneE164,
@@ -144,6 +169,7 @@ async function serializeCustomerLookup(
       balanceCents: wallet?.pools.cashbackCents ?? 0,
     },
     openVouchers,
+    recentSales,
   };
 }
 
@@ -289,6 +315,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
               amountCents: true,
               createdAt: true,
               campaignId: true,
+              metadata: true,
             },
           });
 
@@ -317,6 +344,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     }
 
     for (const tx of transactions) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       const agg = byMember.get(tx.membershipId);
       if (!agg) continue;
       if (!agg.lastVisitAt || tx.createdAt > agg.lastVisitAt) {
@@ -638,16 +666,19 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           type: 'stamp',
           quantity: 1,
           unitKind: 'stamps',
+          metadata: { saleId: newSaleId(), role: 'earn' },
         },
       });
       wallet = await deriveWallet(membership.id, auth.businessId);
 
-      queueEarnWhatsAppForBusiness({
+      queueEarnNotify({
         businessId: auth.businessId,
         businessName: business?.name ?? 'Frego',
+        customerId: customer.id,
         toE164: customer.phoneE164,
         unitKind: 'stamps',
         quantity: 1,
+        transactionId: stampTransaction.id,
         wallet,
         log: (msg, extra) => request.log.info(extra ?? {}, msg),
       });
@@ -666,6 +697,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         associatedAt: membership.associatedAt,
       },
       stampTransaction,
+      sale: stampTransaction
+        ? groupCounterSales([stampTransaction], 1)[0] ?? null
+        : null,
       wallet,
       pools: wallet.pools,
     });
@@ -715,6 +749,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           unitKind: true,
           amountCents: true,
           createdAt: true,
+          metadata: true,
         },
       }),
     ]);
@@ -731,6 +766,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     let lastVisitAt: Date | null = null;
 
     for (const tx of allTx) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
       visitDays.add(tx.createdAt.toISOString().slice(0, 10));
       if (!lastVisitAt || tx.createdAt > lastVisitAt) lastVisitAt = tx.createdAt;
       foldLedgerTx(fold, tx);
@@ -773,7 +809,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       pools: wallet.pools,
       otherShopsCount: otherShops.length,
       otherShops,
-      recentTransactions: recent.map((tx) => {
+      recentTransactions: recent
+        .filter((tx) => !shouldOmitFromLedger(tx.metadata))
+        .map((tx) => {
         const voucher = voucherFromMetadata(tx.metadata, {
           createdAt: tx.createdAt,
         });

@@ -7,7 +7,9 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
+import '../../ui/campaign_order.dart';
 import '../../ui/voucher_sheet.dart';
+import '../shops/earn_detail_page.dart';
 
 class HistoryPage extends StatefulWidget {
   const HistoryPage({super.key, this.refreshToken = 0});
@@ -19,7 +21,9 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
-enum _HistoryFilter { all, vouchers, stamps, points }
+enum _HistoryScope { all, received, expiring }
+
+enum _HistoryKind { vouchers, stamps, points, cashback }
 
 class _HistoryPageState extends State<HistoryPage> {
   bool _loading = true;
@@ -27,7 +31,8 @@ class _HistoryPageState extends State<HistoryPage> {
   String? _error;
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _lots = [];
-  _HistoryFilter _filter = _HistoryFilter.all;
+  _HistoryScope _scope = _HistoryScope.all;
+  _HistoryKind? _kind;
 
   @override
   void initState() {
@@ -97,26 +102,163 @@ class _HistoryPageState extends State<HistoryPage> {
     return ((item['amountCents'] as num?)?.toInt() ?? 0) > 0;
   }
 
-  List<Map<String, dynamic>> get _filteredItems {
-    return _items.where((item) {
-      return switch (_filter) {
-        _HistoryFilter.all => true,
-        _HistoryFilter.vouchers => _isVoucher(item),
-        _HistoryFilter.stamps => _isStampEarn(item),
-        _HistoryFilter.points => _isPointsEarn(item),
-      };
-    }).toList();
+  bool _isCashback(Map<String, dynamic> item) =>
+      item['unitKind'] == 'cashback_cents';
+
+  bool _isReceived(Map<String, dynamic> item) => item['type'] != 'redeem';
+
+  bool _isExpiringLot(Map<String, dynamic> lot) {
+    final daysLeft = (lot['daysLeft'] as num?)?.toInt();
+    return lot['expiresAt'] != null && daysLeft != null && daysLeft <= 14;
   }
 
-  int get _voucherCount => _items.where(_isVoucher).length;
+  bool _isExpiringVoucher(Map<String, dynamic> item) {
+    if (!_isVoucher(item)) return false;
+    final status = item['voucherStatus'] as String?;
+    if (status == 'used' || status == 'expired') return false;
+    if ((item['voucherUsedAt'] as String?)?.isNotEmpty == true) return false;
+    final days = _daysUntil(item['voucherExpiresAt'] as String?);
+    return days != null && days >= 0 && days <= 14;
+  }
+
+  void _openEarnItem(Map<String, dynamic> item) {
+    final biz = item['business'] as Map<String, dynamic>?;
+    final businessId = biz?['id'] as String?;
+    if (businessId == null || businessId.isEmpty) return;
+    FregoAdaptive.push(
+      context,
+      EarnDetailPage(
+        businessId: businessId,
+        unitKind: normalizeEarnKind(item['unitKind'] as String?),
+        transactionId: item['id'] as String?,
+        quantity: (item['quantity'] as num?)?.toInt(),
+      ),
+    );
+  }
+
+  void _openEarnFromLot(Map<String, dynamic> lot) {
+    final businessId = lot['businessId'] as String? ??
+        (lot['business'] as Map?)?['id'] as String?;
+    if (businessId == null || businessId.isEmpty) return;
+    FregoAdaptive.push(
+      context,
+      EarnDetailPage(
+        businessId: businessId,
+        unitKind: normalizeEarnKind(lot['unitKind'] as String?),
+        quantity: (lot['quantity'] as num?)?.toInt(),
+      ),
+    );
+  }
+
+  int? _daysUntil(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return null;
+    final day = DateTime(parsed.year, parsed.month, parsed.day);
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return day.difference(today).inDays;
+  }
+
+  bool _itemMatchesKind(Map<String, dynamic> item, _HistoryKind? kind) {
+    if (kind == null) return true;
+    return switch (kind) {
+      _HistoryKind.vouchers => _isVoucher(item),
+      _HistoryKind.stamps => _isStampEarn(item),
+      _HistoryKind.points => _isPointsEarn(item),
+      _HistoryKind.cashback => _isCashback(item),
+    };
+  }
+
+  bool _itemMatchesScope(Map<String, dynamic> item, _HistoryScope scope) {
+    return switch (scope) {
+      _HistoryScope.all => true,
+      _HistoryScope.received => _isReceived(item),
+      _HistoryScope.expiring => _isExpiringVoucher(item),
+    };
+  }
+
+  bool _lotMatchesKind(Map<String, dynamic> lot, _HistoryKind? kind) {
+    if (kind == null) return true;
+    if (kind == _HistoryKind.vouchers) return false;
+    final unit = lot['unitKind'] as String? ?? 'stamps';
+    return switch (kind) {
+      _HistoryKind.stamps => unit == 'stamps',
+      _HistoryKind.points => unit == 'points',
+      _HistoryKind.cashback => unit == 'cashback_cents',
+      _HistoryKind.vouchers => false,
+    };
+  }
+
+  void _toggleKind(_HistoryKind kind) {
+    setState(() => _kind = _kind == kind ? null : kind);
+  }
+
+  List<Map<String, dynamic>> get _expiringLots {
+    final lots = _lots
+        .where(_isExpiringLot)
+        .where((lot) => _lotMatchesKind(lot, _kind))
+        .toList();
+    lots.sort((a, b) {
+      final da = (a['daysLeft'] as num?)?.toInt() ?? 999;
+      final db = (b['daysLeft'] as num?)?.toInt() ?? 999;
+      return da.compareTo(db);
+    });
+    return lots;
+  }
+
+  List<Map<String, dynamic>> get _filteredItems {
+    final items = _items
+        .where(
+          (item) =>
+              _itemMatchesScope(item, _scope) &&
+              _itemMatchesKind(item, _kind),
+        )
+        .toList();
+    if (_scope == _HistoryScope.received) {
+      items.sort((a, b) {
+        final aa = a['createdAt'] as String? ?? '';
+        final bb = b['createdAt'] as String? ?? '';
+        return bb.compareTo(aa);
+      });
+    }
+    return items;
+  }
+
   int get _stampsCount => _items.where(_isStampEarn).length;
   int get _pointsCount => _items.where(_isPointsEarn).length;
+  int get _cashbackCount => _items.where(_isCashback).length;
+
+  int _scopeCount(_HistoryScope scope) {
+    final items = _items
+        .where(
+          (item) =>
+              _itemMatchesScope(item, scope) && _itemMatchesKind(item, _kind),
+        )
+        .length;
+    if (scope != _HistoryScope.expiring) return items;
+    return items + _expiringLots.length;
+  }
+
+  List<Map<String, dynamic>> get _lotsToShow {
+    final source =
+        _scope == _HistoryScope.expiring ? _expiringLots : _lots;
+    return source.where((lot) => _lotMatchesKind(lot, _kind)).toList();
+  }
+
+  bool get _showLots {
+    if (_kind == _HistoryKind.vouchers) return false;
+    if (_scope == _HistoryScope.received) return false;
+    return _lotsToShow.isNotEmpty &&
+        (_scope == _HistoryScope.all || _scope == _HistoryScope.expiring);
+  }
 
   @override
   Widget build(BuildContext context) {
     final cupertino = FregoAdaptive.useCupertino(context);
     final filtered = _filteredItems;
-    final showLots = _filter == _HistoryFilter.all && _lots.isNotEmpty;
+    final lotsToShow = _lotsToShow;
+    final showLots = _showLots;
 
     final slivers = <Widget>[
       if (cupertino) CupertinoSliverRefreshControl(onRefresh: _load),
@@ -137,7 +279,7 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
               SizedBox(height: 6),
               Text(
-                'Carimbos, pontos e vouchers de resgate.',
+                'Carimbos, pontos, cashback e vouchers de resgate.',
                 style: TextStyle(
                   fontSize: 15,
                   color: FregoColors.neutral500,
@@ -217,40 +359,108 @@ class _HistoryPageState extends State<HistoryPage> {
       else ...[
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            padding: const EdgeInsets.fromLTRB(24, 4, 0, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _HistoryFilterChip(
-                  label: 'Todos',
-                  count: _items.length,
-                  selected: _filter == _HistoryFilter.all,
-                  onTap: () => setState(() => _filter = _HistoryFilter.all),
-                ),
-                _HistoryFilterChip(
-                  label: 'Vouchers',
-                  count: _voucherCount,
-                  selected: _filter == _HistoryFilter.vouchers,
-                  onTap: () =>
-                      setState(() => _filter = _HistoryFilter.vouchers),
-                ),
-                if (_stampsCount > 0)
-                  _HistoryFilterChip(
-                    label: 'Carimbos',
-                    count: _stampsCount,
-                    selected: _filter == _HistoryFilter.stamps,
-                    onTap: () =>
-                        setState(() => _filter = _HistoryFilter.stamps),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(right: 24),
+                  child: Row(
+                    children: [
+                      _HistoryFilterChip(
+                        label: 'Todos',
+                        count: _scopeCount(_HistoryScope.all),
+                        selected: _scope == _HistoryScope.all,
+                        onTap: () =>
+                            setState(() => _scope = _HistoryScope.all),
+                      ),
+                      const SizedBox(width: 8),
+                      _HistoryFilterChip(
+                        label: 'Recebidos',
+                        count: _scopeCount(_HistoryScope.received),
+                        selected: _scope == _HistoryScope.received,
+                        onTap: () =>
+                            setState(() => _scope = _HistoryScope.received),
+                      ),
+                      const SizedBox(width: 8),
+                      _HistoryFilterChip(
+                        label: 'Expirando',
+                        count: _scopeCount(_HistoryScope.expiring),
+                        selected: _scope == _HistoryScope.expiring,
+                        onTap: () =>
+                            setState(() => _scope = _HistoryScope.expiring),
+                      ),
+                    ],
                   ),
-                if (_pointsCount > 0)
-                  _HistoryFilterChip(
-                    label: 'Pontos',
-                    count: _pointsCount,
-                    selected: _filter == _HistoryFilter.points,
-                    onTap: () =>
-                        setState(() => _filter = _HistoryFilter.points),
+                ),
+                const SizedBox(height: 10),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.only(right: 24),
+                  child: Row(
+                    children: [
+                      _HistoryKindChip(
+                        label: 'Vouchers',
+                        icon: Icon(
+                          FregoIcons.gift,
+                          size: 16,
+                          color: _kind == _HistoryKind.vouchers
+                              ? Colors.white
+                              : FregoColors.primary500,
+                        ),
+                        selectedColor: FregoColors.primary500,
+                        selected: _kind == _HistoryKind.vouchers,
+                        onTap: () => _toggleKind(_HistoryKind.vouchers),
+                      ),
+                      if (_stampsCount > 0) ...[
+                        const SizedBox(width: 8),
+                        _HistoryKindChip(
+                          label: 'Carimbos',
+                          icon: FregoIcons.stamp(
+                            size: 16,
+                            color: _kind == _HistoryKind.stamps
+                                ? Colors.white
+                                : FregoColors.stamps,
+                          ),
+                          selectedColor: FregoColors.stamps,
+                          selected: _kind == _HistoryKind.stamps,
+                          onTap: () => _toggleKind(_HistoryKind.stamps),
+                        ),
+                      ],
+                      if (_pointsCount > 0) ...[
+                        const SizedBox(width: 8),
+                        _HistoryKindChip(
+                          label: 'Pontos',
+                          icon: FregoIcons.points(
+                            size: 16,
+                            color: _kind == _HistoryKind.points
+                                ? Colors.white
+                                : FregoColors.points,
+                          ),
+                          selectedColor: FregoColors.points,
+                          selected: _kind == _HistoryKind.points,
+                          onTap: () => _toggleKind(_HistoryKind.points),
+                        ),
+                      ],
+                      if (_cashbackCount > 0) ...[
+                        const SizedBox(width: 8),
+                        _HistoryKindChip(
+                          label: 'Cashback',
+                          icon: FregoIcons.cashback(
+                            size: 16,
+                            color: _kind == _HistoryKind.cashback
+                                ? Colors.white
+                                : FregoColors.cashback,
+                          ),
+                          selectedColor: FregoColors.cashback,
+                          selected: _kind == _HistoryKind.cashback,
+                          onTap: () => _toggleKind(_HistoryKind.cashback),
+                        ),
+                      ],
+                    ],
                   ),
+                ),
               ],
             ),
           ),
@@ -260,17 +470,21 @@ class _HistoryPageState extends State<HistoryPage> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
               child: BalanceLotsSection(
-                lots: _lots,
-                title: 'Saldo com validade',
-                subtitle:
-                    'Carimbos e pontos que você ainda tem, com a data em que expiram.',
+                lots: lotsToShow,
+                title: _scope == _HistoryScope.expiring
+                    ? 'Expirando em breve'
+                    : 'Saldo com validade',
+                subtitle: _scope == _HistoryScope.expiring
+                    ? 'Saldo que vence nos próximos 14 dias, do mais urgente ao mais distante.'
+                    : 'Carimbos, pontos e cashback que você ainda tem, com a data em que expiram.',
                 showShopName: true,
+                onLotTap: _openEarnFromLot,
               ),
             ),
           ),
         if (filtered.isNotEmpty)
           ..._buildGroupedSlivers(filtered)
-        else
+        else if (!showLots)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -302,13 +516,30 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   String _filterEmptyMessage() {
-    return switch (_filter) {
-      _HistoryFilter.vouchers =>
+    final kindLabel = switch (_kind) {
+      _HistoryKind.vouchers => 'voucher',
+      _HistoryKind.stamps => 'carimbo',
+      _HistoryKind.points => 'ponto',
+      _HistoryKind.cashback => 'cashback',
+      null => null,
+    };
+    if (_scope == _HistoryScope.expiring) {
+      return kindLabel == null
+          ? 'Nada expirando nos próximos 14 dias.'
+          : 'Nenhum $kindLabel expirando nos próximos 14 dias.';
+    }
+    if (_scope == _HistoryScope.received) {
+      return kindLabel == null
+          ? 'Nenhum ganho recente. Carimbos, pontos e cashback aparecem aqui na ordem em que chegaram.'
+          : 'Nenhum $kindLabel recebido neste histórico.';
+    }
+    return switch (_kind) {
+      _HistoryKind.vouchers =>
         'Nenhum voucher ainda. Quando você resgatar um prêmio, o código aparece aqui.',
-      _HistoryFilter.stamps => 'Nenhum carimbo neste histórico.',
-      _HistoryFilter.points => 'Nenhum ponto neste histórico.',
-      _HistoryFilter.all =>
-        'Sem movimentos recentes — seu saldo atual está acima.',
+      _HistoryKind.stamps => 'Nenhum carimbo neste histórico.',
+      _HistoryKind.points => 'Nenhum ponto neste histórico.',
+      _HistoryKind.cashback => 'Nenhum cashback neste histórico.',
+      null => 'Sem movimentos recentes — seu saldo atual está acima.',
     };
   }
 
@@ -345,6 +576,7 @@ class _HistoryPageState extends State<HistoryPage> {
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, i) => _HistoryTile(
               item: entry.value[i],
+              onOpenEarn: _openEarnItem,
               onOpenVoucher: (
                 display,
                 reward,
@@ -435,10 +667,63 @@ class _HistoryFilterChip extends StatelessWidget {
   }
 }
 
+class _HistoryKindChip extends StatelessWidget {
+  const _HistoryKindChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.selectedColor,
+    required this.onTap,
+  });
+
+  final String label;
+  final Widget icon;
+  final bool selected;
+  final Color selectedColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? selectedColor : FregoColors.card,
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(10, 7, 12, 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? selectedColor : FregoColors.hairline,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              icon,
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: selected ? Colors.white : FregoColors.ink,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HistoryTile extends StatelessWidget {
   const _HistoryTile({
     required this.item,
     required this.onOpenVoucher,
+    required this.onOpenEarn,
   });
 
   final Map<String, dynamic> item;
@@ -452,6 +737,7 @@ class _HistoryTile extends StatelessWidget {
     String? expiresAt,
     String? status,
   ) onOpenVoucher;
+  final ValueChanged<Map<String, dynamic>> onOpenEarn;
 
   @override
   Widget build(BuildContext context) {
@@ -490,6 +776,48 @@ class _HistoryTile extends StatelessWidget {
 
     final expiryLine = !isRedeem ? _formatExpiry(expiresAt) : null;
     final inactive = voucherUsed || voucherExpired;
+    final isCashback = unit == 'cashback_cents';
+    final isPoints = unit == 'points' ||
+        (!isRedeem &&
+            !isCashback &&
+            unit != 'stamps' &&
+            ((item['amountCents'] as num?)?.toInt() ?? 0) > 0);
+
+    final Widget kindIcon;
+    final Color kindBg;
+    if (isRedeem && !isCashback) {
+      if (voucherUsed) {
+        kindIcon = const Icon(
+          FregoIcons.stampCheck,
+          size: 22,
+          color: FregoColors.success,
+        );
+        kindBg = FregoColors.neutral100;
+      } else if (voucherExpired) {
+        kindIcon = const Icon(
+          FregoIcons.gift,
+          size: 22,
+          color: Color(0xFFC45C26),
+        );
+        kindBg = const Color(0xFFFFF1E6);
+      } else {
+        kindIcon = const Icon(
+          FregoIcons.gift,
+          size: 22,
+          color: FregoColors.success,
+        );
+        kindBg = FregoColors.successBg;
+      }
+    } else if (isCashback) {
+      kindIcon = FregoIcons.cashback(size: 22, color: FregoColors.cashback);
+      kindBg = FregoColors.cashbackBg;
+    } else if (isPoints) {
+      kindIcon = FregoIcons.points(size: 22, color: FregoColors.points);
+      kindBg = FregoColors.pointsBg;
+    } else {
+      kindIcon = FregoIcons.stamp(size: 22, color: FregoColors.stamps);
+      kindBg = FregoColors.stampsBg;
+    }
 
     return Material(
       color: FregoColors.card,
@@ -497,7 +825,7 @@ class _HistoryTile extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: isRedeem &&
-                unit != 'cashback_cents' &&
+                !isCashback &&
                 voucher != null &&
                 voucher.isNotEmpty
             ? () => onOpenVoucher(
@@ -510,7 +838,9 @@ class _HistoryTile extends StatelessWidget {
                   voucherExpiresAt,
                   voucherStatus,
                 )
-            : null,
+            : !isRedeem || isCashback
+                ? () => onOpenEarn(item)
+                : null,
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -537,33 +867,10 @@ class _HistoryTile extends StatelessWidget {
                 height: 44,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isRedeem
-                      ? (voucherUsed
-                          ? FregoColors.neutral100
-                          : voucherExpired
-                              ? const Color(0xFFFFF1E6)
-                              : const Color(0xFFE6F6EE))
-                      : FregoColors.primary50,
+                  color: kindBg,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text(
-                  isRedeem
-                      ? (voucherUsed
-                          ? '✓'
-                          : voucherExpired
-                              ? '!'
-                              : '🎁')
-                      : '+',
-                  style: TextStyle(
-                    fontSize: isRedeem ? 20 : 18,
-                    fontWeight: FontWeight.w700,
-                    color: voucherUsed
-                        ? FregoColors.success
-                        : voucherExpired
-                            ? const Color(0xFFC45C26)
-                            : FregoColors.primary500,
-                  ),
-                ),
+                child: kindIcon,
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -16,6 +16,19 @@ String? earnKindFromCampaignType(String? type) {
   return null;
 }
 
+/// Push / history `unitKind` → `stamps` | `points` | `cashback`.
+String? normalizeEarnKind(String? raw) {
+  if (raw == 'cashback' || raw == 'cashback_cents') return 'cashback';
+  if (raw == 'points') return 'points';
+  if (raw == 'stamps') return 'stamps';
+  return null;
+}
+
+/// Wallet lot `unitKind` for an earn kind.
+String lotKindFromEarn(String earnKind) {
+  return earnKind == 'cashback' ? 'cashback_cents' : earnKind;
+}
+
 Set<String> earnKindsFromCampaigns(Iterable<Map<String, dynamic>> campaigns) {
   final kinds = <String>{};
   for (final c in campaigns) {

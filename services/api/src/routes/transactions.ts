@@ -1,15 +1,31 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma } from '@frego/db';
+import { prisma, type Prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import {
   cashbackCentsFromSale,
   deriveWallet,
+  ledgerPoolEvents,
   pointsFromAmountCents,
+  poolLotsFifo,
 } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
 import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
-import { queueEarnWhatsAppForBusiness } from '../lib/whatsapp/earn-notify.js';
+import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
+import { voucherFromMetadata } from '../lib/voucher.js';
+import {
+  isReversalMarker,
+  isReversedTx,
+  mergeLedgerMeta,
+  saleIdFromMeta,
+} from '../lib/ledger-meta.js';
+import {
+  earnLotStateFromPools,
+  groupCounterSales,
+  newSaleId,
+  reverseBlockForEarn,
+  reverseBlockMessage,
+} from '../lib/tx-reverse.js';
 
 const createTxBody = z.object({
   membershipId: z.string().min(1),
@@ -176,6 +192,8 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
+    const saleId = newSaleId();
+
     const created = await prisma.$transaction(async (tx) => {
       const applyTx =
         applied > 0
@@ -190,6 +208,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
                 quantity: applied,
                 unitKind: 'cashback_cents',
                 amountCents,
+                metadata: { saleId, role: 'apply' },
               },
             })
           : null;
@@ -208,6 +227,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
                 quantity,
                 unitKind,
                 amountCents,
+                metadata: { saleId, role: 'earn' },
               },
             });
 
@@ -224,6 +244,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
                 quantity: cashbackEarned,
                 unitKind: 'cashback_cents',
                 amountCents: paidCents,
+                metadata: { saleId, role: 'cashback' },
               },
             })
           : null;
@@ -262,20 +283,30 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       message += ` · +${cashbackLabel(cashbackEarned)} cashback`;
     }
 
-    queueEarnWhatsAppForBusiness({
+    queueEarnNotify({
       businessId: auth.businessId,
       businessName: business.name,
+      customerId: membership.customer.id,
       toE164: membership.customer.phoneE164,
       unitKind,
       quantity,
       amountCents,
       cashbackCents: cashbackEarned > 0 ? cashbackEarned : null,
+      transactionId: created.earnTx?.id ?? created.cashbackTx?.id ?? null,
       wallet,
       log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
 
+    const saleRows = [
+      created.applyTx,
+      created.earnTx,
+      created.cashbackTx,
+    ].filter((row): row is NonNullable<typeof row> => row != null);
+    const sale = groupCounterSales(saleRows, 1)[0] ?? null;
+
     return reply.code(201).send({
       transaction: created.earnTx ?? created.cashbackTx ?? created.applyTx,
+      sale,
       cashback: {
         appliedCents: applied,
         earnedCents: cashbackEarned,
@@ -290,5 +321,159 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       rewardUnlocked: false,
       message,
     });
+  });
+
+  /**
+   * Undo a staff counter sale (earn + optional cashback apply).
+   * Original rows stay in the ledger, marked reversed, so balances drop as if
+   * they never happened — as long as the earned units are still unused.
+   */
+  app.post('/transactions/:id/reverse', async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = request.params as { id: string };
+
+    const business = await prisma.business.findUnique({
+      where: { id: auth.businessId },
+      select: {
+        status: true,
+        stampsExpireDays: true,
+        pointsExpireDays: true,
+        cashbackExpireDays: true,
+      },
+    });
+    if (
+      !business ||
+      business.status === 'pending' ||
+      business.status === 'suspended'
+    ) {
+      return reply.code(403).send({ error: 'BUSINESS_NOT_ACTIVE' });
+    }
+
+    const target = await prisma.transaction.findFirst({
+      where: { id, businessId: auth.businessId },
+    });
+    if (!target) {
+      return reply.code(404).send({ error: 'TRANSACTION_NOT_FOUND' });
+    }
+
+    if (isReversalMarker(target.metadata) || isReversedTx(target.metadata)) {
+      return reply.code(409).send({
+        error: 'ALREADY_REVERSED',
+        message: 'Este lançamento já foi desfeito.',
+      });
+    }
+
+    const allTxs = await prisma.transaction.findMany({
+      where: {
+        membershipId: target.membershipId,
+        businessId: auth.businessId,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const saleId = saleIdFromMeta(target.metadata);
+    const siblings = saleId
+      ? allTxs.filter(
+          (tx) =>
+            saleIdFromMeta(tx.metadata) === saleId &&
+            !isReversalMarker(tx.metadata),
+        )
+      : [target];
+    const toReverse = siblings.filter((tx) => !isReversedTx(tx.metadata));
+    if (toReverse.length === 0) {
+      return reply.code(409).send({
+        error: 'ALREADY_REVERSED',
+        message: 'Este lançamento já foi desfeito.',
+      });
+    }
+
+    for (const tx of toReverse) {
+      if (voucherFromMetadata(tx.metadata, { createdAt: tx.createdAt })) {
+        return reply.code(400).send({
+          error: 'REVERSE_VOUCHER',
+          message: reverseBlockMessage('voucher'),
+        });
+      }
+      if (!tx.actorTeamMemberId) {
+        return reply.code(400).send({
+          error: 'REVERSE_NOT_STAFF',
+          message: reverseBlockMessage('not_staff'),
+        });
+      }
+    }
+
+    const campaigns = await prisma.campaign.findMany({
+      where: { businessId: auth.businessId },
+      select: { id: true, type: true, stampsNeeded: true },
+    });
+    const metaById = new Map(
+      campaigns.map((c) => [c.id, c]),
+    );
+    const events = ledgerPoolEvents(allTxs, metaById);
+    const stampPool = poolLotsFifo(events.stamps, business.stampsExpireDays);
+    const pointPool = poolLotsFifo(events.points, business.pointsExpireDays);
+    const cashbackPool = poolLotsFifo(
+      events.cashback,
+      business.cashbackExpireDays,
+    );
+
+    for (const tx of toReverse) {
+      if (tx.type !== 'stamp') continue;
+      const state = earnLotStateFromPools(
+        [stampPool, pointPool, cashbackPool],
+        tx.id,
+      );
+      const block = reverseBlockForEarn(state, tx.quantity);
+      if (block) {
+        return reply.code(409).send({
+          error: block === 'expired' ? 'REVERSE_EXPIRED' : 'REVERSE_USED',
+          message: reverseBlockMessage(block),
+        });
+      }
+    }
+
+    const now = new Date();
+    await prisma.$transaction(async (db) => {
+      const marker = await db.transaction.create({
+        data: {
+          businessId: auth.businessId,
+          membershipId: target.membershipId,
+          campaignId: null,
+          locationId: target.locationId,
+          actorTeamMemberId: auth.teamMemberId,
+          type: 'stamp',
+          quantity: 0,
+          unitKind: toReverse[0]?.unitKind ?? 'stamps',
+          metadata: {
+            reversalOf: toReverse.map((tx) => tx.id),
+            saleId: saleId ?? target.id,
+          },
+        },
+      });
+      for (const tx of toReverse) {
+        await db.transaction.update({
+          where: { id: tx.id },
+          data: {
+            metadata: mergeLedgerMeta(tx.metadata, {
+              reversedAt: now.toISOString(),
+              reversedByTeamMemberId: auth.teamMemberId,
+              reversedByTxId: marker.id,
+            }) as Prisma.InputJsonValue,
+          },
+        });
+      }
+    });
+
+    const wallet = await deriveWallet(target.membershipId, auth.businessId);
+    return {
+      reversedIds: toReverse.map((tx) => tx.id),
+      saleId: saleId ?? target.id,
+      wallet,
+      pools: wallet.pools,
+      cashback: {
+        balanceCents: wallet.pools.cashbackCents,
+      },
+      message: 'Lançamento desfeito.',
+    };
   });
 };

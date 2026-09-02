@@ -7,6 +7,20 @@ export type EarnNotifyLines = {
   hintLine: string;
 };
 
+export type EarnNotifyInput = {
+  businessId: string;
+  businessName: string;
+  customerId: string;
+  toE164: string;
+  unitKind: 'stamps' | 'points' | 'cashback';
+  quantity: number;
+  amountCents?: number | null;
+  cashbackCents?: number | null;
+  transactionId?: string | null;
+  wallet: WalletSnapshot;
+  log?: (msg: string, extra?: Record<string, unknown>) => void;
+};
+
 /**
  * Build the 4 template body parameters for Meta WhatsApp.
  * Keep strings short and plain (no newlines).
@@ -97,5 +111,23 @@ export function buildEarnWhatsAppLines(input: {
     earnLine: earnLine.slice(0, 120),
     balanceLine: balanceLine.slice(0, 120),
     hintLine: hintLine.slice(0, 120),
+  };
+}
+
+/** Push title/body from the same lines WhatsApp fills into the earn template. */
+export function earnPushCopy(lines: EarnNotifyLines): {
+  title: string;
+  body: string;
+} {
+  const parts = [
+    `Você acabou de ganhar ${lines.earnLine}.`,
+    `Seu saldo agora é: ${lines.balanceLine}.`,
+  ];
+  if (lines.hintLine && lines.hintLine !== '—') {
+    parts.push(lines.hintLine);
+  }
+  return {
+    title: lines.businessName,
+    body: parts.join(' ').slice(0, 180),
   };
 }

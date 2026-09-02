@@ -46,17 +46,17 @@
   --color-warning-bg:  var(--color-info-bg);
 
   /* ---------- Cor · domínio ----------
-     Âmbar é exclusivo de pontos. Teal é exclusivo de selos.
-     Esmeralda é exclusivo de cashback. */
+     Âmbar é exclusivo de pontos. Violeta é exclusivo de selos.
+     Teal é exclusivo de cashback. */
   --color-points:      #B45309;
   --color-points-bg:   #FFFBEB;
   --color-points-ring: #FDE68A;
-  --color-stamps:      #0F766E;
-  --color-stamps-bg:   #F0FDFA;
-  --color-stamps-ring: #99F6E4;
-  --color-cashback:      #047857;
-  --color-cashback-bg:   #ECFDF5;
-  --color-cashback-ring: #A7F3D0;
+  --color-stamps:      #6D28D9;
+  --color-stamps-bg:   #F5F3FF;
+  --color-stamps-ring: #DDD6FE;
+  --color-cashback:      #0F766E;
+  --color-cashback-bg:   #F0FDFA;
+  --color-cashback-ring: #99F6E4;
 
   /* ---------- Tipografia ---------- */
   --font-archivo: 'Archivo';
@@ -151,12 +151,12 @@
   --color-points:      #FCD34D;
   --color-points-bg:   rgba(180, 83, 9, 0.20);
   --color-points-ring: rgba(252, 211, 77, 0.28);
-  --color-stamps:      #5EEAD4;
-  --color-stamps-bg:   rgba(15, 118, 110, 0.18);
-  --color-stamps-ring: rgba(94, 234, 212, 0.30);
-  --color-cashback:      #34D399;
-  --color-cashback-bg:   rgba(4, 120, 87, 0.18);
-  --color-cashback-ring: rgba(52, 211, 153, 0.28);
+  --color-stamps:      #C4B5FD;
+  --color-stamps-bg:   rgba(109, 40, 217, 0.18);
+  --color-stamps-ring: rgba(196, 181, 253, 0.30);
+  --color-cashback:      #5EEAD4;
+  --color-cashback-bg:   rgba(15, 118, 110, 0.18);
+  --color-cashback-ring: rgba(94, 234, 212, 0.30);
 
   --focus-ring: 0 0 0 3px rgba(92, 130, 222, 0.35);
   --shadow-focus: var(--focus-ring);

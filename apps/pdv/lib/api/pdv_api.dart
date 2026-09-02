@@ -7,6 +7,14 @@ import 'api_error.dart';
 
 const _allEarnKinds = ['stamps', 'points', 'cashback'];
 
+List<Map<String, dynamic>> jsonMaps(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is Map) Map<String, dynamic>.from(item),
+  ];
+}
+
 List<String> parseEarnKinds(Object? raw) {
   if (raw is! List) return const [];
   return [
@@ -102,16 +110,65 @@ class OpenVoucher {
   final DateTime? expiresAt;
 
   factory OpenVoucher.fromJson(Map<String, dynamic> json) {
+    final expires = json['expiresAt'];
     return OpenVoucher(
-      transactionId: json['transactionId'] as String,
+      transactionId:
+          json['transactionId'] as String? ?? json['id'] as String? ?? '',
       voucherCode: json['voucherCode'] as String? ?? '',
       voucherDisplay: json['voucherDisplay'] as String? ?? '',
       rewardTitle: json['rewardTitle'] as String? ?? 'Prêmio',
-      expiresAt: json['expiresAt'] != null
-          ? DateTime.tryParse(json['expiresAt'] as String)
+      expiresAt: expires is String
+          ? DateTime.tryParse(expires)
+          : expires is DateTime
+          ? expires
           : null,
     );
   }
+}
+
+class CounterSale {
+  const CounterSale({
+    required this.saleId,
+    required this.anchorId,
+    required this.summary,
+    this.createdAt,
+  });
+
+  final String saleId;
+  final String anchorId;
+  final String summary;
+  final DateTime? createdAt;
+
+  bool get isValid => anchorId.isNotEmpty;
+
+  factory CounterSale.fromJson(Map<String, dynamic> json) {
+    final anchor =
+        json['anchorId'] as String? ?? json['saleId'] as String? ?? '';
+    return CounterSale(
+      saleId: json['saleId'] as String? ?? anchor,
+      anchorId: anchor,
+      summary: json['summary'] as String? ?? 'Lançamento',
+      createdAt: json['createdAt'] is String
+          ? DateTime.tryParse(json['createdAt'] as String)
+          : null,
+    );
+  }
+
+  static CounterSale? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final sale = CounterSale.fromJson(Map<String, dynamic>.from(raw));
+    return sale.isValid ? sale : null;
+  }
+}
+
+List<CounterSale> prependSale(List<CounterSale> current, CounterSale? sale) {
+  if (sale == null || !sale.isValid) return current;
+  return [
+    sale,
+    ...current.where(
+      (s) => s.saleId != sale.saleId && s.anchorId != sale.anchorId,
+    ),
+  ].take(8).toList();
 }
 
 class LookupResult {
@@ -133,6 +190,7 @@ class LookupResult {
     this.cashbackPercent,
     this.matches = const [],
     this.openVouchers = const [],
+    this.recentSales = const [],
     this.activeEarnKinds = const [],
     this.earnKindsFromApi = false,
   });
@@ -154,6 +212,7 @@ class LookupResult {
   final int? cashbackPercent;
   final List<CustomerMatch> matches;
   final List<OpenVoucher> openVouchers;
+  final List<CounterSale> recentSales;
   final List<String> activeEarnKinds;
   final bool earnKindsFromApi;
 
@@ -164,6 +223,7 @@ class LookupResult {
     bool? associatedHere,
     String? membershipId,
     List<OpenVoucher>? openVouchers,
+    List<CounterSale>? recentSales,
   }) {
     return LookupResult(
       found: found,
@@ -183,6 +243,7 @@ class LookupResult {
       cashbackPercent: cashbackPercent,
       matches: matches,
       openVouchers: openVouchers ?? this.openVouchers,
+      recentSales: recentSales ?? this.recentSales,
       activeEarnKinds: activeEarnKinds,
       earnKindsFromApi: earnKindsFromApi,
     );
@@ -196,8 +257,6 @@ class LookupResult {
         (json['wallet'] is Map
             ? (json['wallet'] as Map)['pools'] as Map<String, dynamic>?
             : null);
-    final matchesJson = json['matches'] as List<dynamic>? ?? const [];
-    final vouchersJson = json['openVouchers'] as List<dynamic>? ?? const [];
     final cashback = json['cashback'] as Map<String, dynamic>?;
     return LookupResult(
       found: json['found'] == true,
@@ -214,20 +273,21 @@ class LookupResult {
       stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
       points: (pools?['points'] as num?)?.toInt() ?? 0,
       cashbackCents:
-          (cashback?['balanceCents'] as num?)?.toInt() ??
           (pools?['cashbackCents'] as num?)?.toInt() ??
+          (cashback?['balanceCents'] as num?)?.toInt() ??
           0,
       pointsPerReal: (json['pointsPerReal'] as num?)?.toInt(),
       cashbackPercent:
           (json['cashbackPercent'] as num?)?.toInt() ??
           (cashback?['percent'] as num?)?.toInt(),
-      matches: matchesJson
-          .whereType<Map<String, dynamic>>()
-          .map(CustomerMatch.fromJson)
-          .toList(),
-      openVouchers: vouchersJson
-          .whereType<Map<String, dynamic>>()
+      matches: jsonMaps(json['matches']).map(CustomerMatch.fromJson).toList(),
+      openVouchers: jsonMaps(json['openVouchers'])
           .map(OpenVoucher.fromJson)
+          .where((v) => v.transactionId.isNotEmpty)
+          .toList(),
+      recentSales: jsonMaps(json['recentSales'])
+          .map(CounterSale.fromJson)
+          .where((s) => s.isValid)
           .toList(),
       activeEarnKinds: parseEarnKinds(json['activeEarnKinds']),
       earnKindsFromApi: json.containsKey('activeEarnKinds'),
@@ -237,6 +297,22 @@ class LookupResult {
 
 class EarnResult {
   const EarnResult({
+    required this.message,
+    required this.stamps,
+    required this.points,
+    this.cashbackCents = 0,
+    this.sale,
+  });
+
+  final String message;
+  final int stamps;
+  final int points;
+  final int cashbackCents;
+  final CounterSale? sale;
+}
+
+class ReverseResult {
+  const ReverseResult({
     required this.message,
     required this.stamps,
     required this.points,
@@ -322,6 +398,7 @@ class PdvApi {
         (json['wallet'] is Map
             ? (json['wallet'] as Map)['pools'] as Map<String, dynamic>?
             : null);
+    final sale = CounterSale.tryParse(json['sale']);
     return LookupResult(
       found: true,
       associatedHere: true,
@@ -333,6 +410,7 @@ class PdvApi {
       stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
       points: (pools?['points'] as num?)?.toInt() ?? 0,
       cashbackCents: (pools?['cashbackCents'] as num?)?.toInt() ?? 0,
+      recentSales: sale != null ? [sale] : const [],
     );
   }
 
@@ -360,6 +438,26 @@ class PdvApi {
     final cashback = json['cashback'] as Map<String, dynamic>?;
     return EarnResult(
       message: json['message'] as String? ?? 'Registrado',
+      stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
+      points: (pools?['points'] as num?)?.toInt() ?? 0,
+      cashbackCents:
+          (cashback?['balanceCents'] as num?)?.toInt() ??
+          (pools?['cashbackCents'] as num?)?.toInt() ??
+          0,
+      sale: CounterSale.tryParse(json['sale']),
+    );
+  }
+
+  Future<ReverseResult> reverseSale(String anchorId) async {
+    final json = await _post('/transactions/$anchorId/reverse', {});
+    final pools =
+        (json['wallet'] is Map
+            ? (json['wallet'] as Map)['pools'] as Map<String, dynamic>?
+            : null) ??
+        json['pools'] as Map<String, dynamic>?;
+    final cashback = json['cashback'] as Map<String, dynamic>?;
+    return ReverseResult(
+      message: json['message'] as String? ?? 'Lançamento desfeito.',
       stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
       points: (pools?['points'] as num?)?.toInt() ?? 0,
       cashbackCents:

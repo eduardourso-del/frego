@@ -30,15 +30,15 @@ abstract final class FregoColors {
   static const info = Color(0xFF24479C);
   static const infoBg = Color(0xFFEEF2FB);
 
-  static const stamps = Color(0xFF0F766E);
-  static const stampsBg = Color(0xFFF0FDFA);
-  static const stampsRing = Color(0xFF99F6E4);
+  static const stamps = Color(0xFF6D28D9);
+  static const stampsBg = Color(0xFFF5F3FF);
+  static const stampsRing = Color(0xFFDDD6FE);
   static const points = Color(0xFFB45309);
   static const pointsBg = Color(0xFFFFFBEB);
   static const pointsRing = Color(0xFFFDE68A);
-  static const cashback = Color(0xFF047857);
-  static const cashbackBg = Color(0xFFECFDF5);
-  static const cashbackRing = Color(0xFFA7F3D0);
+  static const cashback = Color(0xFF0F766E);
+  static const cashbackBg = Color(0xFFF0FDFA);
+  static const cashbackRing = Color(0xFF99F6E4);
 
   static const darkBg = Color(0xFF0C0D10);
   static const darkCard = Color(0xFF15171C);

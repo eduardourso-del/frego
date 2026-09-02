@@ -21,6 +21,7 @@ class BalanceLotsSection extends StatelessWidget {
     this.previewLimit,
     this.onSeeMore,
     this.seeMoreLabel = 'Ver mais',
+    this.onLotTap,
   });
 
   final List<Map<String, dynamic>> lots;
@@ -32,6 +33,7 @@ class BalanceLotsSection extends StatelessWidget {
   final int? previewLimit;
   final VoidCallback? onSeeMore;
   final String seeMoreLabel;
+  final ValueChanged<Map<String, dynamic>>? onLotTap;
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +108,11 @@ class BalanceLotsSection extends StatelessWidget {
         ...visible.map((lot) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: BalanceLotTile(lot: lot, showShopName: showShopName),
+            child: BalanceLotTile(
+              lot: lot,
+              showShopName: showShopName,
+              onTap: onLotTap == null ? null : () => onLotTap!(lot),
+            ),
           );
         }),
       ],
@@ -146,10 +152,12 @@ class BalanceLotTile extends StatelessWidget {
     super.key,
     required this.lot,
     this.showShopName = false,
+    this.onTap,
   });
 
   final Map<String, dynamic> lot;
   final bool showShopName;
+  final VoidCallback? onTap;
 
   static const _expiringSoon = Color(0xFFB45309); // amber-700, readable on white
   static const _expiringSoft = Color(0xFFC2410C); // slightly warmer when ≤7 days
@@ -177,20 +185,9 @@ class BalanceLotTile extends StatelessWidget {
     final expiring = daysLeft != null && expiresAt != null && daysLeft <= 14;
     final urgent = daysLeft != null && daysLeft <= 7;
 
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: FregoColors.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: urgent
-              ? const Color(0xFFFDE68A).withValues(alpha: 0.9)
-              : FregoColors.hairline,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           Container(
             width: 40,
             height: 40,
@@ -201,15 +198,20 @@ class BalanceLotTile extends StatelessWidget {
                   : FregoColors.primary50,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(
-              isCashback
-                  ? FregoIcons.cashbackFilled
-                  : isPoints
-                      ? FregoIcons.pointsFilled
-                      : FregoIcons.stampFilled,
-              size: 20,
-              color: urgent ? _expiringSoon : FregoColors.primary500,
-            ),
+            child: isCashback
+                ? FregoIcons.cashback(
+                    size: 20,
+                    color: urgent ? _expiringSoon : FregoColors.primary500,
+                  )
+                : isPoints
+                    ? FregoIcons.points(
+                        size: 20,
+                        color: urgent ? _expiringSoon : FregoColors.primary500,
+                      )
+                    : FregoIcons.stamp(
+                        size: 20,
+                        color: urgent ? _expiringSoon : FregoColors.primary500,
+                      ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -246,7 +248,39 @@ class BalanceLotTile extends StatelessWidget {
               ],
             ),
           ),
+          if (onTap != null)
+            const Padding(
+              padding: EdgeInsets.only(left: 4, top: 10),
+              child: Icon(
+                FregoIcons.chevronRight,
+                size: 18,
+                color: FregoColors.neutral400,
+              ),
+            ),
         ],
+    );
+
+    final body = Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: urgent
+              ? const Color(0xFFFDE68A).withValues(alpha: 0.9)
+              : FregoColors.hairline,
+        ),
+      ),
+      child: row,
+    );
+
+    if (onTap == null) return body;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: body,
       ),
     );
   }

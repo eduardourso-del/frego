@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'firebase_options.dart';
 import 'config/app_config.dart';
+import 'notifications/push_service.dart';
 import 'theme/frego_theme.dart';
 import 'features/auth/auth_gate.dart';
 
@@ -15,6 +16,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  PushService.attachNative();
   runApp(const FregoApp());
 }
 

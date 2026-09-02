@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-/// Ícones Material Rounded — mesma identidade no iOS e Android.
-///
-/// Preferir estes em vez de CupertinoIcons / outlined genéricos.
+import 'package:frego_tokens/frego_tokens.dart';
+
+/// Ícones do app. Carimbos, pontos e cashback usam os mesmos Lucide
+/// (Stamp, Coins, Banknote) do painel do estabelecimento.
 abstract final class FregoIcons {
   // Tabs / navegação principal
   static const shops = Icons.storefront_outlined;
@@ -23,15 +25,24 @@ abstract final class FregoIcons {
   static const location = Icons.place_rounded;
   static const image = Icons.photo_outlined;
 
-  // Fidelidade
-  static const stamp = Icons.loyalty_outlined;
-  static const stampFilled = Icons.loyalty_rounded;
-  static const points = Icons.stars_outlined;
-  static const pointsFilled = Icons.stars_rounded;
-  static const birthday = Icons.cake_outlined;
-  static const birthdayFilled = Icons.cake_rounded;
-  static const cashback = Icons.payments_outlined;
-  static const cashbackFilled = Icons.payments_rounded;
+  // Fidelidade (Lucide — iguais ao web do estabelecimento)
+  static Widget stamp({double size = 24, Color? color}) =>
+      _lucide('stamp', size: size, color: color);
+  static Widget stampFilled({double size = 24, Color? color}) =>
+      stamp(size: size, color: color);
+  static Widget points({double size = 24, Color? color}) =>
+      _lucide('coins', size: size, color: color);
+  static Widget pointsFilled({double size = 24, Color? color}) =>
+      points(size: size, color: color);
+  static Widget cashback({double size = 24, Color? color}) =>
+      _lucide('banknote', size: size, color: color);
+  static Widget cashbackFilled({double size = 24, Color? color}) =>
+      cashback(size: size, color: color);
+  static Widget birthday({double size = 24, Color? color}) =>
+      _lucide('cake', size: size, color: color);
+  static Widget birthdayFilled({double size = 24, Color? color}) =>
+      birthday(size: size, color: color);
+
   static const gift = Icons.card_giftcard_rounded;
   static const stampCheck = Icons.check_rounded;
   static const visits = Icons.calendar_today_rounded;
@@ -42,4 +53,24 @@ abstract final class FregoIcons {
   static const favoriteFilled = Icons.favorite_rounded;
   static const filter = Icons.tune_rounded;
   static const clear = Icons.close_rounded;
+  static const bell = Icons.notifications_rounded;
+  static const bellActive = Icons.notifications_active_rounded;
+
+  static Widget _lucide(
+    String name, {
+    required double size,
+    Color? color,
+  }) {
+    return Builder(
+      builder: (context) {
+        final tint = color ?? IconTheme.of(context).color ?? FregoColors.ink;
+        return SvgPicture.asset(
+          'assets/icons/$name.svg',
+          width: size,
+          height: size,
+          colorFilter: ColorFilter.mode(tint, BlendMode.srcIn),
+        );
+      },
+    );
+  }
 }

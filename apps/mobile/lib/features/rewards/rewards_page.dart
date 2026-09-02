@@ -6,6 +6,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/voucher_sheet.dart';
+import '../shops/campaign_detail_page.dart';
 import '../shops/shop_detail_page.dart';
 
 /// Lista todos os prêmios disponíveis nas lojas do cliente.
@@ -426,6 +427,19 @@ class _RewardsPageState extends State<RewardsPage> {
                   ? null
                   : () => _redeem(item),
               onOpenShop: () => _openShop(item.businessId),
+              onOpen: () async {
+                final campaignId =
+                    item.campaign['campaignId'] as String?;
+                if (campaignId == null) return;
+                await FregoAdaptive.push(
+                  context,
+                  CampaignDetailPage(
+                    businessId: item.businessId,
+                    campaignId: campaignId,
+                  ),
+                );
+                if (mounted) _load();
+              },
             ),
           );
         }),

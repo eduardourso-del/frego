@@ -1,6 +1,8 @@
 import { prisma } from '@frego/db';
 import { deriveWallet, type CampaignWalletEntry, type WalletSnapshot } from './wallet.js';
 
+import { shouldOmitFromLedger } from './ledger-meta.js';
+
 export type CustomerProgress = {
   campaignId: string;
   campaignName: string;
@@ -35,6 +37,7 @@ type LedgerTx = {
   quantity: number;
   unitKind: string | null;
   amountCents: number | null;
+  metadata?: unknown;
 };
 
 /** Classifica uma linha do ledger sem misturar cashback (centavos) com carimbos/pontos. */
@@ -53,6 +56,7 @@ export function foldLedgerTx(
   },
   tx: LedgerTx,
 ) {
+  if (shouldOmitFromLedger(tx.metadata)) return;
   if (tx.unitKind === 'cashback_cents') {
     if (tx.type === 'redeem') acc.cashbackSpentCents += tx.quantity;
     else acc.cashbackEarnedCents += tx.quantity;
@@ -154,6 +158,7 @@ export async function aggregateCustomerStats(
       unitKind: true,
       amountCents: true,
       createdAt: true,
+      metadata: true,
     },
   });
 
@@ -169,6 +174,7 @@ export async function aggregateCustomerStats(
   };
 
   for (const tx of transactions) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     if (!lastVisitAt || tx.createdAt > lastVisitAt) {
       lastVisitAt = tx.createdAt;
     }
