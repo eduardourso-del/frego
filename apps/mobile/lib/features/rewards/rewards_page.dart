@@ -1,10 +1,10 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/shop_detail_page.dart';
@@ -249,44 +249,48 @@ class _RewardsPageState extends State<RewardsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cupertino = FregoAdaptive.useCupertino(context);
     final filtered = _filtered;
 
-    return FregoPage(
+    late final List<Widget> slivers;
+    if (_loading && !_hydrated) {
+      slivers = const [
+        SliverToBoxAdapter(child: FregoRewardsSkeleton()),
+      ];
+    } else if (_error != null && !_hydrated) {
+      slivers = [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Padding(
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(_error!),
+                const SizedBox(height: 16),
+                FregoPrimaryButton(
+                  label: 'Tentar de novo',
+                  onPressed: _load,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ];
+    } else {
+      slivers = _bodySlivers(filtered: filtered);
+    }
+
+    return FregoLargeTitlePage(
       title: 'Prêmios',
-      child: _loading && !_hydrated
-          ? const Center(child: FregoProgress())
-          : _error != null && !_hydrated
-              ? ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    Text(_error!),
-                    const SizedBox(height: 16),
-                    FregoPrimaryButton(
-                      label: 'Tentar de novo',
-                      onPressed: _load,
-                    ),
-                  ],
-                )
-              : _buildBody(cupertino: cupertino, filtered: filtered),
+      onRefresh: _load,
+      slivers: slivers,
     );
   }
 
-  Widget _buildBody({
-    required bool cupertino,
+  List<Widget> _bodySlivers({
     required List<_RewardItem> filtered,
   }) {
     final children = <Widget>[
-      const Text(
-        'Tudo que você pode ganhar',
-        style: TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.4,
-          color: FregoColors.ink,
-        ),
-      ),
-      const SizedBox(height: 6),
       Text(
         _items.isEmpty
             ? 'Quando você acumular em uma loja, os prêmios aparecem aqui.'
@@ -446,31 +450,14 @@ class _RewardsPageState extends State<RewardsPage> {
       const SizedBox(height: 24),
     ];
 
-    if (cupertino) {
-      return CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 8, FregoLargeTitlePage.gutter, 24),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate(children),
         ),
-        slivers: [
-          CupertinoSliverRefreshControl(onRefresh: _load),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate(children),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
-        children: children,
       ),
-    );
+    ];
   }
 
   String? _expireHint(_RewardItem item) {

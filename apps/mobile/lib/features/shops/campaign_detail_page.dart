@@ -7,6 +7,7 @@ import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/shop_summary_card.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import 'shop_detail_page.dart';
 
@@ -157,7 +158,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
       showNavBar: true,
       title: shopName,
       child: _loading && _data == null
-          ? const Center(child: FregoProgress())
+          ? const FregoDetailSkeleton()
           : _error != null && _data == null
               ? ListView(
                   padding: const EdgeInsets.all(24),

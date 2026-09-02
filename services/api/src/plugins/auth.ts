@@ -118,8 +118,19 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
         request.auth = member;
         return;
       } catch (err) {
-        request.log.warn({ err }, 'Falha ao verificar token Firebase');
-        return reply.code(401).send({ error: 'INVALID_TOKEN' });
+        const code = (err as { code?: string }).code ?? '';
+        const message = err instanceof Error ? err.message : '';
+        if (
+          code.startsWith('auth/') ||
+          /id.?token|invalid argument|Decoding Firebase ID token/i.test(
+            message,
+          )
+        ) {
+          request.log.warn({ err }, 'Falha ao verificar token Firebase');
+          return reply.code(401).send({ error: 'INVALID_TOKEN' });
+        }
+        request.log.error({ err }, 'auth hook failed');
+        throw err;
       }
     }
 
@@ -281,7 +292,7 @@ async function resolveCustomer(
     });
   }
 
-  if (!customer) return null;
+  if (!customer || customer.deletedAt) return null;
 
   return {
     firebaseUid: user.uid,

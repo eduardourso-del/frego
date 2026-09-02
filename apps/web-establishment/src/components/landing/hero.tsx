@@ -48,24 +48,35 @@ export function LandingHero() {
             <FregoWordmark height={64} />
           </motion.div>
 
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.06, ease }}
+            className="mt-6 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]"
+          >
+            Ticket médio e faturamento
+          </motion.p>
+
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.65, delay: 0.08, ease }}
-            className="mt-5 max-w-xl text-[28px] font-extrabold leading-[1.15] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px] lg:text-[40px]"
+            transition={{ duration: 0.65, delay: 0.1, ease }}
+            className="mt-3 max-w-xl text-[28px] font-extrabold leading-[1.15] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px] lg:text-[40px]"
           >
-            Transforme clientes em fregueses.
+            Transforme clientes em fregueses que voltam e gastam mais.
           </motion.h1>
 
           <motion.p
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.16, ease }}
+            transition={{ duration: 0.6, delay: 0.18, ease }}
             className="mt-4 max-w-lg text-[16px] leading-relaxed text-[var(--color-neutral-500)] sm:text-[17px]"
           >
-            O Frego ajuda negócios locais a criar relacionamentos que fazem o
-            cliente voltar — sem marketplace, sem cartão de papel e sem
-            desconto o tempo todo.
+            O Frego ajuda o seu estabelecimento a subir o ticket médio e
+            melhorar o faturamento com as ferramentas que você usa no dia a
+            dia: campanhas, WhatsApp e audiências que fazem a pessoa voltar —
+            e pedir um pouco mais na próxima visita. Sem marketplace, sem
+            cartão de papel e sem desconto o tempo todo.
           </motion.p>
 
           <motion.div
@@ -95,7 +106,8 @@ export function LandingHero() {
             className="mt-6"
           >
             <p className="text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
-              Feito para o negócio local que vive de quem volta.
+              Feito para o estabelecimento local que quer faturar mais com quem
+              já atravessou a porta.
             </p>
             <ul className="mt-2.5 flex flex-wrap gap-1.5">
               {['Padaria', 'Salão', 'Farmácia', 'Pet', 'Restaurante'].map(

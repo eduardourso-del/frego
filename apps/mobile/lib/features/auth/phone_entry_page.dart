@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/legal_links.dart';
 import 'otp_page.dart';
 import 'phone_auth.dart';
 
@@ -62,7 +63,7 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         onFailed: (e) {
           if (!mounted) return;
           setState(() {
-            _error = e.message ?? 'Falha na verificação';
+            _error = _otpSendMessage(e);
             _loading = false;
           });
         },
@@ -80,10 +81,30 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = e is FirebaseAuthException
+            ? _otpSendMessage(e)
+            : 'Falha na verificação';
         _loading = false;
       });
     }
+  }
+
+  String _otpSendMessage(FirebaseAuthException e) {
+    final raw = (e.message ?? '').toLowerCase();
+    if (e.code == 'too-many-requests') {
+      return 'Muitas tentativas. Tente de novo em instantes.';
+    }
+    if (e.code == 'invalid-phone-number') {
+      return 'Número inválido. Confira o DDD.';
+    }
+    if (e.code == 'app-not-authorized' ||
+        raw.contains('invalid token') ||
+        raw.contains('play_integrity') ||
+        e.code == 'invalid-app-credential' ||
+        e.code == 'missing-client-identifier') {
+      return 'No emulador o SMS real não funciona. Use (11) 98765-4321 e o código 123456.';
+    }
+    return 'Falha na verificação';
   }
 
   @override
@@ -183,6 +204,10 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
             FregoPrimaryButton(
               label: _loading ? 'Enviando…' : 'Continuar',
               onPressed: _loading ? null : _continue,
+            ),
+            const SizedBox(height: 16),
+            const LegalLinks(
+              prefix: 'Ao continuar, você concorda com a ',
             ),
           ],
         ),

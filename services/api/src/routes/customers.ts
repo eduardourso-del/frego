@@ -227,12 +227,18 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const activeCustomer = { deletedAt: null };
+
     if (audienceMembershipIds && audienceMembershipIds.length === 0) {
       const totalCount = await prisma.membership.count({
-        where: { businessId: auth.businessId },
+        where: { businessId: auth.businessId, customer: activeCustomer },
       });
       const vipCount = await prisma.membership.count({
-        where: { businessId: auth.businessId, isVip: true },
+        where: {
+          businessId: auth.businessId,
+          isVip: true,
+          customer: activeCustomer,
+        },
       });
       return {
         totalCount,
@@ -245,6 +251,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     const memberships = await prisma.membership.findMany({
       where: {
         businessId: auth.businessId,
+        customer: activeCustomer,
         ...(audienceMembershipIds
           ? { id: { in: audienceMembershipIds } }
           : {}),
@@ -427,10 +434,14 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const totalCount = await prisma.membership.count({
-      where: { businessId: auth.businessId },
+      where: { businessId: auth.businessId, customer: activeCustomer },
     });
     const vipCount = await prisma.membership.count({
-      where: { businessId: auth.businessId, isVip: true },
+      where: {
+        businessId: auth.businessId,
+        isVip: true,
+        customer: activeCustomer,
+      },
     });
 
     return {
@@ -457,7 +468,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       const memberships = await prisma.membership.findMany({
         where: {
           businessId: auth.businessId,
-          customer: { phoneLast4: last4 },
+          customer: { phoneLast4: last4, deletedAt: null },
         },
         include: {
           customer: {
@@ -499,7 +510,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
 
       // Não está nesta loja — busca identidade global (app / outras lojas).
       const globals = await prisma.customer.findMany({
-        where: { phoneLast4: last4 },
+        where: { phoneLast4: last4, deletedAt: null },
         include: {
           memberships: {
             include: {

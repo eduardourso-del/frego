@@ -6,6 +6,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
 
@@ -173,7 +174,7 @@ class _WalletPageState extends State<WalletPage> {
             ),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const FregoDetailSkeleton()
                   : _error != null
                       ? ListView(
                           padding: const EdgeInsets.all(24),

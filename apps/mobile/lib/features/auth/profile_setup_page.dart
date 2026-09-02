@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
@@ -29,10 +30,10 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _continue({required bool withName}) async {
     final name = _name.text.trim();
-    if (name.length < 2) {
-      setState(() => _error = 'Informe seu nome');
+    if (withName && name.isNotEmpty && name.length < 2) {
+      setState(() => _error = 'Informe um nome com pelo menos 2 letras');
       return;
     }
     setState(() {
@@ -40,7 +41,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       _error = null;
     });
     try {
-      await updateMyCustomer(displayName: name);
+      await updateMyCustomer(
+        displayName: withName && name.isNotEmpty ? name : null,
+      );
       if (!mounted) return;
       widget.onCompleted();
     } catch (e) {
@@ -53,6 +56,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cupertino = FregoAdaptive.useCupertino(context);
     return FregoPage(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -61,7 +65,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
           children: [
             const SizedBox(height: 16),
             const Text(
-              'Crie sua conta',
+              'Como te chamamos?',
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w600,
@@ -71,7 +75,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Seus carimbos e pontos do balcão em ${widget.phoneE164} já estão vinculados a este número.',
+              'Seus carimbos e pontos do balcão em ${widget.phoneE164} já estão nesta conta. O nome é opcional.',
               style: const TextStyle(
                 fontSize: 15,
                 color: FregoColors.neutral500,
@@ -81,18 +85,46 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
             const SizedBox(height: 32),
             FregoTextField(
               controller: _name,
-              label: 'Como podemos te chamar?',
+              label: 'Nome (opcional)',
               placeholder: 'Seu nome',
               errorText: _error,
               textCapitalization: TextCapitalization.words,
               autofocus: true,
-              onSubmitted: (_) => _save(),
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+              onSubmitted: (_) => _continue(withName: true),
             ),
             const Spacer(),
             FregoPrimaryButton(
               label: _loading ? 'Salvando…' : 'Continuar',
-              onPressed: _loading ? null : _save,
+              onPressed: _loading ? null : () => _continue(withName: true),
             ),
+            const SizedBox(height: 8),
+            cupertino
+                ? SizedBox(
+                    width: double.infinity,
+                    child: CupertinoButton(
+                      onPressed:
+                          _loading ? null : () => _continue(withName: false),
+                      child: const Text(
+                        'Agora não',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: FregoColors.neutral500,
+                        ),
+                      ),
+                    ),
+                  )
+                : SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      onPressed:
+                          _loading ? null : () => _continue(withName: false),
+                      child: const Text('Agora não'),
+                    ),
+                  ),
           ],
         ),
       ),

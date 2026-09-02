@@ -158,6 +158,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				B47E1C2A8F3D4E5A6B7C8D9E /* [firebase_crashlytics] Crashlytics Upload Symbols */,
 			);
 			buildRules = (
 			);
@@ -265,6 +266,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		B47E1C2A8F3D4E5A6B7C8D9E /* [firebase_crashlytics] Crashlytics Upload Symbols */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}",
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+				"${BUILT_PRODUCTS_DIR}/${INFOPLIST_PATH}",
+				"${PROJECT_DIR}/Runner/GoogleService-Info.plist",
+				"${PROJECT_DIR}/firebase_app_id_file.json",
+			);
+			name = "[firebase_crashlytics] Crashlytics Upload Symbols";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/scripts/crashlytics_upload_symbols.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

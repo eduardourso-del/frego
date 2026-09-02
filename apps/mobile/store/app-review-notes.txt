@@ -1,0 +1,30 @@
+App Store Connect — Review Notes
+================================
+
+Paste this into App Review Information → Notes.
+
+Privacy policy (also linked in-app):
+https://frego.app.br/privacidade
+
+Terms of use:
+https://frego.app.br/termos
+
+Sign-in is phone number + SMS OTP only (Firebase Authentication).
+There is no Google, Facebook, or other social login, so Sign in with
+Apple is not required (Guideline 4.8). Name and birthday are optional.
+
+Demo login (no SMS — Firebase test number):
+  Country: Brazil (+55)
+  Phone:   11 99900 0100
+  OTP:     123456
+
+Account deletion (Guideline 5.1.1(v)):
+  Sign in → Perfil tab → scroll to “Excluir conta” → confirm.
+
+Privacy policy in the app:
+  Login screen (links under Continuar) and Perfil tab.
+
+---
+Before submitting, add the demo number in Firebase Console:
+  Authentication → Sign-in method → Phone → Phone numbers for testing
+  +5511999000100  /  123456

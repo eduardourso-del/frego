@@ -262,7 +262,13 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         include: {
           membership: {
             include: {
-              customer: { select: { displayName: true, phoneE164: true } },
+              customer: {
+                select: {
+                  displayName: true,
+                  phoneE164: true,
+                  deletedAt: true,
+                },
+              },
             },
           },
           location: { select: { name: true } },
@@ -324,6 +330,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
                   displayName: true,
                   phoneE164: true,
                   phoneLast4: true,
+                  deletedAt: true,
                 },
               },
             },
@@ -332,11 +339,13 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
     const topCustomers = topAggs.map((agg) => {
       const m = memberById.get(agg.membershipId);
-      const name =
-        m?.customer.displayName ??
-        (m?.customer.phoneLast4
-          ? `···${m.customer.phoneLast4}`
-          : m?.customer.phoneE164.slice(-4) ?? 'Cliente');
+      const deleted = Boolean(m?.customer.deletedAt);
+      const name = deleted
+        ? 'Conta encerrada'
+        : m?.customer.displayName ??
+          (m?.customer.phoneLast4
+            ? `···${m.customer.phoneLast4}`
+            : m?.customer.phoneE164.slice(-4) ?? 'Cliente');
       const initials = name
         .split(/\s+/)
         .map((p) => p[0])
@@ -346,8 +355,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       return {
         membershipId: agg.membershipId,
         displayName: name,
-        phoneE164: m?.customer.phoneE164 ?? null,
-        phoneLast4: m?.customer.phoneLast4 ?? null,
+        phoneE164: deleted ? null : (m?.customer.phoneE164 ?? null),
+        phoneLast4: deleted ? null : (m?.customer.phoneLast4 ?? null),
         initials,
         visits: agg.visitDays.size,
         stamps: agg.stamps,
@@ -385,9 +394,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const live = liveTxs
       .filter((tx) => !shouldOmitFromLedger(tx.metadata))
       .map((tx) => {
-      const name =
-        tx.membership.customer.displayName ??
-        tx.membership.customer.phoneE164.slice(-4);
+      const name = tx.membership.customer.deletedAt
+        ? 'Conta encerrada'
+        : tx.membership.customer.displayName ??
+          tx.membership.customer.phoneE164.slice(-4);
       const initials = name
         .split(/\s+/)
         .map((p) => p[0])

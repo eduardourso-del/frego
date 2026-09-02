@@ -184,6 +184,20 @@ flutter run
 # flutter run --dart-define=API_URL=http://192.168.x.x:8080
 ```
 
+## App Store (iOS)
+
+- **Privacy policy URL** (App Store Connect e no app): https://frego.app.br/privacidade
+- **Termos:** https://frego.app.br/termos
+- Login do cliente é **somente telefone + OTP**. Não adicionar Google/Facebook sem Sign in with Apple (guideline 4.8).
+- Nome e aniversário são opcionais. Exclusão da conta: Perfil → Excluir conta.
+- Notas para o reviewer (copiar e colar): `apps/mobile/store/app-review-notes.txt`
+
+**Número de teste Firebase** (obrigatório antes do review — o reviewer nos EUA não recebe SMS brasileiro):
+
+1. Firebase Console → Authentication → Sign-in method → Phone → *Phone numbers for testing*
+2. Cadastre `+5511999000100` com código `123456`
+3. Use o mesmo par nas notas de review
+
 ## 7. Cloud Run (API)
 
 Na **raiz** do repo:

@@ -8,6 +8,7 @@ import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/shop_summary_card.dart';
+import '../../ui/skeleton.dart';
 import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
@@ -129,7 +130,7 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
       showNavBar: true,
       title: 'Você ganhou',
       child: _loading && _wallet == null
-          ? const Center(child: FregoProgress())
+          ? const FregoDetailSkeleton()
           : _error != null && _wallet == null
               ? ListView(
                   padding: const EdgeInsets.all(24),

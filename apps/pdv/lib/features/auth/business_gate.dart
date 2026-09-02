@@ -6,6 +6,7 @@ import '../../api/pdv_api.dart';
 import '../../session/staff_session.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
+import '../../ui/native_splash.dart';
 import '../till/till_page.dart';
 
 class BusinessGate extends StatefulWidget {
@@ -38,10 +39,10 @@ class _BusinessGateState extends State<BusinessGate> {
       listenable: _session,
       builder: (context, _) {
         if (_session.loading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const FregoSplash();
         }
+
+        removeFregoNativeSplash();
 
         if (_session.error != null && _session.businesses.isEmpty) {
           return _StatusScaffold(

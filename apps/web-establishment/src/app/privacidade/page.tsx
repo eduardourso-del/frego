@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadePage() {
   return (
-    <LegalDoc title="Política de Privacidade" updatedAt="11 de agosto de 2026">
+    <LegalDoc title="Política de Privacidade" updatedAt="2 de setembro de 2026">
       <p>
         Esta Política de Privacidade descreve como o <strong>Frego</strong>,
         plataforma de fidelidade operada pela <strong>Bearlabs</strong>{' '}
@@ -52,7 +52,9 @@ export default function PrivacidadePage() {
           (OTP por SMS via Firebase Authentication).
         </li>
         <li>
-          Nome de exibição e data de nascimento (quando informados).
+          Nome de exibição e data de nascimento — <strong>opcionais</strong>.
+          O app funciona só com o telefone; você pode pular ou apagar esses
+          dados a qualquer momento no perfil.
         </li>
         <li>
           Vínculos com lojas (membership), progresso de campanhas, carimbos,
@@ -169,13 +171,37 @@ export default function PrivacidadePage() {
         cabíveis de proteção.
       </p>
 
-      <h2>5. Retenção</h2>
+      <h2>5. Retenção e exclusão da conta</h2>
       <p>
         Mantemos dados pelo tempo necessário às finalidades desta Política, ao
-        vínculo com lojas e a obrigações legais, fiscais ou de disputa. Após o
-        encerramento da conta ou solicitação legítima de exclusão, eliminamos ou
-        anonimizamos os dados, salvo quando a retenção for exigida ou permitida
-        por lei.
+        vínculo com lojas e a obrigações legais, fiscais ou de disputa.
+      </p>
+      <p>
+        Você pode excluir a conta de cliente a qualquer momento no aplicativo
+        Frego: <strong>Perfil → Excluir conta</strong>. A exclusão:
+      </p>
+      <ul>
+        <li>
+          remove o número de telefone, o nome, a data de nascimento e o vínculo
+          com o Firebase Authentication (conta de login por SMS/OTP);
+        </li>
+        <li>
+          encerra o acesso à carteira de fidelidade — carimbos, pontos e
+          prêmios não resgatados são perdidos;
+        </li>
+        <li>apaga tokens de notificação push (FCM) associados à conta;</li>
+        <li>
+          conserva, de forma anonimizada, o histórico operacional das lojas
+          (ledger append-only), sem identificá-lo, pelo tempo necessário a
+          obrigações legais, prevenção a fraude e contabilidade do
+          estabelecimento.
+        </li>
+      </ul>
+      <p>
+        Também é possível pedir exclusão pelo e-mail{' '}
+        <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a>. Após o encerramento da
+        conta ou solicitação legítima, eliminamos ou anonimizamos os dados
+        pessoais, salvo quando a retenção for exigida ou permitida por lei.
       </p>
 
       <h2>6. Segurança</h2>
@@ -199,7 +225,9 @@ export default function PrivacidadePage() {
         <li>oposição a tratamentos baseados em legítimo interesse, nos termos da lei.</li>
       </ul>
       <p>
-        Para exercer direitos, escreva para{' '}
+        A exclusão da conta no aplicativo (Perfil → Excluir conta) atende ao
+        pedido de eliminação dos dados de identificação, nos termos da seção 5.
+        Para exercer outros direitos, escreva para{' '}
         <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a>. Podemos pedir
         confirmação de identidade. Também é possível apresentar reclamação à
         Autoridade Nacional de Proteção de Dados (ANPD).

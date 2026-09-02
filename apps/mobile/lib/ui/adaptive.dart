@@ -15,18 +15,35 @@ abstract final class FregoAdaptive {
     return platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
   }
 
+  /// GA4 screen name from the widget type (`ShopDetailPage` → `shop_detail`).
+  static String routeNameOf(Widget page) {
+    final type = page.runtimeType.toString();
+    final base = type.endsWith('Page')
+        ? type.substring(0, type.length - 4)
+        : type;
+    return base.replaceAllMapped(RegExp(r'[A-Z]'), (m) {
+      final letter = m.group(0)!.toLowerCase();
+      return m.start == 0 ? letter : '_$letter';
+    });
+  }
+
+  static RouteSettings _settingsFor(Widget page) {
+    return RouteSettings(name: routeNameOf(page));
+  }
+
   static Future<T?> push<T>(
     BuildContext context,
     Widget page, {
     bool rootNavigator = false,
   }) {
+    final settings = _settingsFor(page);
     if (useCupertino(context)) {
       return Navigator.of(context, rootNavigator: rootNavigator).push<T>(
-        CupertinoPageRoute<T>(builder: (_) => page),
+        CupertinoPageRoute<T>(builder: (_) => page, settings: settings),
       );
     }
     return Navigator.of(context, rootNavigator: rootNavigator).push<T>(
-      MaterialPageRoute<T>(builder: (_) => page),
+      MaterialPageRoute<T>(builder: (_) => page, settings: settings),
     );
   }
 
@@ -35,9 +52,10 @@ abstract final class FregoAdaptive {
     Widget page, {
     bool rootNavigator = false,
   }) {
+    final settings = _settingsFor(page);
     final route = useCupertino(context)
-        ? CupertinoPageRoute<T>(builder: (_) => page)
-        : MaterialPageRoute<T>(builder: (_) => page);
+        ? CupertinoPageRoute<T>(builder: (_) => page, settings: settings)
+        : MaterialPageRoute<T>(builder: (_) => page, settings: settings);
     return Navigator.of(context, rootNavigator: rootNavigator)
         .pushAndRemoveUntil<T>(route, (_) => false);
   }
@@ -122,6 +140,59 @@ abstract final class FregoAdaptive {
       locale: const Locale('pt', 'BR'),
     );
   }
+
+  static Future<bool> confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    String confirmLabel = 'Confirmar',
+    String cancelLabel = 'Cancelar',
+    bool isDestructive = false,
+  }) async {
+    if (useCupertino(context)) {
+      final ok = await showCupertinoDialog<bool>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(cancelLabel),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: isDestructive,
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      );
+      return ok ?? false;
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(cancelLabel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: isDestructive
+                ? TextButton.styleFrom(foregroundColor: FregoColors.danger)
+                : null,
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
 }
 
 class FregoPage extends StatelessWidget {
@@ -180,6 +251,92 @@ class FregoPage extends StatelessWidget {
             )
           : null,
       body: SafeArea(child: child),
+    );
+  }
+}
+
+/// Tab-root page with a compact nav bar.
+///
+/// Pass content as [slivers].
+class FregoLargeTitlePage extends StatelessWidget {
+  const FregoLargeTitlePage({
+    super.key,
+    required this.title,
+    required this.slivers,
+    this.trailing,
+    this.leading,
+    this.onRefresh,
+    this.backgroundColor,
+  });
+
+  /// Horizontal inset aligned with the compact nav bar.
+  static const double gutter = 16;
+
+  final String title;
+  final List<Widget> slivers;
+  final Widget? trailing;
+  final Widget? leading;
+  final Future<void> Function()? onRefresh;
+  final Color? backgroundColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = backgroundColor ?? FregoColors.neutralBg;
+    if (FregoAdaptive.useCupertino(context)) {
+      // Translucent CupertinoTabBar does not inflate MediaQuery padding, so
+      // the last rows would sit under the bar without this clearance.
+      const tabBarHeight = 50.0;
+      final bottomClearance =
+          MediaQuery.paddingOf(context).bottom + tabBarHeight;
+      final navStyle = CupertinoTheme.of(context).textTheme.navTitleTextStyle;
+      return CupertinoPageScaffold(
+        backgroundColor: bg,
+        navigationBar: CupertinoNavigationBar(
+          middle: Text(title, style: navStyle),
+          leading: leading,
+          trailing: trailing,
+          backgroundColor: bg.withValues(alpha: 0.92),
+          border: const Border(
+            bottom: BorderSide(color: FregoColors.hairline, width: 0.5),
+          ),
+          automaticallyImplyLeading: false,
+          transitionBetweenRoutes: false,
+        ),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          slivers: [
+            if (onRefresh != null)
+              CupertinoSliverRefreshControl(onRefresh: onRefresh!),
+            ...slivers,
+            SliverToBoxAdapter(child: SizedBox(height: bottomClearance)),
+          ],
+        ),
+      );
+    }
+
+    final scroll = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: slivers,
+    );
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: Text(title),
+        leading: leading,
+        automaticallyImplyLeading: false,
+        actions: trailing != null ? [trailing!] : null,
+        backgroundColor: bg,
+        foregroundColor: FregoColors.ink,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      body: SafeArea(
+        child: onRefresh != null
+            ? RefreshIndicator(onRefresh: onRefresh!, child: scroll)
+            : scroll,
+      ),
     );
   }
 }
@@ -397,6 +554,7 @@ class FregoTextField extends StatelessWidget {
               style: const TextStyle(
                 color: FregoColors.danger,
                 fontSize: 13,
+                height: 1.35,
               ),
             ),
           ],

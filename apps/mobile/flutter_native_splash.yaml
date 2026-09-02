@@ -1,0 +1,14 @@
+flutter_native_splash:
+  color: "#F7F8FA"
+  image: ../../packages/tokens/assets/splash/wordmark-light.png
+
+  android_12:
+    color: "#F7F8FA"
+    image: ../../packages/tokens/assets/splash/android12-light.png
+
+  android: true
+  ios: true
+  web: false
+  fullscreen: false
+  ios_content_mode: scaleAspectFit
+  android_gravity: center

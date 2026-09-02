@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/frego_theme.dart';
+import '../../ui/native_splash.dart';
 import 'business_gate.dart';
 import 'login_page.dart';
 
@@ -14,13 +15,13 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          return const Scaffold(
-            backgroundColor: FregoColors.neutralBg,
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const FregoSplash();
         }
         final user = snap.data;
-        if (user == null) return const LoginPage();
+        if (user == null) {
+          removeFregoNativeSplash();
+          return const LoginPage();
+        }
         return BusinessGate(key: ValueKey(user.uid), user: user);
       },
     );

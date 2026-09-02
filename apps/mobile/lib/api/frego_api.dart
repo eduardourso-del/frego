@@ -12,7 +12,10 @@ Future<Map<String, String>> customerAuthHeaders() async {
   if (user == null) {
     throw Exception('Faça login com o telefone');
   }
-  final token = await user.getIdToken();
+  final token = await user.getIdToken(true);
+  if (token == null || token.isEmpty) {
+    throw Exception('Faça login com o telefone');
+  }
   return {
     'Authorization': 'Bearer $token',
     'Content-Type': 'application/json',
@@ -142,6 +145,15 @@ Future<Map<String, dynamic>> putDeviceToken({
       'token': token,
       'platform': platform,
     }),
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> deleteMyAccount() async {
+  final headers = await customerAuthHeaders();
+  final res = await http.delete(
+    Uri.parse('$apiBaseUrl/me/customer'),
+    headers: headers,
   );
   return _decode(res);
 }

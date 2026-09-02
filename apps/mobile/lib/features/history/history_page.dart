@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,6 +7,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/earn_detail_page.dart';
 
@@ -255,29 +255,17 @@ class _HistoryPageState extends State<HistoryPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cupertino = FregoAdaptive.useCupertino(context);
     final filtered = _filteredItems;
     final lotsToShow = _lotsToShow;
     final showLots = _showLots;
 
     final slivers = <Widget>[
-      if (cupertino) CupertinoSliverRefreshControl(onRefresh: _load),
       const SliverToBoxAdapter(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(24, 16, 24, 8),
+          padding: EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 8, FregoLargeTitlePage.gutter, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Histórico',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.4,
-                  color: FregoColors.ink,
-                ),
-              ),
-              SizedBox(height: 6),
               Text(
                 'Carimbos, pontos, cashback e vouchers de resgate.',
                 style: TextStyle(
@@ -289,14 +277,12 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         ),
       ),
-      if (_loading)
-        const SliverFillRemaining(
-          child: Center(child: FregoProgress()),
-        )
+      if (_loading && !_hydrated)
+        const SliverToBoxAdapter(child: FregoHistorySkeleton())
       else if (_error != null)
         SliverFillRemaining(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -315,7 +301,7 @@ class _HistoryPageState extends State<HistoryPage> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -359,13 +345,13 @@ class _HistoryPageState extends State<HistoryPage> {
       else ...[
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 0, 0),
+            padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 4, 0, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(right: 24),
+                  padding: const EdgeInsets.only(right: FregoLargeTitlePage.gutter),
                   child: Row(
                     children: [
                       _HistoryFilterChip(
@@ -397,7 +383,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(right: 24),
+                  padding: const EdgeInsets.only(right: FregoLargeTitlePage.gutter),
                   child: Row(
                     children: [
                       _HistoryKindChip(
@@ -468,7 +454,7 @@ class _HistoryPageState extends State<HistoryPage> {
         if (showLots)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 16, FregoLargeTitlePage.gutter, 0),
               child: BalanceLotsSection(
                 lots: lotsToShow,
                 title: _scope == _HistoryScope.expiring
@@ -487,7 +473,7 @@ class _HistoryPageState extends State<HistoryPage> {
         else if (!showLots)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+              padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 24, FregoLargeTitlePage.gutter, 32),
               child: Text(
                 _filterEmptyMessage(),
                 style: const TextStyle(
@@ -501,17 +487,10 @@ class _HistoryPageState extends State<HistoryPage> {
       ],
     ];
 
-    final scroll = CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
+    return FregoLargeTitlePage(
+      title: 'Histórico',
+      onRefresh: _load,
       slivers: slivers,
-    );
-
-    return FregoPage(
-      child: cupertino
-          ? scroll
-          : RefreshIndicator(onRefresh: _load, child: scroll),
     );
   }
 
@@ -555,7 +534,7 @@ class _HistoryPageState extends State<HistoryPage> {
       out.add(
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+            padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 20, FregoLargeTitlePage.gutter, 8),
             child: Text(
               entry.key,
               style: const TextStyle(
@@ -570,7 +549,9 @@ class _HistoryPageState extends State<HistoryPage> {
       );
       out.add(
         SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(
+            horizontal: FregoLargeTitlePage.gutter,
+          ),
           sliver: SliverList.separated(
             itemCount: entry.value.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),

@@ -10,6 +10,7 @@ import '../shops/campaign_detail_page.dart';
 import '../shops/earn_detail_page.dart';
 import '../shops/shop_detail_page.dart';
 import '../shops/shops_page.dart';
+import '../../analytics/frego_telemetry.dart';
 import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
@@ -26,6 +27,8 @@ class CustomerShell extends StatefulWidget {
 }
 
 class _CustomerShellState extends State<CustomerShell> {
+  static const _tabScreens = ['shops', 'rewards', 'history', 'profile'];
+
   int _index = 0;
   int _shopsRefresh = 0;
   int _rewardsRefresh = 0;
@@ -41,6 +44,7 @@ class _CustomerShellState extends State<CustomerShell> {
       unawaited(PushService.syncIfAuthorized());
       _openPendingPush();
     });
+    unawaited(FregoTelemetry.screen(_tabScreens[_index]));
   }
 
   @override
@@ -83,6 +87,7 @@ class _CustomerShellState extends State<CustomerShell> {
       if (i == 1) _rewardsRefresh++;
       if (i == 2) _historyRefresh++;
     });
+    unawaited(FregoTelemetry.screen(_tabScreens[i]));
   }
 
   Widget _shopsPage() => ShopsPage(

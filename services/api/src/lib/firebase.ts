@@ -48,3 +48,15 @@ export function getFirebaseMessaging(): Messaging {
   ensureFirebase();
   return getMessaging();
 }
+
+/** Removes the Firebase Auth user. No-op if the uid is already gone. */
+export async function deleteFirebaseUser(uid: string): Promise<void> {
+  ensureFirebase();
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'auth/user-not-found') return;
+    throw err;
+  }
+}

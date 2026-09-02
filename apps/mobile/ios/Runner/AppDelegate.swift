@@ -15,8 +15,12 @@ import UserNotifications
   ) -> Bool {
     let ok = super.application(application, didFinishLaunchingWithOptions: launchOptions)
     UNUserNotificationCenter.current().delegate = self
-    application.registerForRemoteNotifications()
-    NSLog("Frego APNs: registerForRemoteNotifications after launch")
+    #if targetEnvironment(simulator)
+      NSLog("Frego APNs: skipped on simulator so Phone Auth can use reCAPTCHA")
+    #else
+      application.registerForRemoteNotifications()
+      NSLog("Frego APNs: registerForRemoteNotifications after launch")
+    #endif
     return ok
   }
 
@@ -26,9 +30,13 @@ import UserNotifications
     let channel = FlutterMethodChannel(name: "frego/push", binaryMessenger: messenger)
     channel.setMethodCallHandler { call, result in
       if call.method == "register" {
-        UIApplication.shared.registerForRemoteNotifications()
-        NSLog("Frego APNs: registerForRemoteNotifications from Dart")
-        AppDelegate.applyPendingAPNsToken()
+        #if targetEnvironment(simulator)
+          NSLog("Frego APNs: register skipped on simulator")
+        #else
+          UIApplication.shared.registerForRemoteNotifications()
+          NSLog("Frego APNs: registerForRemoteNotifications from Dart")
+          AppDelegate.applyPendingAPNsToken()
+        #endif
         AppDelegate.dartReady = true
         AppDelegate.flushOpened()
         result(nil)
@@ -46,6 +54,10 @@ import UserNotifications
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
     NSLog("Frego APNs token received (%d bytes)", deviceToken.count)
+    #if targetEnvironment(simulator)
+      NSLog("Frego APNs: ignoring simulator token (breaks Phone Auth OTP)")
+      return
+    #endif
     AppDelegate.pendingAPNsToken = deviceToken
     AppDelegate.applyPendingAPNsToken()
     AppDelegate.channel?.invokeMethod("apns", arguments: deviceToken.count)

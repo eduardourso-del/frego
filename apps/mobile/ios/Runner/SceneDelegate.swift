@@ -9,7 +9,9 @@ class SceneDelegate: FlutterSceneDelegate {
     options connectionOptions: UIScene.ConnectionOptions
   ) {
     super.scene(scene, willConnectTo: session, options: connectionOptions)
-    UIApplication.shared.registerForRemoteNotifications()
+    #if !targetEnvironment(simulator)
+      UIApplication.shared.registerForRemoteNotifications()
+    #endif
     if let response = connectionOptions.notificationResponse {
       AppDelegate.offerOpened(response.notification.request.content.userInfo)
     }

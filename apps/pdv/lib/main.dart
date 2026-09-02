@@ -1,7 +1,9 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import 'config/app_config.dart';
 import 'features/auth/auth_gate.dart';
@@ -9,7 +11,9 @@ import 'firebase_options.dart';
 import 'theme/frego_theme.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   AppConfig.assertShipBuildUsesProductionApi();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const FregoPdvApp());

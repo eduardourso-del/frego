@@ -20,6 +20,7 @@ dependencies:
   frego_tokens:
     path: ../../packages/tokens
   shared_preferences: ^2.5.3
+  flutter_native_splash: ^2.4.7
 
 dev_dependencies:
   flutter_test:

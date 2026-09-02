@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function TermosPage() {
   return (
-    <LegalDoc title="Termos de Uso" updatedAt="11 de agosto de 2026">
+    <LegalDoc title="Termos de Uso" updatedAt="2 de setembro de 2026">
       <p>
         Estes Termos de Uso (“Termos”) regem o acesso e o uso da plataforma{' '}
         <strong>Frego</strong>, operada pela <strong>Bearlabs</strong>{' '}
@@ -42,8 +42,9 @@ export default function TermosPage() {
       <ul>
         <li>
           <strong>Clientes:</strong> devem informar um número de telefone válido
-          e completar a verificação. São responsáveis pela segurança do
-          dispositivo e do código OTP.
+          e completar a verificação por SMS (OTP via Firebase Authentication).
+          Nome e data de nascimento são opcionais. São responsáveis pela
+          segurança do dispositivo e do código OTP.
         </li>
         <li>
           <strong>Estabelecimentos:</strong> o cadastro pode depender de
@@ -53,6 +54,12 @@ export default function TermosPage() {
         <li>
           Você se compromete a fornecer informações verdadeiras e atualizadas e
           a não compartilhar credenciais.
+        </li>
+        <li>
+          O cliente pode excluir a conta no aplicativo (Perfil → Excluir conta).
+          A exclusão remove os dados de identificação (telefone, nome) e o
+          acesso à carteira; o histórico operacional das lojas pode ser
+          conservado de forma anonimizada, conforme a Política de Privacidade.
         </li>
       </ul>
 

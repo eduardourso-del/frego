@@ -1,7 +1,9 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'assets.dart';
+import 'tokens.dart';
 
 /// Wordmark (assinatura). Minimum ~72 logical px wide on screen.
 class FregoWordmark extends StatelessWidget {
@@ -26,6 +28,26 @@ class FregoWordmark extends StatelessWidget {
       height: height,
       fit: BoxFit.contain,
       semanticsLabel: 'Frego',
+    );
+  }
+}
+
+/// Matches the native light splash while Flutter is still booting.
+class FregoSplash extends StatelessWidget {
+  const FregoSplash({super.key, this.wordmarkHeight = 78});
+
+  final double wordmarkHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.dark,
+      child: ColoredBox(
+        color: FregoColors.neutralBg,
+        child: Center(
+          child: FregoWordmark(height: wordmarkHeight),
+        ),
+      ),
     );
   }
 }

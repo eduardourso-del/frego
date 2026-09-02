@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../analytics/frego_telemetry.dart';
 import '../../api/frego_api.dart';
 import '../../notifications/push_service.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/native_splash.dart';
 import '../home/customer_shell.dart';
 import 'notification_onboarding_page.dart';
 import 'phone_entry_page.dart';
@@ -62,10 +66,10 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const FregoPage(
-        child: Center(child: FregoProgress()),
-      );
+      return const FregoSplash();
     }
+
+    removeFregoNativeSplash();
 
     if (_error != null) {
       return FregoPage(
@@ -148,13 +152,14 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const FregoPage(
-            child: Center(child: FregoProgress()),
-          );
+          return const FregoSplash();
         }
-        if (snapshot.data != null) {
+        final user = snapshot.data;
+        unawaited(FregoTelemetry.setUser(user?.uid));
+        if (user != null) {
           return const CustomerHomeGate();
         }
+        removeFregoNativeSplash();
         return const PhoneEntryPage(isRoot: true);
       },
     );

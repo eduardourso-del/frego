@@ -3,10 +3,13 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
+import '../../config/app_config.dart';
 import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/legal_links.dart';
+import '../../ui/skeleton.dart';
 import '../auth/auth_gate.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -34,6 +37,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Map<String, dynamic>? _stats;
   bool _notificationsEnabled = true;
   bool _savingNotifications = false;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -100,9 +104,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    if (name.length < 2) {
+    if (name.isNotEmpty && name.length < 2) {
       setState(() {
-        _error = 'Informe seu nome';
+        _error = 'Informe um nome com pelo menos 2 letras, ou deixe em branco';
         _success = null;
       });
       return;
@@ -188,29 +192,89 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<void> _deleteAccount() async {
+    if (_deleting) return;
+    final confirmed = await FregoAdaptive.confirm(
+      context,
+      title: 'Excluir conta?',
+      message:
+          'Isso apaga seu telefone, nome e o acesso à carteira neste app. '
+          'Carimbos, pontos e prêmios não resgatados serão perdidos. '
+          'Esta ação não pode ser desfeita.',
+      confirmLabel: 'Excluir conta',
+      cancelLabel: 'Cancelar',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
+    try {
+      await deleteMyAccount();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+      return;
+    }
+    await PushService.stop();
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+    if (!mounted) return;
+    await FregoAdaptive.pushAndRemoveUntil(
+      context,
+      const AuthGate(),
+      rootNavigator: true,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cupertino = FregoAdaptive.useCupertino(context);
     final initial = _name.text.trim().isNotEmpty
         ? _name.text.trim()[0].toUpperCase()
         : '?';
+    final canSave = !_loading && !_saving && !_deleting;
 
-    return FregoPage(
-      child: _loading
-          ? const Center(child: FregoProgress())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
-              children: [
-                const Text(
-                  'Perfil',
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.4,
-                    color: FregoColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
+    return FregoLargeTitlePage(
+      title: 'Perfil',
+      trailing: cupertino
+          ? CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: canSave ? _save : null,
+              child: _saving
+                  ? const CupertinoActivityIndicator()
+                  : Text(
+                      'Salvar',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: canSave
+                            ? FregoColors.primary500
+                            : FregoColors.neutral400,
+                      ),
+                    ),
+            )
+          : TextButton(
+              onPressed: canSave ? _save : null,
+              child: Text(_saving ? 'Salvando…' : 'Salvar'),
+            ),
+      slivers: [
+        if (_loading)
+          const SliverToBoxAdapter(child: FregoProfileSkeleton())
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              FregoLargeTitlePage.gutter,
+              8,
+              FregoLargeTitlePage.gutter,
+              32,
+            ),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
                 const Text(
                   'Seus dados na Frego. O telefone é a chave da conta.',
                   style: TextStyle(
@@ -266,8 +330,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 28),
                 FregoTextField(
                   controller: _name,
-                  label: 'Nome',
-                  placeholder: 'Seu nome',
+                  label: 'Nome (opcional)',
+                  placeholder: 'Opcional',
                   textCapitalization: TextCapitalization.words,
                   onChanged: (_) {
                     if (_success != null || _error != null) {
@@ -370,19 +434,159 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 28),
+                const _SettingsLabel('Conta'),
+                const SizedBox(height: 8),
+                _SettingsGroup(
+                  children: [
+                    _SettingsRow(
+                      label: 'Política de Privacidade',
+                      onTap: _deleting
+                          ? null
+                          : () => openLegalUrl(
+                                context,
+                                AppConfig.privacyPolicyUrl,
+                              ),
+                    ),
+                    _SettingsRow(
+                      label: 'Termos de Uso',
+                      onTap: _deleting
+                          ? null
+                          : () => openLegalUrl(
+                                context,
+                                AppConfig.termsOfUseUrl,
+                              ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 24),
-                FregoPrimaryButton(
-                  label: _saving ? 'Salvando…' : 'Salvar',
-                  onPressed: _saving ? null : _save,
+                _SettingsGroup(
+                  children: [
+                    _SettingsRow(
+                      label: 'Sair',
+                      showChevron: false,
+                      onTap: _deleting ? null : _logout,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                FregoSecondaryButton(
-                  label: 'Sair',
-                  icon: FregoIcons.logout,
-                  onPressed: _logout,
+                const SizedBox(height: 24),
+                _SettingsGroup(
+                  children: [
+                    _SettingsRow(
+                      label: _deleting ? 'Excluindo…' : 'Excluir conta',
+                      color: FregoColors.danger,
+                      showChevron: false,
+                      onTap: _deleting ? null : _deleteAccount,
+                    ),
+                  ],
                 ),
-              ],
+              ]),
             ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SettingsLabel extends StatelessWidget {
+  const _SettingsLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.04,
+          color: FregoColors.neutral400,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: FregoColors.hairline),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          for (var i = 0; i < children.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                height: 1,
+                thickness: 0.5,
+                indent: 16,
+                color: FregoColors.hairline,
+              ),
+            children[i],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.label,
+    required this.onTap,
+    this.color,
+    this.showChevron = true,
+  });
+
+  final String label;
+  final VoidCallback? onTap;
+  final Color? color;
+  final bool showChevron;
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = color ?? FregoColors.ink;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                    color: ink,
+                  ),
+                ),
+              ),
+              if (showChevron)
+                Icon(
+                  FregoIcons.chevronRight,
+                  size: 20,
+                  color: FregoColors.neutral400,
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

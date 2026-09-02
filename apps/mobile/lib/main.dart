@@ -2,8 +2,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 
+import 'analytics/frego_telemetry.dart';
 import 'firebase_options.dart';
 import 'config/app_config.dart';
 import 'notifications/push_service.dart';
@@ -11,23 +14,31 @@ import 'theme/frego_theme.dart';
 import 'features/auth/auth_gate.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   AppConfig.assertShipBuildUsesProductionApi();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await FregoTelemetry.attach();
   PushService.attachNative();
-  runApp(const FregoApp());
+  runApp(FregoApp(analyticsObserver: FregoTelemetry.observer));
 }
 
 class FregoApp extends StatelessWidget {
-  const FregoApp({super.key});
+  const FregoApp({super.key, this.analyticsObserver});
+
+  final NavigatorObserver? analyticsObserver;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Frego',
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [
+        ?analyticsObserver,
+      ],
       locale: const Locale('pt', 'BR'),
       supportedLocales: const [
         Locale('pt', 'BR'),

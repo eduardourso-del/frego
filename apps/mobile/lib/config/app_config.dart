@@ -8,6 +8,10 @@ class AppConfig {
   static const productionApiUrl =
       'https://voltei-api-5z2jvudlna-rj.a.run.app';
 
+  static const legalBaseUrl = 'https://frego.app.br';
+  static const privacyPolicyUrl = '$legalBaseUrl/privacidade';
+  static const termsOfUseUrl = '$legalBaseUrl/termos';
+
   static const _debugDefaultApiUrl = 'http://127.0.0.1:8080';
 
   static const _apiUrlOverride = String.fromEnvironment('API_URL');

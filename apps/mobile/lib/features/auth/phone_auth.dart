@@ -34,6 +34,10 @@ class PhoneAuthChallenge {
 }
 
 /// Envia OTP. No web usa reCAPTCHA; no mobile usa verifyPhoneNumber.
+///
+/// Phone OTP is the only customer login. Do not add Google/Facebook
+/// (or other social login) without also adding Sign in with Apple —
+/// App Store Review Guideline 4.8.
 Future<PhoneAuthChallenge> sendPhoneOtp({
   required String phoneE164,
   required void Function(PhoneAuthCredential credential) onAutoVerified,

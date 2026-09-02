@@ -5,6 +5,7 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/skeleton.dart';
 import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
@@ -338,27 +339,24 @@ class _ShopsPageState extends State<ShopsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final cupertino = FregoAdaptive.useCupertino(context);
     final greet = _displayName?.trim().isNotEmpty == true
         ? _displayName!.trim().split(' ').first
         : 'você';
     final items = _filtered;
 
     final slivers = <Widget>[
-      if (cupertino)
-        CupertinoSliverRefreshControl(onRefresh: _load),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+          padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 8, FregoLargeTitlePage.gutter, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Olá, $greet',
                 style: const TextStyle(
-                  fontSize: 26,
+                  fontSize: 17,
                   fontWeight: FontWeight.w600,
-                  letterSpacing: -0.4,
+                  letterSpacing: -0.2,
                   color: FregoColors.ink,
                 ),
               ),
@@ -409,48 +407,12 @@ class _ShopsPageState extends State<ShopsPage> {
           ),
         ),
       ),
-      if (_memberships.isNotEmpty)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
-            child: Text(
-              _filtered.isEmpty
-                  ? 'Nenhuma loja'
-                  : items.length == 1
-                      ? '1 loja'
-                      : '${items.length} lojas',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.04,
-                color: FregoColors.neutral400,
-              ),
-            ),
-          ),
-        )
-      else
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(24, 24, 24, 8),
-            child: Text(
-              'Suas lojas',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.04,
-                color: FregoColors.neutral400,
-              ),
-            ),
-          ),
-        ),
-      if (_loading)
-        const SliverFillRemaining(
-          child: Center(child: FregoProgress()),
-        )
+      if (_loading && !_hydrated)
+        const SliverToBoxAdapter(child: FregoShopsSkeleton())
       else if (_error != null)
         SliverFillRemaining(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -469,7 +431,7 @@ class _ShopsPageState extends State<ShopsPage> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -523,7 +485,7 @@ class _ShopsPageState extends State<ShopsPage> {
         SliverFillRemaining(
           hasScrollBody: false,
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -586,9 +548,28 @@ class _ShopsPageState extends State<ShopsPage> {
             ),
           ),
         )
-      else
+      else ...[
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              FregoLargeTitlePage.gutter,
+              20,
+              FregoLargeTitlePage.gutter,
+              8,
+            ),
+            child: Text(
+              items.length == 1 ? '1 loja' : '${items.length} lojas',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.04,
+                color: FregoColors.neutral400,
+              ),
+            ),
+          ),
+        ),
         SliverPadding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+              padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 8, FregoLargeTitlePage.gutter, 32),
               sliver: SliverList.separated(
                 itemCount: _rows.length,
                 separatorBuilder: (context, index) {
@@ -799,19 +780,13 @@ class _ShopsPageState extends State<ShopsPage> {
                 },
               ),
             ),
+      ],
     ];
 
-    final scroll = CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
-      ),
+    return FregoLargeTitlePage(
+      title: 'Lojas',
+      onRefresh: _load,
       slivers: slivers,
-    );
-
-    return FregoPage(
-      child: cupertino
-          ? scroll
-          : RefreshIndicator(onRefresh: _load, child: scroll),
     );
   }
 

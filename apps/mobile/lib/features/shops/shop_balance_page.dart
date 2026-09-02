@@ -6,6 +6,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/skeleton.dart';
 import 'earn_detail_page.dart';
 
 enum _LotFilter { all, stamps, points, cashback, expiring }
@@ -137,7 +138,7 @@ class _ShopBalancePageState extends State<ShopBalancePage> {
       showNavBar: true,
       title: title,
       child: _loading && !_hydrated
-          ? const Center(child: FregoProgress())
+          ? const FregoDetailSkeleton()
           : _error != null && !_hydrated
               ? ListView(
                   padding: const EdgeInsets.all(24),

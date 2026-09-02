@@ -19,6 +19,7 @@ import {
   deleteCustomerDeviceTokens,
   replaceCustomerDeviceToken,
 } from '../lib/push/device-token.js';
+import { deleteCustomerAccount } from '../lib/delete-customer.js';
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -27,7 +28,7 @@ const redeemBody = z.object({
 });
 
 const updateCustomerBody = z.object({
-  displayName: z.string().min(1).max(80).optional(),
+  displayName: z.string().max(80).nullable().optional(),
   birthday: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
@@ -158,7 +159,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       where: { id: auth.customerId },
       data: {
         ...(body.displayName !== undefined
-          ? { displayName: body.displayName.trim() }
+          ? { displayName: body.displayName?.trim() || null }
           : {}),
         ...(body.birthday !== undefined
           ? {
@@ -188,6 +189,16 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       membershipCount,
       needsOnboarding: !customer.onboardingCompleted,
     };
+  });
+
+  /** App Store 5.1.1(v): in-app account deletion. */
+  app.delete('/me/customer', async (request) => {
+    const auth = requireCustomerAuth(request);
+    await deleteCustomerAccount({
+      customerId: auth.customerId,
+      firebaseUid: auth.firebaseUid,
+    });
+    return { ok: true };
   });
 
   /** Register or replace this customer's FCM token for the platform. */
