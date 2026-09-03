@@ -41,12 +41,13 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
       _error = null;
     });
     try {
-      final data = await fetchMyCustomer();
+      final data = await fetchMyCustomer().timeout(const Duration(seconds: 20));
       final customer = data['customer'] as Map<String, dynamic>;
       final needsOnboarding = data['needsOnboarding'] == true;
       final needsNotificationPrompt = needsOnboarding
           ? false
-          : await PushService.shouldShowPrePrompt();
+          : await PushService.shouldShowPrePrompt()
+              .timeout(const Duration(seconds: 5), onTimeout: () => false);
       if (!mounted) return;
       setState(() {
         _needsOnboarding = needsOnboarding;
@@ -66,6 +67,7 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
+      removeFregoNativeSplash();
       return const FregoSplash();
     }
 
@@ -152,6 +154,7 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
+          removeFregoNativeSplash();
           return const FregoSplash();
         }
         final user = snapshot.data;

@@ -345,13 +345,15 @@ class _HistoryPageState extends State<HistoryPage> {
       else ...[
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 4, 0, 0),
+            padding: const EdgeInsets.only(top: 4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(right: FregoLargeTitlePage.gutter),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: FregoLargeTitlePage.gutter,
+                  ),
                   child: Row(
                     children: [
                       _HistoryFilterChip(
@@ -383,7 +385,9 @@ class _HistoryPageState extends State<HistoryPage> {
                 const SizedBox(height: 10),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.only(right: FregoLargeTitlePage.gutter),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: FregoLargeTitlePage.gutter,
+                  ),
                   child: Row(
                     children: [
                       _HistoryKindChip(

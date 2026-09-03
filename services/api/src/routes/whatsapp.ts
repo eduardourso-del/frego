@@ -187,7 +187,9 @@ async function applyCampaignTemplateState(
       templateCampaignSyncedAt: new Date(),
       ...(result.error && result.status === 'missing'
         ? { lastError: result.error }
-        : {}),
+        : result.status === 'missing'
+          ? {}
+          : { lastError: null }),
     },
   });
 }

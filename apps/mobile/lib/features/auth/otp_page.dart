@@ -25,6 +25,7 @@ class _OtpPageState extends State<OtpPage> {
   final _controllers = List.generate(6, (_) => TextEditingController());
   final _focus = List.generate(6, (_) => FocusNode());
   bool _loading = false;
+  bool _applying = false;
   String? _error;
 
   /// Leave AuthGate as the root so authStateChanges can drive login/home.
@@ -63,16 +64,34 @@ class _OtpPageState extends State<OtpPage> {
   }
 
   void _onChanged(int index, String value) {
-    if (value.isEmpty) {
+    if (_applying) return;
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) {
       if (index > 0) _focus[index - 1].requestFocus();
       return;
     }
-    if (value.length == 1 && index < 5) {
-      _focus[index + 1].requestFocus();
+
+    // iOS SMS suggestion / paste dumps the whole code into one box.
+    _applying = true;
+    var writeAt = index;
+    for (final digit in digits.split('')) {
+      if (writeAt >= 6) break;
+      _controllers[writeAt].value = TextEditingValue(
+        text: digit,
+        selection: const TextSelection.collapsed(offset: 1),
+      );
+      writeAt++;
     }
+    _applying = false;
+
+    if (writeAt >= 6) {
+      _focus[5].unfocus();
+    } else {
+      _focus[writeAt].requestFocus();
+    }
+
     if (_controllers.every((c) => c.text.length == 1)) {
-      final code = _controllers.map((c) => c.text).join();
-      _submit(code);
+      _submit(_controllers.map((c) => c.text).join());
     }
   }
 
@@ -115,37 +134,40 @@ class _OtpPageState extends State<OtpPage> {
               ),
             ),
             const SizedBox(height: 32),
-            Row(
-              children: List.generate(6, (i) {
-                return Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(
-                      left: i == 0 ? 0 : 4,
-                      right: i == 5 ? 0 : 4,
-                    ),
-                    child: SizedBox(
-                      height: 58,
-                      child: FregoTextField(
-                        controller: _controllers[i],
-                        focusNode: _focus[i],
-                        enabled: !_loading,
-                        textAlign: TextAlign.center,
-                        keyboardType: TextInputType.number,
-                        maxLength: 1,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w600,
-                          color: FregoColors.ink,
+            AutofillGroup(
+              child: Row(
+                children: List.generate(6, (i) {
+                  return Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(
+                        left: i == 0 ? 0 : 4,
+                        right: i == 5 ? 0 : 4,
+                      ),
+                      child: SizedBox(
+                        height: 58,
+                        child: FregoTextField(
+                          controller: _controllers[i],
+                          focusNode: _focus[i],
+                          enabled: !_loading,
+                          autofocus: i == 0,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          autofillHints: const [AutofillHints.oneTimeCode],
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                            color: FregoColors.ink,
+                          ),
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          onChanged: (v) => _onChanged(i, v),
                         ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        onChanged: (v) => _onChanged(i, v),
                       ),
                     ),
-                  ),
-                );
-              }),
+                  );
+                }),
+              ),
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),

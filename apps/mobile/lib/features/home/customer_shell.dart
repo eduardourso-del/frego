@@ -129,7 +129,7 @@ class _CustomerShellState extends State<CustomerShell> {
       return CupertinoTabScaffold(
         controller: _cupertinoTabs,
         tabBar: CupertinoTabBar(
-          backgroundColor: FregoColors.card.withValues(alpha: 0.94),
+          backgroundColor: FregoColors.card,
           activeColor: FregoColors.primary500,
           inactiveColor: FregoColors.neutral500,
           border: const Border(

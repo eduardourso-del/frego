@@ -337,54 +337,61 @@ class _ShopsPageState extends State<ShopsPage> {
     }
   }
 
+  String? get _firstName {
+    final name = _displayName?.trim();
+    if (name == null || name.isEmpty) return null;
+    return name.split(RegExp(r'\s+')).first;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final greet = _displayName?.trim().isNotEmpty == true
-        ? _displayName!.trim().split(' ').first
-        : 'você';
+    final firstName = _firstName;
     final items = _filtered;
 
     final slivers = <Widget>[
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(FregoLargeTitlePage.gutter, 8, FregoLargeTitlePage.gutter, 0),
+          padding: const EdgeInsets.only(top: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Olá, $greet',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  color: FregoColors.ink,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Suas fidelidades em um só lugar',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w400,
-                  color: FregoColors.neutral500,
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: FregoLargeTitlePage.gutter),
+                child: Text(
+                  'Suas fidelidades em um só lugar',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w400,
+                    color: FregoColors.neutral500,
+                  ),
                 ),
               ),
               if (_memberships.isNotEmpty) ...[
                 const SizedBox(height: 20),
-                _InsightStrip(
-                  redeemableNow: _redeemableNow,
-                  nextReward: _nextReward,
-                  birthday: _birthdayHint(),
-                  onOpenShop: _openShop,
-                  onOpenCampaign: _openCampaign,
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: FregoLargeTitlePage.gutter,
+                  ),
+                  child: _InsightStrip(
+                    redeemableNow: _redeemableNow,
+                    nextReward: _nextReward,
+                    birthday: _birthdayHint(),
+                    onOpenShop: _openShop,
+                    onOpenCampaign: _openCampaign,
+                  ),
                 ),
                 const SizedBox(height: 16),
-                _ShopSearchField(
-                  controller: _search,
-                  onClear: () {
-                    _search.clear();
-                    setState(() {});
-                  },
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: FregoLargeTitlePage.gutter,
+                  ),
+                  child: _ShopSearchField(
+                    controller: _search,
+                    onClear: () {
+                      _search.clear();
+                      setState(() {});
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
                 _FilterChips(
@@ -784,7 +791,7 @@ class _ShopsPageState extends State<ShopsPage> {
     ];
 
     return FregoLargeTitlePage(
-      title: 'Lojas',
+      title: firstName != null ? 'Olá, $firstName' : 'Lojas',
       onRefresh: _load,
       slivers: slivers,
     );
@@ -913,6 +920,7 @@ class _FilterChips extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: FregoLargeTitlePage.gutter),
       child: Row(
         children: [
           _chip(
@@ -1010,6 +1018,7 @@ class _CategoryChips extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: FregoLargeTitlePage.gutter),
       child: Row(
         children: [
           for (var i = 0; i < types.length; i++) ...[

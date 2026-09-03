@@ -1,9 +1,12 @@
 export function campaignNotifyCopy(businessName: string, campaignName: string) {
-  const title = businessName.trim() || 'Frego';
-  const name = campaignName.trim() || 'campanha';
+  const title = (businessName.trim() || 'Frego').slice(0, 60);
+  const name = (campaignName.trim() || 'campanha').slice(0, 120);
   return {
     title,
-    body: `Nova campanha: ${name}`,
+    body: `Lançou uma nova campanha: ${name}. Abra o app Frego para conferir os detalhes e participar.`.slice(
+      0,
+      180,
+    ),
     campaignName: name,
   };
 }

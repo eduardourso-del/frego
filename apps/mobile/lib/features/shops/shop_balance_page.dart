@@ -129,14 +129,11 @@ class _ShopBalancePageState extends State<ShopBalancePage> {
   @override
   Widget build(BuildContext context) {
     final cupertino = FregoAdaptive.useCupertino(context);
-    final title = widget.shopName?.trim().isNotEmpty == true
-        ? 'Saldo · ${widget.shopName}'
-        : 'Saldo e validade';
     final filtered = _filtered;
 
     return FregoPage(
       showNavBar: true,
-      title: title,
+      title: 'Saldo',
       child: _loading && !_hydrated
           ? const FregoDetailSkeleton()
           : _error != null && !_hydrated

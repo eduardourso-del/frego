@@ -206,7 +206,7 @@ abstract final class FregoTheme {
           fontWeight: FontWeight.w600,
         ),
         navLargeTitleTextStyle: base.copyWith(
-          fontSize: 28,
+          fontSize: 34,
           fontWeight: FontWeight.w800,
           letterSpacing: -0.4,
         ),

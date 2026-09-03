@@ -125,11 +125,11 @@ describe('campaignPushCopy', () => {
   it('uses business name and campaign name in pt-BR', () => {
     assert.deepEqual(campaignPushCopy('Café Bloom', '10 carimbos'), {
       title: 'Café Bloom',
-      body: 'Nova campanha: 10 carimbos',
+      body: 'Lançou uma nova campanha: 10 carimbos. Abra o app Frego para conferir os detalhes e participar.',
     });
     assert.deepEqual(campaignNotifyCopy('Café Bloom', '10 carimbos'), {
       title: 'Café Bloom',
-      body: 'Nova campanha: 10 carimbos',
+      body: 'Lançou uma nova campanha: 10 carimbos. Abra o app Frego para conferir os detalhes e participar.',
       campaignName: '10 carimbos',
     });
   });
@@ -150,7 +150,7 @@ describe('buildCampaignPushMessage', () => {
     });
     assert.deepEqual(message.notification, {
       title: 'Loja',
-      body: 'Nova campanha: VIP',
+      body: 'Lançou uma nova campanha: VIP. Abra o app Frego para conferir os detalhes e participar.',
     });
     assert.deepEqual(message.data, {
       type: 'campaign_new',

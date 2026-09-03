@@ -57,7 +57,7 @@ NEXT_PUBLIC_META_EMBEDDED_CONFIG_ID=...
 3. Use **WhatsApp Business** (not personal WhatsApp). App version ≥ 2.24.17.
 4. Prefer a **Brazilian** business phone (US/test numbers often fail with error `130497` when messaging `+55`).
 5. Keep the WhatsApp Business app open for a few minutes after connect (Meta SMB sync).
-6. Frego **auto-creates** templates `frego_earn_summary` and `frego_welcome` (`pt_BR`) on that WABA after connect. Wait until status is **Approved** (shown in Configurações). You can also tap **Criar / sincronizar template**.
+6. Frego **auto-creates** templates `frego_earn_summary`, `frego_welcome`, and `frego_campaign_notice` (`pt_BR`) on that WABA after connect. Wait until status is **Approved** (shown in Configurações). You can also tap **Criar / sincronizar template**.
 7. Register a customer at the balcão → welcome WhatsApp. Stamp → earn WhatsApp from the **store’s** number once templates are approved.
 
 ### Coexistence (after App Review)
@@ -128,6 +128,24 @@ Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.
 
 Use o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.
 ```
+
+### Campaign template (auto)
+
+**Name:** `frego_campaign_notice`  
+**Language:** `pt_BR`  
+**Category:** Utility  
+
+**Body:**
+
+```text
+Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.
+
+{{2}}
+
+Abra o app Frego para conferir os detalhes e participar.
+```
+
+Push uses the same announcement: title is the store name; body is “Lançou uma nova campanha: {nome}. Abra o app Frego para conferir os detalhes e participar.”
 
 Manual creation in WhatsApp Manager is only a fallback if the API create fails.
 

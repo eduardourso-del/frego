@@ -102,7 +102,13 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
         raw.contains('play_integrity') ||
         e.code == 'invalid-app-credential' ||
         e.code == 'missing-client-identifier') {
-      return 'No emulador o SMS real não funciona. Use (11) 98765-4321 e o código 123456.';
+      return 'Não foi possível verificar o app. '
+          'Verifique se o Google Play está atualizado e tente novamente.';
+    }
+    if (e.code == 'network-request-failed' ||
+        raw.contains('network error') ||
+        raw.contains('unreachable host')) {
+      return 'Sem conexão. Verifique sua internet e tente novamente.';
     }
     return 'Falha na verificação';
   }

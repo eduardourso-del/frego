@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
 
 /// Preferência de UI nativa: Cupertino no iOS/macOS, Material no Android/web.
@@ -216,32 +217,30 @@ class FregoPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg = backgroundColor ?? FregoColors.neutralBg;
+    final showBar = showNavBar || title != null || leading != null;
     if (FregoAdaptive.useCupertino(context)) {
-      final navStyle = CupertinoTheme.of(context).textTheme.navTitleTextStyle;
       return CupertinoPageScaffold(
         backgroundColor: bg,
-        navigationBar: showNavBar || title != null || leading != null
-            ? CupertinoNavigationBar(
-                backgroundColor: bg.withValues(alpha: 0.92),
-                border: const Border(
-                  bottom: BorderSide(color: FregoColors.hairline, width: 0.5),
-                ),
-                middle: title != null
-                    ? Text(title!, style: navStyle)
-                    : null,
+        child: Column(
+          children: [
+            if (showBar)
+              _FregoStickyNavBar(
                 leading: leading,
                 trailing: trailing,
-              )
-            : null,
-        child: SafeArea(child: child),
+                backgroundColor: bg,
+              ),
+            Expanded(
+              child: _FregoInsetBody(ownTop: !showBar, child: child),
+            ),
+          ],
+        ),
       );
     }
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: showNavBar || title != null || leading != null
+      appBar: showBar
           ? AppBar(
-              title: title != null ? Text(title!) : null,
               leading: leading,
               actions: trailing != null ? [trailing!] : null,
               backgroundColor: bg,
@@ -250,14 +249,15 @@ class FregoPage extends StatelessWidget {
               surfaceTintColor: Colors.transparent,
             )
           : null,
-      body: SafeArea(child: child),
+      body: SafeArea(top: !showBar, child: child),
     );
   }
 }
 
-/// Tab-root page with a compact nav bar.
+/// Tab-root page with a sticky, left-aligned title.
 ///
-/// Pass content as [slivers].
+/// Pass content as [slivers]. Do not wrap them in [SafeArea] — the sticky
+/// bar owns the top inset and the tab scaffold owns the bottom.
 class FregoLargeTitlePage extends StatelessWidget {
   const FregoLargeTitlePage({
     super.key,
@@ -269,7 +269,7 @@ class FregoLargeTitlePage extends StatelessWidget {
     this.backgroundColor,
   });
 
-  /// Horizontal inset aligned with the compact nav bar.
+  /// Horizontal inset aligned with the sticky nav bar title.
   static const double gutter = 16;
 
   final String title;
@@ -283,34 +283,42 @@ class FregoLargeTitlePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = backgroundColor ?? FregoColors.neutralBg;
     if (FregoAdaptive.useCupertino(context)) {
-      // Translucent CupertinoTabBar does not inflate MediaQuery padding, so
-      // the last rows would sit under the bar without this clearance.
-      const tabBarHeight = 50.0;
-      final bottomClearance =
-          MediaQuery.paddingOf(context).bottom + tabBarHeight;
-      final navStyle = CupertinoTheme.of(context).textTheme.navTitleTextStyle;
+      // Translucent tab bars inflate [MediaQuery.padding.bottom] to cover
+      // themselves; opaque bars consume it and pad the scaffold instead.
+      // Using padding (not padding + bar height) avoids a double gap.
+      final bottomClearance = MediaQuery.paddingOf(context).bottom;
       return CupertinoPageScaffold(
         backgroundColor: bg,
-        navigationBar: CupertinoNavigationBar(
-          middle: Text(title, style: navStyle),
-          leading: leading,
-          trailing: trailing,
-          backgroundColor: bg.withValues(alpha: 0.92),
-          border: const Border(
-            bottom: BorderSide(color: FregoColors.hairline, width: 0.5),
-          ),
-          automaticallyImplyLeading: false,
-          transitionBetweenRoutes: false,
-        ),
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            if (onRefresh != null)
-              CupertinoSliverRefreshControl(onRefresh: onRefresh!),
-            ...slivers,
-            SliverToBoxAdapter(child: SizedBox(height: bottomClearance)),
+        child: Column(
+          children: [
+            _FregoStickyNavBar(
+              title: title,
+              leading: leading,
+              trailing: trailing,
+              backgroundColor: bg,
+              automaticallyImplyLeading: false,
+              largeTitle: true,
+            ),
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  slivers: [
+                    if (onRefresh != null)
+                      CupertinoSliverRefreshControl(onRefresh: onRefresh!),
+                    ...slivers,
+                    if (bottomClearance > 0)
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: bottomClearance),
+                      ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       );
@@ -330,13 +338,135 @@ class FregoLargeTitlePage extends StatelessWidget {
         backgroundColor: bg,
         foregroundColor: FregoColors.ink,
         elevation: 0,
+        toolbarHeight: 64,
         surfaceTintColor: Colors.transparent,
+        titleTextStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(
+              fontSize: 34,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: FregoColors.ink,
+            ),
       ),
       body: SafeArea(
+        top: false,
         child: onRefresh != null
             ? RefreshIndicator(onRefresh: onRefresh!, child: scroll)
             : scroll,
       ),
+    );
+  }
+}
+
+/// Sticky top bar: status-bar inset, left-aligned title, no overlay padding.
+class _FregoStickyNavBar extends StatelessWidget {
+  const _FregoStickyNavBar({
+    this.title,
+    this.leading,
+    this.trailing,
+    this.backgroundColor,
+    this.automaticallyImplyLeading = true,
+    this.largeTitle = false,
+  });
+
+  final String? title;
+  final Widget? leading;
+  final Widget? trailing;
+  final Color? backgroundColor;
+  final bool automaticallyImplyLeading;
+  final bool largeTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = backgroundColor ?? FregoColors.neutralBg;
+    final theme = CupertinoTheme.of(context).textTheme;
+    final navStyle = largeTitle
+        ? theme.navLargeTitleTextStyle
+        : theme.navTitleTextStyle;
+    final implyLeading = automaticallyImplyLeading &&
+        leading == null &&
+        ModalRoute.of(context)?.canPop == true;
+    final leadingWidget = leading ??
+        (implyLeading
+            ? CupertinoButton(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(
+                  FregoTouch.minTarget,
+                  FregoTouch.minTarget,
+                ),
+                onPressed: () => Navigator.of(context).maybePop(),
+                child: const Icon(FregoIcons.back),
+              )
+            : null);
+
+    return ColoredBox(
+      color: bg,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SafeArea(
+            bottom: false,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: largeTitle ? 56 : FregoTouch.minTarget,
+              ),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  leadingWidget == null ? FregoLargeTitlePage.gutter : 4,
+                  largeTitle ? 8 : 0,
+                  trailing == null ? FregoLargeTitlePage.gutter : 4,
+                  largeTitle ? 8 : 0,
+                ),
+                child: Row(
+                  children: [
+                    ?leadingWidget,
+                    Expanded(
+                      child: title == null
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: EdgeInsets.only(
+                                left: leadingWidget == null ? 0 : 4,
+                                right: trailing == null ? 0 : 8,
+                              ),
+                              child: Text(
+                                title!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.start,
+                                style: navStyle,
+                              ),
+                            ),
+                    ),
+                    ?trailing,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const ColoredBox(
+            color: FregoColors.hairline,
+            child: SizedBox(height: 0.5, width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Applies bottom (and optional top) safe area without double-counting a
+/// sibling sticky bar. Also strips consumed padding so nested scroll views
+/// do not add the status bar / home indicator again.
+class _FregoInsetBody extends StatelessWidget {
+  const _FregoInsetBody({required this.ownTop, required this.child});
+
+  final bool ownTop;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return MediaQuery.removePadding(
+      context: context,
+      removeTop: !ownTop,
+      child: SafeArea(top: ownTop, child: child),
     );
   }
 }
@@ -472,6 +602,7 @@ class FregoTextField extends StatelessWidget {
     this.obscureText = false,
     this.readOnly = false,
     this.style,
+    this.autofillHints,
   });
 
   final TextEditingController controller;
@@ -491,6 +622,7 @@ class FregoTextField extends StatelessWidget {
   final bool obscureText;
   final bool readOnly;
   final TextStyle? style;
+  final Iterable<String>? autofillHints;
 
   @override
   Widget build(BuildContext context) {
@@ -525,6 +657,7 @@ class FregoTextField extends StatelessWidget {
             obscureText: obscureText,
             readOnly: readOnly,
             inputFormatters: inputFormatters,
+            autofillHints: autofillHints,
             onChanged: onChanged,
             onSubmitted: onSubmitted,
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
@@ -574,6 +707,7 @@ class FregoTextField extends StatelessWidget {
       obscureText: obscureText,
       readOnly: readOnly,
       inputFormatters: inputFormatters,
+      autofillHints: autofillHints,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
       style: style ??

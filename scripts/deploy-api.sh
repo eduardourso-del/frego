@@ -23,6 +23,9 @@ set +a
 
 : "${DATABASE_URL:?DATABASE_URL required}"
 : "${FIREBASE_PROJECT_ID:=voltei-e9d6d}"
+: "${META_APP_ID:?META_APP_ID required}"
+: "${META_APP_SECRET:?META_APP_SECRET required}"
+: "${WHATSAPP_TOKEN_ENCRYPTION_KEY:?WHATSAPP_TOKEN_ENCRYPTION_KEY required}"
 
 TAG="${1:-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/voltei/api:${TAG}"
@@ -35,23 +38,36 @@ gcloud builds submit \
   --timeout=1800s \
   "$ROOT"
 
-# Build env vars for Cloud Run (no AUTH_BYPASS in prod)
-ENV_VARS=(
-  "NODE_ENV=production"
-  "HOST=0.0.0.0"
-  "AUTH_BYPASS=false"
-  "FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}"
-  "DATABASE_URL=${DATABASE_URL}"
-)
+ENV_VARS_FILE="$(mktemp)"
+trap 'rm -f "$ENV_VARS_FILE"' EXIT
+# YAML file avoids comma-splitting secrets (base64 keys, URLs) that --set-env-vars breaks.
+python3 - "$ENV_VARS_FILE" <<'PY'
+import json, os, sys
 
-[[ -n "${META_APP_ID:-}" ]] && ENV_VARS+=("META_APP_ID=${META_APP_ID}")
-[[ -n "${META_APP_SECRET:-}" ]] && ENV_VARS+=("META_APP_SECRET=${META_APP_SECRET}")
-[[ -n "${META_EMBEDDED_CONFIG_ID:-}" ]] && ENV_VARS+=("META_EMBEDDED_CONFIG_ID=${META_EMBEDDED_CONFIG_ID}")
-[[ -n "${WHATSAPP_TOKEN_ENCRYPTION_KEY:-}" ]] && ENV_VARS+=("WHATSAPP_TOKEN_ENCRYPTION_KEY=${WHATSAPP_TOKEN_ENCRYPTION_KEY}")
-[[ -n "${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-}" ]] && ENV_VARS+=("WHATSAPP_WEBHOOK_VERIFY_TOKEN=${WHATSAPP_WEBHOOK_VERIFY_TOKEN}")
-[[ -n "${WHATSAPP_GRAPH_VERSION:-}" ]] && ENV_VARS+=("WHATSAPP_GRAPH_VERSION=${WHATSAPP_GRAPH_VERSION}")
+out = sys.argv[1]
+pairs = [
+    ("NODE_ENV", "production"),
+    ("HOST", "0.0.0.0"),
+    ("AUTH_BYPASS", "false"),
+    ("FIREBASE_PROJECT_ID", os.environ["FIREBASE_PROJECT_ID"]),
+    ("DATABASE_URL", os.environ["DATABASE_URL"]),
+    ("META_APP_ID", os.environ["META_APP_ID"]),
+    ("META_APP_SECRET", os.environ["META_APP_SECRET"]),
+    ("WHATSAPP_TOKEN_ENCRYPTION_KEY", os.environ["WHATSAPP_TOKEN_ENCRYPTION_KEY"]),
+]
+for key in (
+    "META_EMBEDDED_CONFIG_ID",
+    "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+    "WHATSAPP_GRAPH_VERSION",
+):
+    value = os.environ.get(key, "").strip()
+    if value:
+        pairs.append((key, value))
 
-JOINED=$(IFS=,; echo "${ENV_VARS[*]}")
+with open(out, "w", encoding="utf-8") as fh:
+    for key, value in pairs:
+        fh.write(f"{key}: {json.dumps(value)}\n")
+PY
 
 echo "==> Deploying Cloud Run $SERVICE"
 gcloud run deploy "$SERVICE" \
@@ -67,7 +83,7 @@ gcloud run deploy "$SERVICE" \
   --cpu=1 \
   --min-instances=0 \
   --max-instances=10 \
-  --set-env-vars="$JOINED"
+  --env-vars-file="$ENV_VARS_FILE"
 
 URL=$(gcloud run services describe "$SERVICE" \
   --project="$PROJECT" \

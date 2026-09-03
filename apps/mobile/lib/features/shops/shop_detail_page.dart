@@ -183,11 +183,10 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     final primaryDark =
         _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF2F49C4;
     final cupertino = FregoAdaptive.useCupertino(context);
-    final title = business?['name'] as String? ?? 'Loja';
 
     return FregoPage(
       showNavBar: true,
-      title: title,
+      title: 'Loja',
       trailing: cupertino
           ? CupertinoButton(
               padding: EdgeInsets.zero,

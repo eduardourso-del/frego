@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,7 +13,10 @@ Future<Map<String, String>> customerAuthHeaders() async {
   if (user == null) {
     throw Exception('Faça login com o telefone');
   }
-  final token = await user.getIdToken(true);
+  final token = await user.getIdToken(true).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw Exception('Não foi possível autenticar'),
+      );
   if (token == null || token.isEmpty) {
     throw Exception('Faça login com o telefone');
   }

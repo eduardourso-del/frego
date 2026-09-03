@@ -6,7 +6,7 @@ export const EARN_TEMPLATE_LANG = 'pt_BR';
 export const WELCOME_TEMPLATE_NAME = 'frego_welcome';
 export const WELCOME_TEMPLATE_LANG = 'pt_BR';
 
-export const CAMPAIGN_TEMPLATE_NAME = 'frego_campaign_new';
+export const CAMPAIGN_TEMPLATE_NAME = 'frego_campaign_notice';
 export const CAMPAIGN_TEMPLATE_LANG = 'pt_BR';
 
 export type EarnTemplateStatus =
@@ -30,7 +30,7 @@ const WELCOME_BODY_TEXT =
   'Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.\n\nUse o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.';
 
 const CAMPAIGN_BODY_TEXT =
-  '*{{1}}*\nNova campanha: {{2}}';
+  'Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.\n\n{{2}}\n\nAbra o app Frego para conferir os detalhes e participar.';
 
 function metaErrorMessage(error: {
   message?: string;

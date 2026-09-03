@@ -365,7 +365,7 @@ export function WhatsAppSettingsCard() {
               Template de campanha:{' '}
             </span>
             <code className="text-[13px]">
-              {connection.templateCampaignName ?? 'frego_campaign_new'} (
+              {connection.templateCampaignName ?? 'frego_campaign_notice'} (
               {connection.templateCampaignLang ?? 'pt_BR'})
             </code>
           </p>

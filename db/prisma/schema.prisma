@@ -403,7 +403,7 @@ model BusinessWhatsAppConnection {
   templateWelcomeId     String?                  @map("template_welcome_id")
   templateWelcomeSyncedAt DateTime?              @map("template_welcome_synced_at")
   /// Audience campaign announcement (same copy as push).
-  templateCampaignName   String                   @default("frego_campaign_new") @map("template_campaign_name")
+  templateCampaignName   String                   @default("frego_campaign_notice") @map("template_campaign_name")
   templateCampaignLang   String                   @default("pt_BR") @map("template_campaign_lang")
   templateCampaignStatus WhatsAppTemplateStatus   @default(missing) @map("template_campaign_status")
   templateCampaignId     String?                  @map("template_campaign_id")

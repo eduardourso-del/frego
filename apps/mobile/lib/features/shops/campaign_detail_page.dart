@@ -152,11 +152,10 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
   Widget build(BuildContext context) {
     final business = _data?['business'] as Map<String, dynamic>?;
     final campaign = _campaign;
-    final shopName = business?['name'] as String? ?? 'Campanha';
 
     return FregoPage(
       showNavBar: true,
-      title: shopName,
+      title: 'Campanha',
       child: _loading && _data == null
           ? const FregoDetailSkeleton()
           : _error != null && _data == null
