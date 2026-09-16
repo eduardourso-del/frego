@@ -12,6 +12,7 @@
     "@frego/tokens": "workspace:*",
     "firebase": "^12.17.1",
     "framer-motion": "^13.0.0",
+    "jsqr": "^1.4.0",
     "lucide-react": "^0.474.0",
     "next": "15.5.22",
     "react": "19.1.0",

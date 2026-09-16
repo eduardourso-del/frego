@@ -9,8 +9,21 @@ import '../../theme/frego_theme.dart';
 import '../../util/money.dart';
 import '../../util/phone.dart';
 import '../../util/voucher.dart';
+import 'voucher_scan_sheet.dart';
 
 enum EarnMode { stamps, points, cashback }
+
+enum _TillTask { earn, voucher }
+
+enum _TillFocus { none, voucher, phone, fullPhone, amount, apply }
+
+class _TillCta {
+  const _TillCta({required this.label, this.onPressed, this.enabled = true});
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool enabled;
+}
 
 class RecentCustomer {
   const RecentCustomer({
@@ -38,12 +51,23 @@ class TillPage extends StatefulWidget {
 class _TillPageState extends State<TillPage> {
   final _query = TextEditingController();
   final _fullPhone = TextEditingController();
+  final _displayName = TextEditingController();
   final _amount = TextEditingController();
   final _applyAmount = TextEditingController();
   final _voucher = TextEditingController();
+  final _voucherAmount = TextEditingController();
+  final _voucherFocus = FocusNode();
+  final _voucherAmountFocus = FocusNode();
+  final _queryFocus = FocusNode();
+  final _fullPhoneFocus = FocusNode();
+  final _displayNameFocus = FocusNode();
+  final _amountFocus = FocusNode();
+  final _applyFocus = FocusNode();
 
   EarnMode _mode = EarnMode.stamps;
+  _TillTask _task = _TillTask.earn;
   List<String> _earnKinds = const [];
+  List<CustomerTag> _catalog = const [];
   bool _loading = false;
   bool _applyCashback = false;
   String? _error;
@@ -83,6 +107,9 @@ class _TillPageState extends State<TillPage> {
 
   int? get _amountCents => parseMoneyToCents(_amount.text);
 
+  int? get _fulfillAmountCents =>
+      parseMoneyToCents(_voucherAmount.text) ?? _amountCents;
+
   int get _maxApplyCents {
     if (_cashbackBalance <= 0) return 0;
     final sale = _amountCents;
@@ -118,9 +145,44 @@ class _TillPageState extends State<TillPage> {
     super.initState();
     _amount.addListener(_onMoneyChanged);
     _applyAmount.addListener(_onMoneyChanged);
+    _query.addListener(_refreshChrome);
+    _fullPhone.addListener(_refreshChrome);
+    _voucher.addListener(_refreshChrome);
+    _voucherAmount.addListener(_refreshChrome);
+    for (final node in [
+      _voucherFocus,
+      _voucherAmountFocus,
+      _queryFocus,
+      _fullPhoneFocus,
+      _displayNameFocus,
+      _amountFocus,
+      _applyFocus,
+    ]) {
+      node.addListener(_onFocusChanged);
+    }
     _earnKinds = _session.business?.activeEarnKinds ?? _earnKinds;
     _snapMode();
     _refreshEarnKinds();
+  }
+
+  void _refreshChrome() {
+    if (mounted) setState(() {});
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _setTask(_TillTask next) {
+    if (next == _task) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _task = next);
+    if (next == _TillTask.voucher) {
+      _prefillVoucherAmount();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _voucherFocus.requestFocus();
+      });
+    }
   }
 
   void _snapMode() {
@@ -132,9 +194,11 @@ class _TillPageState extends State<TillPage> {
   Future<void> _refreshEarnKinds() async {
     try {
       final business = await _api.fetchBusiness();
+      final tags = await _api.listTags();
       if (!mounted) return;
       setState(() {
         _earnKinds = business.activeEarnKinds;
+        _catalog = tags;
         _snapMode();
       });
     } catch (_) {
@@ -164,11 +228,29 @@ class _TillPageState extends State<TillPage> {
   void dispose() {
     _amount.removeListener(_onMoneyChanged);
     _applyAmount.removeListener(_onMoneyChanged);
+    _query.removeListener(_refreshChrome);
+    _fullPhone.removeListener(_refreshChrome);
+    _voucher.removeListener(_refreshChrome);
+    _voucherAmount.removeListener(_refreshChrome);
+    for (final node in [
+      _voucherFocus,
+      _voucherAmountFocus,
+      _queryFocus,
+      _fullPhoneFocus,
+      _displayNameFocus,
+      _amountFocus,
+      _applyFocus,
+    ]) {
+      node.removeListener(_onFocusChanged);
+      node.dispose();
+    }
     _query.dispose();
     _fullPhone.dispose();
+    _displayName.dispose();
     _amount.dispose();
     _applyAmount.dispose();
     _voucher.dispose();
+    _voucherAmount.dispose();
     super.dispose();
   }
 
@@ -274,6 +356,7 @@ class _TillPageState extends State<TillPage> {
       _lastSale = null;
       _applyCashback = false;
       _applyAmount.clear();
+      _displayName.clear();
     });
     try {
       final result = digits.length == 4
@@ -286,11 +369,316 @@ class _TillPageState extends State<TillPage> {
           _snapMode();
         }
         if (result.found && !result.multiple) _remember(result);
+        // Prefill create phone when the search already had the full number.
+        if (!result.found && !result.multiple && digits.length >= 10) {
+          _fullPhone.text = formatPhoneBr(digits);
+        } else if (!result.found && !result.multiple) {
+          _fullPhone.clear();
+        }
       });
+      if (result.multiple) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _openMatchesSheet();
+        });
+      }
+      if (!result.found &&
+          !result.multiple &&
+          digits.length < 10 &&
+          mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _fullPhoneFocus.requestFocus();
+        });
+      }
     } catch (e) {
       setState(() => _error = humanizeError(e));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  _TillFocus get _focus {
+    if (_task == _TillTask.voucher &&
+        (_voucherFocus.hasFocus || _voucherAmountFocus.hasFocus)) {
+      return _TillFocus.voucher;
+    }
+    if (_task == _TillTask.earn) {
+      if (_queryFocus.hasFocus) return _TillFocus.phone;
+      if (_fullPhoneFocus.hasFocus) return _TillFocus.fullPhone;
+      if (_amountFocus.hasFocus) return _TillFocus.amount;
+      if (_applyFocus.hasFocus) return _TillFocus.apply;
+    }
+    return _TillFocus.none;
+  }
+
+  bool get _voucherExpired => _voucherResult?.kind == FulfillKind.expired;
+
+  void _submitVoucher() {
+    final code = normalizeVoucherCode(_voucher.text);
+    if (code.length < 4) return;
+    _fulfill(voucherCode: code);
+  }
+
+  Future<void> _openVoucherScan() async {
+    FocusScope.of(context).unfocus();
+    final code = await showVoucherScanSheet(context);
+    if (!mounted || code == null) return;
+    final formatted = formatVoucherInput(code);
+    setState(() {
+      _voucher.value = TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+      _voucherAmount.clear();
+      _voucherResult = null;
+    });
+  }
+
+  void _acceptExpired() {
+    final r = _voucherResult;
+    if (r == null) return;
+    _fulfill(
+      transactionId: r.transactionId,
+      voucherCode: r.voucherCode,
+      acceptExpired: true,
+    );
+  }
+
+  void _onPrimaryEarn() {
+    final lookup = _lookup;
+    if (lookup == null) return;
+    if (lookup.associatedHere && lookup.membershipId != null) {
+      if (_canEarn || _cashbackBalance > 0) _earn();
+    } else {
+      _createCustomer(withEarn: _canEarn);
+    }
+  }
+
+  String get _notFoundCtaLabel {
+    if (!_hasFullPhoneForCreate) return 'Informe o telefone';
+    if (!_canEarn) return 'Criar cliente';
+    return _mode == EarnMode.points
+        ? 'Criar e registrar gasto'
+        : _mode == EarnMode.cashback
+        ? 'Criar e registrar cashback'
+        : 'Criar e carimbar';
+  }
+
+  /// Full phone already known from the search query (not just last-4).
+  bool get _queryIsFullPhone => digitsOnly(_query.text).length >= 10;
+
+  bool get _hasFullPhoneForCreate {
+    if (digitsOnly(_fullPhone.text).length >= 10) return true;
+    if (_queryIsFullPhone) return true;
+    return digitsOnly(_lookup?.phoneE164 ?? '').length >= 10;
+  }
+
+  String get _createPhoneDigits {
+    final full = phoneDigitsForApi(_fullPhone.text);
+    if (digitsOnly(full).length >= 10) return full;
+    final query = phoneDigitsForApi(_query.text);
+    if (digitsOnly(query).length >= 10) return query;
+    return phoneDigitsForApi(_lookup?.phoneE164 ?? '');
+  }
+
+  String? get _optionalCreateName {
+    final name = _displayName.text.trim();
+    if (name.isEmpty) return null;
+    return name.length > 80 ? name.substring(0, 80) : name;
+  }
+
+  String get _createBenefitSummary {
+    if (!_canEarn) return 'cadastrar o cliente nesta loja';
+    return switch (_mode) {
+      EarnMode.points => 'cadastrar e registrar o gasto em pontos',
+      EarnMode.cashback => 'cadastrar e registrar o cashback',
+      EarnMode.stamps => 'cadastrar e dar o primeiro carimbo',
+    };
+  }
+
+  String _earnCtaLabel(LookupResult lookup) {
+    if (!lookup.associatedHere) {
+      if (!_canEarn) return 'Adicionar à loja';
+      return _mode == EarnMode.points
+          ? 'Adicionar à loja e registrar'
+          : _mode == EarnMode.cashback
+          ? 'Adicionar à loja e registrar cashback'
+          : 'Adicionar à loja e carimbar';
+    }
+    if (!_canEarn) {
+      return lookup.cashbackCents > 0 ? 'Usar cashback' : 'Sem campanha ativa';
+    }
+    return _mode == EarnMode.points
+        ? 'Registrar gasto'
+        : _mode == EarnMode.cashback
+        ? 'Registrar cashback'
+        : 'Carimbar';
+  }
+
+  _TillCta get _buscarCta {
+    final digits = digitsOnly(_query.text);
+    final ok = digits.length == 4 || digits.length >= 10;
+    return _TillCta(
+      label: _loading ? 'Buscando…' : 'Buscar',
+      onPressed: (_loading || !ok) ? null : _lookupByQuery,
+      enabled: !_loading && ok,
+    );
+  }
+
+  _TillCta get _primaryCta {
+    if (_task == _TillTask.voucher) {
+      if (_voucherExpired) {
+        return _TillCta(
+          label: _fulfillingId != null ? '…' : 'Aceitar mesmo assim',
+          onPressed: _fulfillingId != null ? null : _acceptExpired,
+          enabled: _fulfillingId == null,
+        );
+      }
+      return _TillCta(
+        label: _fulfillingId != null ? '…' : 'Usar',
+        onPressed: _fulfillingId != null ? null : _submitVoucher,
+        enabled:
+            _fulfillingId == null &&
+            normalizeVoucherCode(_voucher.text).length >= 4,
+      );
+    }
+    final focus = _focus;
+    // Phone field focused → Buscar pinned above the keyboard, even with a
+    // customer already on screen.
+    if (focus == _TillFocus.phone) return _buscarCta;
+    if (focus == _TillFocus.fullPhone) {
+      return _TillCta(
+        label: _loading ? '…' : _notFoundCtaLabel,
+        onPressed: _loading ? null : _confirmCreateNotFound,
+        enabled: !_loading,
+      );
+    }
+
+    final lookup = _lookup;
+    if (lookup == null || lookup.multiple) return _buscarCta;
+    if (!lookup.found) {
+      return _TillCta(
+        label: _loading ? '…' : _notFoundCtaLabel,
+        onPressed: _loading ? null : _confirmCreateNotFound,
+        enabled: !_loading,
+      );
+    }
+    final earnDisabled =
+        _loading ||
+        (lookup.associatedHere && !_canEarn && lookup.cashbackCents <= 0);
+    return _TillCta(
+      label: _earnCtaLabel(lookup),
+      onPressed: earnDisabled ? null : _onPrimaryEarn,
+      enabled: !earnDisabled,
+    );
+  }
+
+  Future<void> _openMatchesSheet() async {
+    final lookup = _lookup;
+    if (lookup == null || !lookup.multiple) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: FregoColors.card,
+      builder: (ctx) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: _MatchesList(
+              last4: lookup.last4,
+              matches: lookup.matches,
+              onSelect: (m) {
+                Navigator.pop(ctx);
+                _selectMatch(m);
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openVouchersSheet(List<OpenVoucher> vouchers) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: FregoColors.card,
+      builder: (ctx) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: _OpenVouchers(
+              vouchers: vouchers,
+              fulfillingId: _fulfillingId,
+              onFulfill: (v) {
+                Navigator.pop(ctx);
+                _fulfill(transactionId: v.transactionId);
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openSalesSheet(List<CounterSale> sales) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: FregoColors.card,
+      builder: (ctx) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: _SalesList(
+              sales: sales,
+              reversingId: _reversingId,
+              onUndo: (sale) {
+                Navigator.pop(ctx);
+                _askReverse(sale);
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openTagsSheet() async {
+    final lookup = _lookup;
+    if (lookup == null ||
+        !lookup.associatedHere ||
+        lookup.customerId == null ||
+        _catalog.isEmpty) {
+      return;
+    }
+    final selected = await showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: FregoColors.card,
+      builder: (ctx) {
+        return _TagPickerSheet(
+          catalog: _catalog,
+          selectedIds: lookup.tags.map((t) => t.id).toSet(),
+        );
+      },
+    );
+    if (selected == null || !mounted) return;
+    try {
+      final tags = await _api.patchCustomerTags(
+        customerId: lookup.customerId!,
+        tagIds: selected.toList(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _lookup = lookup.copyWith(tags: tags);
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message ?? e.code);
     }
   }
 
@@ -316,8 +704,77 @@ class _TillPageState extends State<TillPage> {
     }
   }
 
+  Future<void> _confirmCreateNotFound() async {
+    if (!_hasFullPhoneForCreate) {
+      setState(() => _error = 'Informe o telefone completo com DDD');
+      _fullPhoneFocus.requestFocus();
+      return;
+    }
+    if (_canEarn &&
+        (_mode == EarnMode.points || _mode == EarnMode.cashback) &&
+        _amountCents == null) {
+      setState(() => _error = 'Informe o valor da compra');
+      _amountFocus.requestFocus();
+      return;
+    }
+    final phone = _createPhoneDigits;
+    final display = formatPhoneBr(digitsOnly(phone));
+    final nameCtrl = TextEditingController(text: _displayName.text);
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Criar cliente?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Não encontramos $display nesta loja.\n\n'
+                  'Confirma $_createBenefitSummary?',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameCtrl,
+                  textCapitalization: TextCapitalization.words,
+                  textInputAction: TextInputAction.done,
+                  maxLength: 80,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome (opcional)',
+                    hintText: 'Como o cliente se chama',
+                    counterText: '',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      if (ok == true && mounted) {
+        _displayName.text = nameCtrl.text;
+        if (_fullPhone.text.isEmpty && digitsOnly(phone).length >= 10) {
+          _fullPhone.text = formatPhoneBr(digitsOnly(phone));
+        }
+        await _resolveFullPhoneAndEarn();
+      }
+    } finally {
+      nameCtrl.dispose();
+    }
+  }
+
   Future<void> _resolveFullPhoneAndEarn() async {
-    final phone = phoneDigitsForApi(_fullPhone.text);
+    final phone = _createPhoneDigits;
     if (digitsOnly(phone).length < 10) {
       setState(() => _error = 'Informe o telefone completo com DDD');
       return;
@@ -381,6 +838,7 @@ class _TillPageState extends State<TillPage> {
       final created = await _api.createCustomer(
         phone: phone,
         addFirstStamp: _mode == EarnMode.stamps && withEarn && _amountCents == null,
+        displayName: _optionalCreateName,
       );
       setState(
         () => _lookup = created.copyWith(
@@ -477,6 +935,12 @@ class _TillPageState extends State<TillPage> {
     }
   }
 
+  void _prefillVoucherAmount() {
+    if (_voucherAmount.text.isNotEmpty) return;
+    if (_amount.text.isEmpty) return;
+    _voucherAmount.text = _amount.text;
+  }
+
   Future<void> _fulfill({
     String? voucherCode,
     String? transactionId,
@@ -488,10 +952,12 @@ class _TillPageState extends State<TillPage> {
       _voucherResult = null;
     });
     try {
+      _prefillVoucherAmount();
       final result = await _api.fulfillVoucher(
         voucherCode: voucherCode,
         transactionId: transactionId,
         acceptExpired: acceptExpired,
+        amountCents: _fulfillAmountCents,
       );
       setState(() {
         _voucherResult = result;
@@ -534,6 +1000,7 @@ class _TillPageState extends State<TillPage> {
       _applyCashback = false;
       _fullPhone.clear();
       _query.clear();
+      _displayName.clear();
       _applyAmount.clear();
     });
   }
@@ -541,14 +1008,18 @@ class _TillPageState extends State<TillPage> {
   @override
   Widget build(BuildContext context) {
     final business = _session.business;
-    final title = _availableModes.isEmpty
-        ? 'Balcão'
-        : _mode == EarnMode.points
-            ? 'Pontos'
-            : _mode == EarnMode.cashback
-                ? 'Cashback'
-                : 'Carimbos';
+    final voucherTask = _task == _TillTask.voucher;
+    final title = voucherTask
+        ? 'Confirmar voucher'
+        : _availableModes.isEmpty
+            ? 'Balcão'
+            : _mode == EarnMode.points
+                ? 'Pontos'
+                : _mode == EarnMode.cashback
+                    ? 'Cashback'
+                    : 'Carimbos';
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
           'Balcão · ${business?.name ?? 'funcionário'}',
@@ -592,37 +1063,37 @@ class _TillPageState extends State<TillPage> {
                 height: 1.15,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Digite os 4 últimos dígitos do celular. O acúmulo vai para o saldo do cliente — ele escolhe a campanha no aplicativo. Prêmios resgatados no app são confirmados aqui na entrega.',
-              style: TextStyle(
-                fontSize: 15,
-                height: 1.45,
+            const SizedBox(height: 4),
+            Text(
+              voucherTask
+                  ? 'Código que o cliente mostra no app.'
+                  : 'Últimos 4 dígitos do celular.',
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.4,
                 color: FregoColors.neutral500,
               ),
             ),
-            const SizedBox(height: 20),
-            _VoucherSection(
-              controller: _voucher,
-              fulfilling: _fulfillingId != null,
-              result: _voucherResult,
-              onSubmit: () {
-                final code = normalizeVoucherCode(_voucher.text);
-                if (code.length < 4) return;
-                _fulfill(voucherCode: code);
-              },
-              onAcceptExpired: () {
-                final r = _voucherResult;
-                if (r == null) return;
-                _fulfill(
-                  transactionId: r.transactionId,
-                  voucherCode: r.voucherCode,
-                  acceptExpired: true,
-                );
-              },
-              onDismiss: () => setState(() => _voucherResult = null),
+            const SizedBox(height: 16),
+            _TaskToggle(
+              task: _task,
+              onChanged: _setTask,
             ),
             const SizedBox(height: 16),
+            if (voucherTask) ...[
+              _VoucherSection(
+                controller: _voucher,
+                focusNode: _voucherFocus,
+                amount: _voucherAmount,
+                amountFocus: _voucherAmountFocus,
+                fulfilling: _fulfillingId != null,
+                result: _voucherResult,
+                onSubmit: _submitVoucher,
+                onScan: _openVoucherScan,
+                onAcceptExpired: _acceptExpired,
+                onDismiss: () => setState(() => _voucherResult = null),
+              ),
+            ] else ...[
             if (_availableModes.length > 1) ...[
               _ModeToggle(
                 mode: _mode,
@@ -651,7 +1122,11 @@ class _TillPageState extends State<TillPage> {
                 ),
               ),
             ],
-            _PhoneField(controller: _query, onSubmitted: _lookupByQuery),
+            _PhoneField(
+              controller: _query,
+              focusNode: _queryFocus,
+              onSubmitted: _lookupByQuery,
+            ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(
@@ -659,25 +1134,29 @@ class _TillPageState extends State<TillPage> {
                 style: const TextStyle(color: FregoColors.danger, fontSize: 13),
               ),
             ],
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _loading ? null : _lookupByQuery,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            if (_lookup != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    FocusScope.of(context).unfocus();
+                    _resetLookup();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _queryFocus.requestFocus();
+                    });
+                  },
+                  icon: const Icon(FregoIcons.search, size: 18),
+                  label: const Text('Nova busca'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(44),
+                    foregroundColor: FregoColors.neutral700,
+                    side: const BorderSide(color: FregoColors.hairline),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
-                child: Text(_loading ? 'Buscando…' : 'Buscar'),
-              ),
-            ),
-            if (_lookup != null) ...[
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _resetLookup,
-                child: const Text('Nova busca'),
               ),
             ],
             if (_recents.isNotEmpty && _lookup == null) ...[
@@ -692,7 +1171,7 @@ class _TillPageState extends State<TillPage> {
                 ),
               ),
               const SizedBox(height: 8),
-              ..._recents.map(
+              ..._recents.take(4).map(
                 (r) => _RecentTile(
                   recent: r,
                   onTap: () {
@@ -725,22 +1204,14 @@ class _TillPageState extends State<TillPage> {
                       'Terminam em ${_lookup!.last4}. Qual é?',
                       style: const TextStyle(color: FregoColors.neutral500),
                     ),
-                    const SizedBox(height: 8),
-                    ..._lookup!.matches.map(
-                      (m) => ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(
-                          [
-                            m.displayName ?? 'Cliente',
-                            if (m.isVip) 'VIP',
-                            if (!m.associatedHere) 'outra loja/app',
-                          ].join(' · '),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: _openMatchesSheet,
+                        child: Text(
+                          'Ver ${_lookup!.matches.length} clientes',
                         ),
-                        subtitle: Text(
-                          m.phoneE164,
-                          style: const TextStyle(fontFamily: 'monospace'),
-                        ),
-                        onTap: () => _selectMatch(m),
                       ),
                     ),
                   ],
@@ -754,40 +1225,88 @@ class _TillPageState extends State<TillPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'Não encontrado nesta loja',
+                      'Cliente não encontrado',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
-                      'Informe o telefone completo para localizar ou cadastrar.',
-                      style: TextStyle(color: FregoColors.neutral500),
+                    Text(
+                      _queryIsFullPhone || _hasFullPhoneForCreate
+                          ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
+                          : 'Busca pelos 4 dígitos não achou. Informe o telefone completo com DDD para cadastrar.',
+                      style: const TextStyle(color: FregoColors.neutral500),
                     ),
+                    if (_queryIsFullPhone ||
+                        digitsOnly(_fullPhone.text).length >= 10) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        formatPhoneBr(
+                          digitsOnly(
+                            _fullPhone.text.isNotEmpty
+                                ? _fullPhone.text
+                                : _query.text,
+                          ),
+                        ),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ] else ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _fullPhone,
+                        focusNode: _fullPhoneFocus,
+                        keyboardType: TextInputType.phone,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) =>
+                            _displayNameFocus.requestFocus(),
+                        onChanged: (v) {
+                          final formatted = formatPhoneBr(v);
+                          if (formatted != v) {
+                            _fullPhone.value = TextEditingValue(
+                              text: formatted,
+                              selection: TextSelection.collapsed(
+                                offset: formatted.length,
+                              ),
+                            );
+                          }
+                        },
+                        decoration: const InputDecoration(
+                          labelText: 'Telefone completo',
+                          hintText: '(19) 99488-5914',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     TextField(
-                      controller: _fullPhone,
-                      keyboardType: TextInputType.phone,
-                      onChanged: (v) {
-                        final formatted = formatPhoneBr(v);
-                        if (formatted != v) {
-                          _fullPhone.value = TextEditingValue(
-                            text: formatted,
-                            selection: TextSelection.collapsed(
-                              offset: formatted.length,
-                            ),
-                          );
+                      controller: _displayName,
+                      focusNode: _displayNameFocus,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: _showAmount
+                          ? TextInputAction.next
+                          : TextInputAction.done,
+                      maxLength: 80,
+                      onSubmitted: (_) {
+                        if (_showAmount) {
+                          _amountFocus.requestFocus();
+                        } else {
+                          _confirmCreateNotFound();
                         }
                       },
                       decoration: const InputDecoration(
-                        labelText: 'Telefone completo',
-                        hintText: '(19) 99488-5914',
+                        labelText: 'Nome (opcional)',
+                        hintText: 'Como o cliente se chama',
+                        counterText: '',
                       ),
                     ),
                     if (_showAmount)
                       _AmountField(
                         controller: _amount,
+                        focusNode: _amountFocus,
                         previewPoints: _previewPoints,
                         pointsPerReal: _pointsPerReal,
                         previewCashback: _previewCashback,
@@ -798,20 +1317,6 @@ class _TillPageState extends State<TillPage> {
                             : (_amountCents ?? 0) - _applyCents,
                         showPointsRate: _mode == EarnMode.points,
                       ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _loading ? null : _resolveFullPhoneAndEarn,
-                        child: Text(
-                          _mode == EarnMode.points
-                              ? 'Buscar / criar e registrar gasto'
-                              : _mode == EarnMode.cashback
-                              ? 'Buscar / criar e registrar cashback'
-                              : 'Buscar / criar e dar primeiro carimbo',
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
@@ -820,12 +1325,14 @@ class _TillPageState extends State<TillPage> {
               const SizedBox(height: 16),
               _CustomerCard(
                 lookup: _lookup!,
+                catalog: _catalog,
+                onEditTags: _openTagsSheet,
                 mode: _mode,
                 earnKinds: _earnKinds,
-                canEarn: _canEarn,
-                loading: _loading,
                 amount: _amount,
+                amountFocus: _amountFocus,
                 applyAmount: _applyAmount,
+                applyFocus: _applyFocus,
                 previewPoints: _previewPoints,
                 pointsPerReal: _pointsPerReal,
                 previewCashback: _previewCashback,
@@ -839,36 +1346,101 @@ class _TillPageState extends State<TillPage> {
                 showAmount: _showAmount,
                 fulfillingId: _fulfillingId,
                 onApplyChanged: (v) => setState(() => _applyCashback = v),
-                onEarn: () {
-                  if (_lookup!.associatedHere &&
-                      _lookup!.membershipId != null) {
-                    if (_canEarn || _cashbackBalance > 0) _earn();
-                  } else {
-                    _createCustomer(withEarn: _canEarn);
-                  }
-                },
                 onFulfill: (v) => _fulfill(transactionId: v.transactionId),
+                onSeeAllVouchers: () =>
+                    _openVouchersSheet(_lookup!.openVouchers),
                 recentSales: _lookup!.recentSales,
                 reversingId: _reversingId,
                 onUndo: _askReverse,
+                onSeeAllSales: () => _openSalesSheet(_lookup!.recentSales),
               ),
+            ],
             ],
           ],
         ),
       ),
-      bottomNavigationBar: _lastSale == null
-          ? null
-          : _UndoBar(
-              sale: _lastSale!,
-              busy: _reversingId == _lastSale!.anchorId,
-              onUndo: () => _askReverse(_lastSale!),
-            ),
+      bottomNavigationBar: _StickyActionBar(
+        cta: _primaryCta,
+        sale: _lastSale,
+        undoBusy: _lastSale != null && _reversingId == _lastSale!.anchorId,
+        onUndo: _lastSale == null ? null : () => _askReverse(_lastSale!),
+        // Keep only Buscar above the soft keyboard while typing a phone.
+        compact: _focus == _TillFocus.phone ||
+            _focus == _TillFocus.fullPhone ||
+            _focus == _TillFocus.voucher,
+      ),
     );
   }
 }
 
 extension on String {
   String ifEmpty(String fallback) => isEmpty ? fallback : this;
+}
+
+class _TaskToggle extends StatelessWidget {
+  const _TaskToggle({required this.task, required this.onChanged});
+
+  final _TillTask task;
+  final ValueChanged<_TillTask> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: FregoColors.neutral100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          _chip(
+            label: 'Registrar',
+            selected: task == _TillTask.earn,
+            onTap: () => onChanged(_TillTask.earn),
+          ),
+          _chip(
+            label: 'Voucher',
+            selected: task == _TillTask.voucher,
+            onTap: () => onChanged(_TillTask.voucher),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: selected ? FregoColors.card : Colors.transparent,
+        elevation: selected ? 1 : 0,
+        shadowColor: Colors.black26,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: SizedBox(
+            height: 44,
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: selected
+                      ? FregoColors.ink
+                      : FregoColors.neutral500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Card extends StatelessWidget {
@@ -1001,10 +1573,15 @@ class _ModeToggle extends StatelessWidget {
 }
 
 class _PhoneField extends StatelessWidget {
-  const _PhoneField({required this.controller, required this.onSubmitted});
+  const _PhoneField({
+    required this.controller,
+    required this.onSubmitted,
+    this.focusNode,
+  });
 
   final TextEditingController controller;
   final VoidCallback onSubmitted;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -1028,7 +1605,9 @@ class _PhoneField extends StatelessWidget {
             const SizedBox(height: 8),
             TextField(
               controller: controller,
+              focusNode: focusNode,
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.search,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 28,
@@ -1065,6 +1644,7 @@ class _AmountField extends StatelessWidget {
     required this.controller,
     required this.previewPoints,
     required this.pointsPerReal,
+    this.focusNode,
     this.previewCashback = 0,
     this.cashbackPercent = 0,
     this.applyCents = 0,
@@ -1073,6 +1653,7 @@ class _AmountField extends StatelessWidget {
   });
 
   final TextEditingController controller;
+  final FocusNode? focusNode;
   final int previewPoints;
   final int pointsPerReal;
   final int previewCashback;
@@ -1091,6 +1672,7 @@ class _AmountField extends StatelessWidget {
         children: [
           TextField(
             controller: controller,
+            focusNode: focusNode,
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
@@ -1188,10 +1770,10 @@ class _AmountField extends StatelessWidget {
 class _CustomerCard extends StatelessWidget {
   const _CustomerCard({
     required this.lookup,
+    required this.catalog,
+    required this.onEditTags,
     required this.mode,
     required this.earnKinds,
-    required this.canEarn,
-    required this.loading,
     required this.amount,
     required this.applyAmount,
     required this.previewPoints,
@@ -1205,20 +1787,25 @@ class _CustomerCard extends StatelessWidget {
     required this.showAmount,
     required this.fulfillingId,
     required this.onApplyChanged,
-    required this.onEarn,
     required this.onFulfill,
+    this.amountFocus,
+    this.applyFocus,
+    this.onSeeAllVouchers,
     this.recentSales = const [],
     this.reversingId,
     this.onUndo,
+    this.onSeeAllSales,
   });
 
   final LookupResult lookup;
+  final List<CustomerTag> catalog;
+  final VoidCallback onEditTags;
   final EarnMode mode;
   final List<String> earnKinds;
-  final bool canEarn;
-  final bool loading;
   final TextEditingController amount;
+  final FocusNode? amountFocus;
   final TextEditingController applyAmount;
+  final FocusNode? applyFocus;
   final int previewPoints;
   final int pointsPerReal;
   final int previewCashback;
@@ -1230,11 +1817,12 @@ class _CustomerCard extends StatelessWidget {
   final bool showAmount;
   final String? fulfillingId;
   final ValueChanged<bool> onApplyChanged;
-  final VoidCallback onEarn;
   final ValueChanged<OpenVoucher> onFulfill;
+  final VoidCallback? onSeeAllVouchers;
   final List<CounterSale> recentSales;
   final String? reversingId;
   final ValueChanged<CounterSale>? onUndo;
+  final VoidCallback? onSeeAllSales;
 
   @override
   Widget build(BuildContext context) {
@@ -1244,23 +1832,8 @@ class _CustomerCard extends StatelessWidget {
         earnKinds.contains('cashback') ||
         lookup.cashbackCents > 0 ||
         cashbackPercent > 0;
-    final primary = !canEarn
-        ? (lookup.associatedHere
-            ? (lookup.cashbackCents > 0
-                ? 'Usar cashback'
-                : 'Sem campanha ativa')
-            : 'Adicionar à loja')
-        : lookup.associatedHere
-        ? (mode == EarnMode.points
-              ? 'Registrar gasto'
-              : mode == EarnMode.cashback
-              ? 'Registrar cashback'
-              : 'Carimbar')
-        : (mode == EarnMode.points
-              ? 'Adicionar à loja e registrar'
-              : mode == EarnMode.cashback
-              ? 'Adicionar à loja e registrar cashback'
-              : 'Adicionar à loja e carimbar');
+    final voucherPreview = lookup.openVouchers.take(2).toList();
+    final salePreview = recentSales.take(3).toList();
     return _Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1276,6 +1849,59 @@ class _CustomerCard extends StatelessWidget {
               color: FregoColors.neutral500,
             ),
           ),
+          if (catalog.isNotEmpty && lookup.associatedHere) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (lookup.isVip)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: FregoColors.primary50,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: const Text(
+                      'VIP',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: FregoColors.primary500,
+                      ),
+                    ),
+                  ),
+                ...lookup.tags.map(
+                  (tag) => _TagChip(tag: tag),
+                ),
+                GestureDetector(
+                  onTap: onEditTags,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: FregoColors.neutral200),
+                    ),
+                    child: const Text(
+                      '+ Etiqueta',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: FregoColors.neutral500,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (!lookup.associatedHere) ...[
             const SizedBox(height: 10),
             Container(
@@ -1355,6 +1981,7 @@ class _CustomerCard extends StatelessWidget {
                   if (applyCashback) ...[
                     TextField(
                       controller: applyAmount,
+                      focusNode: applyFocus,
                       keyboardType: TextInputType.number,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
@@ -1427,14 +2054,22 @@ class _CustomerCard extends StatelessWidget {
           if (lookup.openVouchers.isNotEmpty) ...[
             const SizedBox(height: 12),
             _OpenVouchers(
-              vouchers: lookup.openVouchers,
+              vouchers: voucherPreview,
               fulfillingId: fulfillingId,
               onFulfill: onFulfill,
             ),
+            if (lookup.openVouchers.length > 2)
+              TextButton(
+                onPressed: onSeeAllVouchers,
+                child: Text(
+                  'Ver todos os ${lookup.openVouchers.length} vouchers',
+                ),
+              ),
           ],
           if (showAmount)
             _AmountField(
               controller: amount,
+              focusNode: amountFocus,
               previewPoints: previewPoints,
               pointsPerReal: pointsPerReal,
               previewCashback: previewCashback,
@@ -1443,25 +2078,6 @@ class _CustomerCard extends StatelessWidget {
               paidCents: paidCents,
               showPointsRate: mode == EarnMode.points,
             ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: loading ||
-                      (lookup.associatedHere &&
-                          !canEarn &&
-                          lookup.cashbackCents <= 0)
-                  ? null
-                  : onEarn,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(primary),
-            ),
-          ),
           if (recentSales.isNotEmpty) ...[
             const SizedBox(height: 18),
             const Divider(height: 1),
@@ -1477,7 +2093,7 @@ class _CustomerCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Errou o valor ou o carimbo? Desfaça. Só funciona se o cliente ainda não usou o benefício.',
+              'Errou? Desfaça se o cliente ainda não usou o benefício.',
               style: TextStyle(
                 fontSize: 12,
                 height: 1.35,
@@ -1485,7 +2101,7 @@ class _CustomerCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            ...recentSales.map((sale) {
+            ...salePreview.map((sale) {
               final busy = reversingId == sale.anchorId;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -1543,6 +2159,11 @@ class _CustomerCard extends StatelessWidget {
                 ),
               );
             }),
+            if (recentSales.length > 3)
+              TextButton(
+                onPressed: onSeeAllSales,
+                child: Text('Ver ${recentSales.length} lançamentos'),
+              ),
           ],
         ],
       ),
@@ -1644,14 +2265,22 @@ class _VoucherSection extends StatelessWidget {
     required this.fulfilling,
     required this.result,
     required this.onSubmit,
+    required this.onScan,
     required this.onAcceptExpired,
     required this.onDismiss,
+    required this.amount,
+    this.focusNode,
+    this.amountFocus,
   });
 
   final TextEditingController controller;
+  final TextEditingController amount;
+  final FocusNode? focusNode;
+  final FocusNode? amountFocus;
   final bool fulfilling;
   final FulfillResult? result;
   final VoidCallback onSubmit;
+  final VoidCallback onScan;
   final VoidCallback onAcceptExpired;
   final VoidCallback onDismiss;
 
@@ -1662,7 +2291,7 @@ class _VoucherSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'CONFIRMAR VOUCHER',
+            'Código do prêmio',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
@@ -1670,9 +2299,9 @@ class _VoucherSection extends StatelessWidget {
               color: FregoColors.neutral400,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           const Text(
-            'Digite o código que o cliente mostra no app e marque como usado.',
+            'Digite o código que o cliente mostra no app.',
             style: TextStyle(
               fontSize: 13,
               height: 1.35,
@@ -1685,6 +2314,7 @@ class _VoucherSection extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: controller,
+                  focusNode: focusNode,
                   textCapitalization: TextCapitalization.characters,
                   inputFormatters: [
                     TextInputFormatter.withFunction((old, next) {
@@ -1716,6 +2346,66 @@ class _VoucherSection extends StatelessWidget {
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: fulfilling ? null : onScan,
+            icon: const Icon(Icons.qr_code_scanner, size: 18),
+            label: const Text('Escanear QR'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(44),
+              foregroundColor: FregoColors.ink,
+              side: const BorderSide(color: FregoColors.hairline),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: amount,
+            focusNode: amountFocus,
+            keyboardType: TextInputType.number,
+            onChanged: (raw) {
+              final next = maskMoneyInput(raw);
+              if (next != raw) {
+                amount.value = TextEditingValue(
+                  text: next,
+                  selection: TextSelection.collapsed(offset: next.length),
+                );
+              }
+            },
+            decoration: const InputDecoration(
+              labelText: 'Valor desta compra (R\$)',
+              hintText: 'Opcional',
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Opcional · retorno da campanha',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: FregoColors.neutral400,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final cents in const [2000, 4000, 6000, 10000])
+                OutlinedButton(
+                  onPressed: () {
+                    final next = formatCentsAsInput(cents);
+                    amount.value = TextEditingValue(
+                      text: next,
+                      selection: TextSelection.collapsed(offset: next.length),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 40),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                  child: Text(formatBrl(cents)),
+                ),
             ],
           ),
           if (result != null) ...[
@@ -1832,6 +2522,16 @@ class _VoucherResultBanner extends StatelessWidget {
                 result.rewardTitle,
                 if (result.customerName != null) result.customerName,
               ].join(' · '),
+              style: const TextStyle(
+                fontSize: 13,
+                color: FregoColors.neutral500,
+              ),
+            ),
+          if (result.amountCents != null)
+            Text(
+              result.amountCents == 0
+                  ? 'Sem valor nesta compra'
+                  : '${formatBrl(result.amountCents!)} nesta compra',
               style: const TextStyle(
                 fontSize: 13,
                 color: FregoColors.neutral500,
@@ -2019,67 +2719,377 @@ String formatSaleClock(DateTime at) {
   return '$day/$month · $time';
 }
 
-class _UndoBar extends StatelessWidget {
-  const _UndoBar({
-    required this.sale,
-    required this.busy,
-    required this.onUndo,
+class _StickyActionBar extends StatelessWidget {
+  const _StickyActionBar({
+    required this.cta,
+    this.sale,
+    this.undoBusy = false,
+    this.onUndo,
+    this.compact = false,
   });
 
-  final CounterSale sale;
-  final bool busy;
-  final VoidCallback onUndo;
+  final _TillCta cta;
+  final CounterSale? sale;
+  final bool undoBusy;
+  final VoidCallback? onUndo;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
+    final showUndo = !compact && sale != null;
     return Material(
-      color: FregoColors.ink,
+      color: FregoColors.card,
+      elevation: 12,
       child: SafeArea(
         top: false,
+        // When the keyboard is open, Scaffold already lifts this bar; skip the
+        // bottom inset so Buscar sits flush on top of the keyboard.
+        bottom: !compact,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Row(
+          padding: EdgeInsets.fromLTRB(16, compact ? 8 : 10, 16, compact ? 8 : 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              if (showUndo) ...[
+                Row(
                   children: [
-                    Text(
-                      'Registrado',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.4,
-                        color: Colors.white.withValues(alpha: 0.6),
+                    Expanded(
+                      child: Text(
+                        sale!.summary,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: FregoColors.neutral500,
+                        ),
                       ),
                     ),
-                    Text(
-                      sale.summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+                    TextButton.icon(
+                      onPressed: undoBusy ? null : onUndo,
+                      icon: FregoIcons.undo(
+                        size: 16,
+                        color: FregoColors.neutral500,
+                      ),
+                      label: Text(undoBusy ? '…' : 'Desfazer'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: FregoColors.neutral500,
+                        minimumSize: const Size(44, 44),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                     ),
                   ],
                 ),
-              ),
-              TextButton.icon(
-                onPressed: busy ? null : onUndo,
-                icon: FregoIcons.undo(size: 16, color: Colors.white),
-                label: Text(
-                  busy ? '…' : 'Desfazer',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(height: 4),
+              ],
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: cta.enabled ? cta.onPressed : null,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
+                  child: Text(cta.label, textAlign: TextAlign.center),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MatchesList extends StatelessWidget {
+  const _MatchesList({
+    required this.matches,
+    required this.onSelect,
+    this.last4,
+  });
+
+  final String? last4;
+  final List<CustomerMatch> matches;
+  final ValueChanged<CustomerMatch> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          last4 == null ? 'Vários clientes' : 'Terminam em $last4',
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Qual cliente está no caixa?',
+          style: TextStyle(color: FregoColors.neutral500),
+        ),
+        const SizedBox(height: 12),
+        ...matches.map(
+          (m) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: FregoColors.neutralBg,
+              borderRadius: BorderRadius.circular(14),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => onSelect(m),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 16,
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              [
+                                m.displayName ?? 'Cliente',
+                                if (m.isVip) 'VIP',
+                                if (!m.associatedHere) 'outra loja/app',
+                              ].join(' · '),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              m.phoneE164,
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                color: FregoColors.neutral500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: FregoColors.neutral400,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SalesList extends StatelessWidget {
+  const _SalesList({
+    required this.sales,
+    required this.onUndo,
+    this.reversingId,
+  });
+
+  final List<CounterSale> sales;
+  final String? reversingId;
+  final ValueChanged<CounterSale> onUndo;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Lançamentos',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 12),
+        ...sales.map((sale) {
+          final busy = reversingId == sale.anchorId;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+              decoration: BoxDecoration(
+                color: FregoColors.neutralBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: FregoColors.hairline),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          sale.summary,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (sale.createdAt != null)
+                          Text(
+                            formatSaleClock(sale.createdAt!),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: FregoColors.neutral400,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: reversingId != null ? null : () => onUndo(sale),
+                    child: Text(busy ? '…' : 'Desfazer'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+Color? _parseTagColor(String? hex) {
+  if (hex == null || hex.length != 7 || !hex.startsWith('#')) return null;
+  final value = int.tryParse(hex.substring(1), radix: 16);
+  if (value == null) return null;
+  return Color(0xFF000000 | value);
+}
+
+class _TagChip extends StatelessWidget {
+  const _TagChip({required this.tag});
+
+  final CustomerTag tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _parseTagColor(tag.color) ?? FregoColors.primary500;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        tag.name,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _TagPickerSheet extends StatefulWidget {
+  const _TagPickerSheet({
+    required this.catalog,
+    required this.selectedIds,
+  });
+
+  final List<CustomerTag> catalog;
+  final Set<String> selectedIds;
+
+  @override
+  State<_TagPickerSheet> createState() => _TagPickerSheetState();
+}
+
+class _TagPickerSheetState extends State<_TagPickerSheet> {
+  late Set<String> _selected = {...widget.selectedIds};
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Etiquetas',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Adicione as que fizerem sentido nesta visita.',
+              style: TextStyle(color: FregoColors.neutral500),
+            ),
+            const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final tag in widget.catalog)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color: _selected.contains(tag.id)
+                            ? FregoColors.primary50
+                            : FregoColors.neutralBg,
+                        borderRadius: BorderRadius.circular(14),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () {
+                            setState(() {
+                              final next = {..._selected};
+                              if (next.contains(tag.id)) {
+                                next.remove(tag.id);
+                              } else {
+                                next.add(tag.id);
+                              }
+                              _selected = next;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 16,
+                            ),
+                            child: Row(
+                              children: [
+                                _TagChip(tag: tag),
+                                const Spacer(),
+                                Text(
+                                  _selected.contains(tag.id)
+                                      ? 'Adicionada'
+                                      : 'Toque para adicionar',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: FregoColors.neutral500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context, _selected),
+                child: const Text('Pronto'),
+              ),
+            ),
+          ],
         ),
       ),
     );

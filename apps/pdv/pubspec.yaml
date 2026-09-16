@@ -21,6 +21,7 @@ dependencies:
     path: ../../packages/tokens
   shared_preferences: ^2.5.3
   flutter_native_splash: ^2.4.7
+  mobile_scanner: ^7.4.2
 
 dev_dependencies:
   flutter_test:

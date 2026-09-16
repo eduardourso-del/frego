@@ -56,6 +56,20 @@ void main() {
       expect(formatVoucherInput('k7m2pq'), 'K7M-2PQ');
       expect(normalizeVoucherCode('K7M-2PQ'), 'K7M2PQ');
     });
+
+    test('scan accepts whole Código only', () {
+      expect(parseScannedVoucherCodigo('K7M-2PQ'), 'K7M2PQ');
+      expect(parseScannedVoucherCodigo('k7m2pq'), 'K7M2PQ');
+      expect(parseScannedVoucherCodigo('K7M2PQ extra'), isNull);
+      expect(
+        parseScannedVoucherCodigo(
+          '00020126580014br.gov.bcb.pix0136pix@loja.com',
+        ),
+        isNull,
+      );
+      expect(parseScannedVoucherCodigo('https://frego.app/K7M2PQ'), isNull);
+      expect(parseScannedVoucherCodigo(''), isNull);
+    });
   });
 
   group('api errors', () {

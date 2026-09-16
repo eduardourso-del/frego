@@ -1,6 +1,8 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:screen_brightness/screen_brightness.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../theme/frego_theme.dart';
 import 'adaptive.dart';
@@ -18,33 +20,29 @@ Future<void> showRedeemVoucherSheet(
   String? expiresAt,
   String? status,
 }) {
-  final page = RedeemVoucherSheet(
-    voucherDisplay: voucherDisplay,
-    rewardTitle: rewardTitle,
-    shopName: shopName,
-    shopLogoUrl: shopLogoUrl,
-    campaignName: campaignName,
-    used: used || status == 'used',
-    usedAt: usedAt,
-    expiresAt: expiresAt,
-    expired: status == 'expired',
-  );
-
-  if (FregoAdaptive.useCupertino(context)) {
-    return showCupertinoModalPopup<void>(
-      context: context,
-      builder: (_) => page,
-    );
-  }
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    enableDrag: true,
+    useRootNavigator: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => page,
+    builder: (ctx) {
+      return RedeemVoucherSheet(
+        voucherDisplay: voucherDisplay,
+        rewardTitle: rewardTitle,
+        shopName: shopName,
+        shopLogoUrl: shopLogoUrl,
+        campaignName: campaignName,
+        used: used || status == 'used',
+        usedAt: usedAt,
+        expiresAt: expiresAt,
+        expired: status == 'expired',
+      );
+    },
   );
 }
 
-class RedeemVoucherSheet extends StatelessWidget {
+class RedeemVoucherSheet extends StatefulWidget {
   const RedeemVoucherSheet({
     super.key,
     required this.voucherDisplay,
@@ -68,27 +66,78 @@ class RedeemVoucherSheet extends StatelessWidget {
   final String? expiresAt;
   final bool expired;
 
-  bool get _inactive => used || expired;
+  @override
+  State<RedeemVoucherSheet> createState() => _RedeemVoucherSheetState();
+}
+
+class _RedeemVoucherSheetState extends State<RedeemVoucherSheet> {
+  bool _boosted = false;
+
+  bool get _inactive => widget.used || widget.expired;
+
+  String get _payload => widget.voucherDisplay
+      .replaceAll(RegExp(r'[^0-9A-Za-z]'), '')
+      .toUpperCase();
+
+  @override
+  void initState() {
+    super.initState();
+    if (!_inactive) {
+      _present();
+    }
+  }
+
+  Future<void> _present() async {
+    try {
+      await WakelockPlus.enable();
+      await ScreenBrightness.instance.setApplicationScreenBrightness(1);
+      _boosted = true;
+    } catch (_) {}
+  }
+
+  Future<void> _restore() async {
+    try {
+      await WakelockPlus.disable();
+      if (_boosted) {
+        await ScreenBrightness.instance.resetApplicationScreenBrightness();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _copyCodigo() async {
+    await Clipboard.setData(ClipboardData(text: widget.voucherDisplay));
+    if (!mounted) return;
+    FregoAdaptive.showMessage(context, 'Código copiado');
+  }
+
+  @override
+  void dispose() {
+    _restore();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.paddingOf(context).bottom;
-    final expiryLine = _formatExpiresAt(expiresAt);
-    final remaining = _remainingLabel(expiresAt);
-    final letter =
-        shopName.trim().isEmpty ? 'L' : shopName.trim()[0].toUpperCase();
-    final hasLogo = shopLogoUrl != null && shopLogoUrl!.trim().isNotEmpty;
+    final expiryLine = _formatExpiresAt(widget.expiresAt);
+    final remaining = _remainingLabel(widget.expiresAt);
+    final letter = widget.shopName.trim().isEmpty
+        ? 'L'
+        : widget.shopName.trim()[0].toUpperCase();
+    final hasLogo =
+        widget.shopLogoUrl != null && widget.shopLogoUrl!.trim().isNotEmpty;
+    final qrSide = (MediaQuery.sizeOf(context).width - 88).clamp(160.0, 196.0);
 
-    return Container(
-      margin: const EdgeInsets.only(top: 48),
-      decoration: const BoxDecoration(
-        color: FregoColors.card,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: SafeArea(
-        top: false,
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: FregoColors.card,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        clipBehavior: Clip.antiAlias,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(24, 12, 24, 16 + bottom),
+          padding: EdgeInsets.fromLTRB(24, 12, 24, 20 + bottom),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -106,24 +155,24 @@ class RedeemVoucherSheet extends StatelessWidget {
                 height: 64,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: used
+                  color: widget.used
                       ? FregoColors.neutral100
-                      : expired
+                      : widget.expired
                           ? const Color(0xFFFFF1E6)
                           : const Color(0xFFE6F6EE),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  used
+                  widget.used
                       ? '✓'
-                      : expired
+                      : widget.expired
                           ? '!'
                           : '🎁',
                   style: TextStyle(
                     fontSize: 28,
-                    color: used
+                    color: widget.used
                         ? FregoColors.success
-                        : expired
+                        : widget.expired
                             ? const Color(0xFFC45C26)
                             : null,
                     fontWeight: FontWeight.w700,
@@ -132,11 +181,12 @@ class RedeemVoucherSheet extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                used
+                widget.used
                     ? 'Voucher usado'
-                    : expired
+                    : widget.expired
                         ? 'Voucher expirado'
                         : 'Mostre no balcão',
+                textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w700,
@@ -160,9 +210,9 @@ class RedeemVoucherSheet extends StatelessWidget {
                       ),
                       clipBehavior: Clip.antiAlias,
                       child: Image.network(
-                        shopLogoUrl!,
+                        widget.shopLogoUrl!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => ColoredBox(
+                        errorBuilder: (_, _, _) => ColoredBox(
                           color: FregoColors.primary50,
                           child: Center(
                             child: Text(
@@ -181,7 +231,7 @@ class RedeemVoucherSheet extends StatelessWidget {
                   ],
                   Flexible(
                     child: Text(
-                      shopName,
+                      widget.shopName,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 15,
@@ -215,7 +265,7 @@ class RedeemVoucherSheet extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    if (used || expired) ...[
+                    if (widget.used || widget.expired) ...[
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -226,7 +276,7 @@ class RedeemVoucherSheet extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: Text(
-                          used ? 'USADO NO BALCÃO' : 'EXPIRADO',
+                          widget.used ? 'USADO NO BALCÃO' : 'EXPIRADO',
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w700,
@@ -238,7 +288,7 @@ class RedeemVoucherSheet extends StatelessWidget {
                       const SizedBox(height: 12),
                     ],
                     Text(
-                      rewardTitle,
+                      widget.rewardTitle,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,
@@ -247,11 +297,11 @@ class RedeemVoucherSheet extends StatelessWidget {
                             .withValues(alpha: _inactive ? 0.75 : 1),
                       ),
                     ),
-                    if (campaignName != null &&
-                        campaignName!.trim().isNotEmpty) ...[
+                    if (widget.campaignName != null &&
+                        widget.campaignName!.trim().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
-                        campaignName!,
+                        widget.campaignName!,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 12,
@@ -259,27 +309,89 @@ class RedeemVoucherSheet extends StatelessWidget {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 18),
-                    Text(
-                      voucherDisplay,
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 4,
-                        fontFamily: 'Courier',
-                        color:
-                            Colors.white.withValues(alpha: _inactive ? 0.55 : 1),
-                        decoration:
-                            _inactive ? TextDecoration.lineThrough : null,
-                        decorationColor:
-                            Colors.white.withValues(alpha: 0.45),
+                    if (!_inactive && _payload.length == 6) ...[
+                      const SizedBox(height: 18),
+                      Center(
+                        child: ExcludeSemantics(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: QrImageView(
+                                data: _payload,
+                                padding: EdgeInsets.zero,
+                                backgroundColor: Colors.white,
+                                errorCorrectionLevel: QrErrorCorrectLevel.H,
+                                eyeStyle: const QrEyeStyle(
+                                  eyeShape: QrEyeShape.square,
+                                  color: Color(0xFF16181D),
+                                ),
+                                dataModuleStyle: const QrDataModuleStyle(
+                                  dataModuleShape: QrDataModuleShape.square,
+                                  color: Color(0xFF16181D),
+                                ),
+                                size: qrSide,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'A loja pode escanear',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          widget.voucherDisplay,
+                          style: TextStyle(
+                            fontSize: _inactive ? 36 : 24,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: _inactive ? 4 : 3,
+                            fontFamily: 'Courier',
+                            color: Colors.white
+                                .withValues(alpha: _inactive ? 0.55 : 1),
+                            decoration:
+                                _inactive ? TextDecoration.lineThrough : null,
+                            decorationColor:
+                                Colors.white.withValues(alpha: 0.45),
+                          ),
+                        ),
+                        if (!_inactive)
+                          IconButton(
+                            onPressed: _copyCodigo,
+                            tooltip: 'Copiar',
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.all(8),
+                            constraints: const BoxConstraints(
+                              minWidth: 44,
+                              minHeight: 44,
+                            ),
+                            icon: Icon(
+                              Icons.copy_rounded,
+                              size: 20,
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      used
-                          ? (_formatUsedAt(usedAt) ?? 'Prêmio já entregue')
-                          : expired
+                      widget.used
+                          ? (_formatUsedAt(widget.usedAt) ??
+                              'Prêmio já entregue')
+                          : widget.expired
                               ? (expiryLine != null
                                   ? 'Expirou $expiryLine'
                                   : 'Validade de 24h esgotada')
@@ -290,7 +402,7 @@ class RedeemVoucherSheet extends StatelessWidget {
                         color: Colors.white.withValues(alpha: 0.55),
                       ),
                     ),
-                    if (!used && expiryLine != null) ...[
+                    if (!widget.used && expiryLine != null) ...[
                       const SizedBox(height: 14),
                       Container(
                         width: double.infinity,
@@ -305,14 +417,14 @@ class RedeemVoucherSheet extends StatelessWidget {
                         child: Column(
                           children: [
                             Text(
-                              expired
+                              widget.expired
                                   ? 'Expirou $expiryLine'
                                   : 'Válido até $expiryLine',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: expired
+                                color: widget.expired
                                     ? const Color(0xFFFDBA74)
                                     : Colors.white.withValues(alpha: 0.92),
                               ),
@@ -337,9 +449,9 @@ class RedeemVoucherSheet extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Text(
-                used
+                widget.used
                     ? 'Este voucher já foi confirmado no balcão da loja.'
-                    : expired
+                    : widget.expired
                         ? 'A validade de 24 horas acabou. Resgate de novo no app se ainda tiver saldo.'
                         : 'Mostre este código no balcão em até 24 horas. '
                             'A loja marca como usado ao entregar o prêmio.',
@@ -349,32 +461,6 @@ class RedeemVoucherSheet extends StatelessWidget {
                   height: 1.45,
                   color: FregoColors.neutral500,
                 ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  if (!_inactive) ...[
-                    Expanded(
-                      child: FregoSecondaryButton(
-                        label: 'Copiar',
-                        onPressed: () async {
-                          await Clipboard.setData(
-                            ClipboardData(text: voucherDisplay),
-                          );
-                          if (!context.mounted) return;
-                          FregoAdaptive.showMessage(context, 'Código copiado');
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: FregoPrimaryButton(
-                      label: 'Feito',
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
@@ -398,7 +484,9 @@ class RedeemVoucherSheet extends StatelessWidget {
   }
 
   String? _remainingLabel(String? iso) {
-    if (iso == null || iso.isEmpty || expired || used) return null;
+    if (iso == null || iso.isEmpty || widget.expired || widget.used) {
+      return null;
+    }
     final d = DateTime.tryParse(iso)?.toLocal();
     if (d == null) return null;
     final diff = d.difference(DateTime.now());
