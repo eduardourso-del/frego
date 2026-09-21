@@ -133,6 +133,10 @@ export default function LoginPage() {
           </Link>
         </p>
         <p className="mt-3 text-center text-[12px] text-[var(--color-neutral-400)]">
+          <Link href="/suporte" className="hover:text-[var(--color-ink)]">
+            Suporte
+          </Link>
+          {' · '}
           <Link href="/privacidade" className="hover:text-[var(--color-ink)]">
             Privacidade
           </Link>

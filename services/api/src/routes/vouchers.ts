@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { nextFulfillAmountCents } from '../lib/campaign-return.js';
 import {
   markVoucherUsed,
   normalizeVoucherCode,
@@ -16,6 +17,8 @@ const fulfillBody = z
     transactionId: z.string().min(1).optional(),
     /** Permite confirmar voucher já expirado (decisão da loja). */
     acceptExpired: z.boolean().optional(),
+    /** Valor da compra no resgate (centavos). Opcional. */
+    amountCents: z.number().int().nonnegative().max(10_000_000).nullish(),
   })
   .refine((b) => Boolean(b.voucherCode || b.transactionId), {
     message: 'Informe voucherCode ou transactionId',
@@ -24,6 +27,7 @@ const fulfillBody = z
 function publicVoucher(tx: {
   id: string;
   createdAt: Date;
+  amountCents?: number | null;
   metadata: unknown;
   campaign: {
     name: string;
@@ -43,6 +47,7 @@ function publicVoucher(tx: {
     usedAt: voucher.usedAt ?? null,
     expiresAt: voucher.expiresAt,
     createdAt: tx.createdAt,
+    amountCents: tx.amountCents ?? null,
     rewardTitle: tx.campaign?.rewardTitle ?? tx.campaign?.name ?? 'Prêmio',
     campaignName: tx.campaign?.name ?? null,
     campaignType: tx.campaign?.type ?? null,
@@ -159,29 +164,44 @@ export const voucherRoutes: FastifyPluginAsync = async (app) => {
       throw err;
     }
 
-    const updated = alreadyUsed
-      ? tx
-      : await prisma.transaction.update({
-          where: { id: tx.id },
-          data: { metadata: nextMeta },
-          include: {
-            campaign: {
-              select: { name: true, rewardTitle: true, type: true },
+    const amountToSet = nextFulfillAmountCents({
+      alreadyUsed,
+      existingAmountCents: tx.amountCents,
+      incomingAmountCents:
+        body.amountCents === null || body.amountCents === undefined
+          ? undefined
+          : body.amountCents,
+    });
+    const shouldUpdateMeta = !alreadyUsed;
+    const shouldUpdateAmount = amountToSet !== undefined;
+
+    const updated =
+      shouldUpdateMeta || shouldUpdateAmount
+        ? await prisma.transaction.update({
+            where: { id: tx.id },
+            data: {
+              ...(shouldUpdateMeta ? { metadata: nextMeta } : {}),
+              ...(shouldUpdateAmount ? { amountCents: amountToSet } : {}),
             },
-            membership: {
-              select: {
-                id: true,
-                customer: {
-                  select: {
-                    id: true,
-                    displayName: true,
-                    phoneE164: true,
+            include: {
+              campaign: {
+                select: { name: true, rewardTitle: true, type: true },
+              },
+              membership: {
+                select: {
+                  id: true,
+                  customer: {
+                    select: {
+                      id: true,
+                      displayName: true,
+                      phoneE164: true,
+                    },
                   },
                 },
               },
             },
-          },
-        });
+          })
+        : tx;
 
     const voucher = publicVoucher(updated)!;
     const acceptedExpired =

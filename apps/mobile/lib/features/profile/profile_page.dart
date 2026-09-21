@@ -440,6 +440,12 @@ class _ProfilePageState extends State<ProfilePage> {
                 _SettingsGroup(
                   children: [
                     _SettingsRow(
+                      label: 'Ajuda',
+                      onTap: _deleting
+                          ? null
+                          : () => openLegalUrl(context, AppConfig.supportUrl),
+                    ),
+                    _SettingsRow(
                       label: 'Política de Privacidade',
                       onTap: _deleting
                           ? null

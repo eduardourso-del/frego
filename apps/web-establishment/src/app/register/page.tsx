@@ -246,6 +246,8 @@ export default function RegisterPage() {
         </p>
         <p className="mt-3 text-center text-[12px] text-[var(--color-neutral-400)]">
           Dúvidas?{' '}
+          <SoftLink href="/suporte">Suporte</SoftLink>
+          {' · '}
           <a
             href={CONTACT_MAILTO}
             className="font-medium text-[var(--color-neutral-600)] hover:text-[var(--color-ink)]"

@@ -20,24 +20,24 @@ export function LandingPricingCta() {
             aria-hidden
           />
           <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-white/70">
-            O que nos guia
+            Preço simples para pequenos negócios
           </p>
           <h2
             id="cta-heading"
             className="mx-auto mt-4 max-w-xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-white sm:text-[36px]"
           >
-            Todo cliente merece virar freguês.
+            Transforme clientes em fregueses.
           </h2>
           <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-white/75">
-            Cadastre seu negócio e comece a construir relacionamentos que fazem
-            a pessoa voltar. Sem taxa por pedido — só o plano da plataforma.
+            Você não precisa de um CRM para conhecer seus clientes. Comece
+            agora — teste grátis, sem taxa por pedido.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/register"
               className="inline-flex min-h-11 w-full items-center justify-center rounded-[8px] bg-[var(--color-card)] px-5 text-[14px] font-extrabold text-[var(--color-primary-800)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
             >
-              Quero criar fregueses
+              Começar agora
             </Link>
             <Link
               href="/login"

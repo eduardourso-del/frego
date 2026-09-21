@@ -8,6 +8,11 @@ export type PublicShopCampaign = {
   rewardTitle: string | null;
   rewardDescription: string | null;
   rewardImageUrl: string | null;
+  startsOn?: string | Date | null;
+  endsOn?: string | Date | null;
+  weekdays?: number[] | null;
+  redeemMax?: number | null;
+  redeemPeriod?: string | null;
 };
 
 export type PublicShopLocation = {

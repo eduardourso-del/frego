@@ -17,6 +17,12 @@ import {
   parseAudienceRules,
   queryRulesFromParams,
 } from '../lib/audience.js';
+import {
+  loadMembershipTags,
+  loadTagsByMembershipIds,
+  replaceMembershipTags,
+  type TagDto,
+} from '../lib/tags.js';
 
 const lookupBody = z
   .object({
@@ -31,7 +37,12 @@ const lookupBody = z
 
 const createBody = z.object({
   phone: z.string().min(8),
-  displayName: z.string().min(1).optional(),
+  displayName: z
+    .string()
+    .trim()
+    .max(80)
+    .optional()
+    .transform((s) => (s && s.length > 0 ? s : undefined)),
   birthday: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
@@ -39,6 +50,15 @@ const createBody = z.object({
   addFirstStamp: z.boolean().optional(),
   locationId: z.string().optional(),
 });
+
+const patchBody = z
+  .object({
+    isVip: z.boolean().optional(),
+    tagIds: z.array(z.string().min(1)).max(12).optional(),
+  })
+  .refine((b) => b.isVip !== undefined || b.tagIds !== undefined, {
+    message: 'Informe isVip ou tagIds',
+  });
 
 async function serializeCustomerLookup(
   customer: {
@@ -139,6 +159,10 @@ async function serializeCustomerLookup(
       )
     : [];
 
+  const tags: TagDto[] = membershipHere
+    ? await loadMembershipTags(membershipHere.id)
+    : [];
+
   return {
     found: true as const,
     phoneE164: customer.phoneE164,
@@ -156,6 +180,7 @@ async function serializeCustomerLookup(
           associatedAt: membershipHere.associatedAt,
         }
       : null,
+    tags,
     otherShopsCount: otherShops.length,
     otherShops,
     wallet,
@@ -306,10 +331,12 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const membershipIds = memberships.map((m) => m.id);
-    const transactions =
+    const [transactions, tagsByMembership] = await Promise.all([
       membershipIds.length === 0
-        ? []
-        : await prisma.transaction.findMany({
+        ? Promise.resolve([] as Awaited<
+            ReturnType<typeof prisma.transaction.findMany>
+          >)
+        : prisma.transaction.findMany({
             where: {
               businessId: auth.businessId,
               membershipId: { in: membershipIds },
@@ -324,7 +351,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
               campaignId: true,
               metadata: true,
             },
-          });
+          }),
+      loadTagsByMembershipIds(membershipIds),
+    ]);
 
     type Agg = {
       visitDays: Set<string>;
@@ -378,10 +407,17 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       const redeemable = wallet.campaigns.filter((c) => c.canRedeem).length;
       const primary =
         wallet.campaigns.find(
-          (c) => c.type !== 'birthday' && c.type !== 'cashback' && c.canRedeem,
+          (c) =>
+            c.type !== 'birthday' &&
+            c.type !== 'cashback' &&
+            c.type !== 'promo' &&
+            c.canRedeem,
         ) ??
         wallet.campaigns.find(
-          (c) => c.type !== 'birthday' && c.type !== 'cashback',
+          (c) =>
+            c.type !== 'birthday' &&
+            c.type !== 'cashback' &&
+            c.type !== 'promo',
         ) ??
         wallet.campaigns.find((c) => c.canRedeem) ??
         wallet.campaigns[0] ??
@@ -392,10 +428,21 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
             campaignName: primary.campaignName,
             type: primary.type,
             current:
-              primary.type === 'spend'
-                ? wallet.pools.points
-                : wallet.pools.stamps,
-            needed: primary.unitsNeeded,
+              primary.type === 'promo' ||
+              primary.type === 'birthday' ||
+              primary.type === 'cashback'
+                ? primary.canRedeem
+                  ? 1
+                  : 0
+                : primary.type === 'spend'
+                  ? wallet.pools.points
+                  : wallet.pools.stamps,
+            needed:
+              primary.type === 'promo' ||
+              primary.type === 'birthday' ||
+              primary.type === 'cashback'
+                ? 1
+                : primary.unitsNeeded,
             canRedeem: primary.canRedeem,
             rewardTitle: primary.rewardTitle,
           }
@@ -407,6 +454,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         phoneE164: m.customer.phoneE164,
         birthday: m.customer.birthday,
         isVip: m.isVip,
+        tags: tagsByMembership.get(m.id) ?? [],
         associatedAt: m.associatedAt,
         onboardingCompleted: m.customer.onboardingCompleted,
         stats: {
@@ -485,6 +533,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       });
 
       if (memberships.length > 1) {
+        const tagsByMembership = await loadTagsByMembershipIds(
+          memberships.map((m) => m.id),
+        );
         return {
           found: true,
           multiple: true,
@@ -496,6 +547,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
             isVip: m.isVip,
             membershipId: m.id,
             associatedHere: true,
+            tags: tagsByMembership.get(m.id) ?? [],
           })),
           activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
         };
@@ -543,6 +595,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
             isVip: false,
             membershipId: null,
             associatedHere: false,
+            tags: [],
           })),
           activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
         };
@@ -695,6 +748,8 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
+    const tags = await loadMembershipTags(membership.id);
+
     return reply.code(201).send({
       customer: {
         id: customer.id,
@@ -707,6 +762,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         isVip: membership.isVip,
         associatedAt: membership.associatedAt,
       },
+      tags,
       stampTransaction,
       sale: stampTransaction
         ? groupCounterSales([stampTransaction], 1)[0] ?? null
@@ -740,7 +796,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
     }
 
-    const [wallet, recent, allTx] = await Promise.all([
+    const [wallet, recent, allTx, tags] = await Promise.all([
       deriveWallet(membership.id, auth.businessId),
       prisma.transaction.findMany({
         where: { membershipId: membership.id, businessId: auth.businessId },
@@ -763,6 +819,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           metadata: true,
         },
       }),
+      loadMembershipTags(membership.id),
     ]);
 
     const visitDays = new Set<string>();
@@ -805,6 +862,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         isVip: membership.isVip,
         associatedAt: membership.associatedAt,
       },
+      tags,
       stats: {
         visits: visitDays.size,
         lastVisitAt,
@@ -838,6 +896,56 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     };
   });
 
+  app.patch('/customers/:id', async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = request.params as { id: string };
+    const body = patchBody.parse(request.body);
+
+    const membership = await prisma.membership.findFirst({
+      where: { customerId: id, businessId: auth.businessId },
+      select: { id: true, isVip: true },
+    });
+    if (!membership) {
+      return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
+    }
+
+    let isVip = membership.isVip;
+    if (body.isVip !== undefined) {
+      const updated = await prisma.membership.update({
+        where: { id: membership.id },
+        data: { isVip: body.isVip },
+        select: { id: true, isVip: true },
+      });
+      isVip = updated.isVip;
+    }
+
+    let tags: TagDto[];
+    try {
+      tags =
+        body.tagIds !== undefined
+          ? await replaceMembershipTags({
+              membershipId: membership.id,
+              businessId: auth.businessId,
+              tagIds: body.tagIds,
+              teamMemberId: auth.teamMemberId,
+            })
+          : await loadMembershipTags(membership.id);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      const statusCode = (err as { statusCode?: number }).statusCode ?? 400;
+      const message = (err as { message?: string }).message;
+      if (code === 'TAG_LIMIT' || code === 'TAG_NOT_FOUND') {
+        return reply.code(statusCode).send({ error: code, message });
+      }
+      throw err;
+    }
+
+    return {
+      membership: { id: membership.id, isVip },
+      tags,
+    };
+  });
+
   /** Derived wallet for a customer within the authenticated business. */
   app.get('/customers/:id/wallet', async (request, reply) => {
     const auth = requireAuth(request);
@@ -853,16 +961,19 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const wallet = await deriveWallet(membership.id, auth.businessId);
-    const recent = await prisma.transaction.findMany({
-      where: { membershipId: membership.id, businessId: auth.businessId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      include: {
-        actorTeamMember: { select: { displayName: true, role: true } },
-        location: { select: { name: true } },
-        campaign: { select: { name: true, rewardTitle: true } },
-      },
-    });
+    const [recent, tags] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { membershipId: membership.id, businessId: auth.businessId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        include: {
+          actorTeamMember: { select: { displayName: true, role: true } },
+          location: { select: { name: true } },
+          campaign: { select: { name: true, rewardTitle: true } },
+        },
+      }),
+      loadMembershipTags(membership.id),
+    ]);
 
     return {
       customer: {
@@ -875,6 +986,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         id: membership.id,
         isVip: membership.isVip,
       },
+      tags,
       wallet,
       pools: wallet.pools,
       recentTransactions: recent,

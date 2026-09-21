@@ -1,21 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Download } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
-import {
-  AudiencePresetCards,
-  campaignCreateHref,
-  audienceRulesQuery,
-} from '@/components/audience-preset-cards';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { formatCoverage } from '@/lib/campaign-return';
 import {
   PeriodPicker,
   periodSearchParams,
   type PeriodValue,
 } from '@/components/period-picker';
+import { CampaignCompareChart } from '@/components/campaign-compare-chart';
+import { TermInfo } from '@/components/term-info';
+import { TERM } from '@/lib/term-copy';
 
 type RangeKey = '7d' | '30d' | '90d' | 'custom';
 
@@ -86,45 +85,8 @@ type ReportsData = {
     usedVouchers: number;
     expiredVouchers: number;
     revenueFromRedeemersCents: number;
+    revenueCoverage?: { withAmount: number; used: number };
   }>;
-  audiences?: {
-    presets: Array<{
-      key: string;
-      name: string;
-      description: string;
-      rules: Record<string, unknown>;
-      memberCount: number;
-    }>;
-    spendTiers: Array<{
-      key: string;
-      label: string;
-      min: number;
-      max: number | null;
-      count: number;
-    }>;
-    saved: Array<{
-      id: string;
-      name: string;
-      memberCount: number;
-    }>;
-    insight: {
-      title: string;
-      body: string;
-      memberCount: number;
-      rules: Record<string, unknown>;
-    } | null;
-  };
-};
-
-type AudienceRulesForm = {
-  name: string;
-  spendCentsMin: string;
-  spendCentsMax: string;
-  windowDays: string;
-  inactiveDaysMin: string;
-  showBadge: boolean;
-  badgeTitle: string;
-  badgeMessage: string;
 };
 
 const RANGES: { key: RangeKey; label: string }[] = [
@@ -139,6 +101,7 @@ const TYPE_LABEL: Record<string, string> = {
   birthday: 'Aniversário',
   visits: 'Visitas',
   cashback: 'Cashback',
+  promo: 'Promoção',
 };
 
 function formatMoney(cents: number) {
@@ -146,6 +109,39 @@ function formatMoney(cents: number) {
     style: 'currency',
     currency: 'BRL',
   });
+}
+
+function peopleHint(redeemers: number, eligible: number) {
+  const people = eligible === 1 ? 'pessoa' : 'pessoas';
+  return `${redeemers.toLocaleString('pt-BR')} de ${eligible.toLocaleString('pt-BR')} ${people}`;
+}
+
+function CampaignMetric({
+  label,
+  value,
+  hint,
+  info,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string | null;
+  info?: string;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="text-[11px] font-medium text-[var(--color-neutral-400)] lg:hidden">
+        {info ? <TermInfo info={info}>{label}</TermInfo> : label}
+      </div>
+      <div className="mt-0.5 text-[13px] text-[var(--color-neutral-600)] lg:mt-0">
+        {value}
+      </div>
+      {hint ? (
+        <div className="text-[11px] text-[var(--color-neutral-400)]">{hint}</div>
+      ) : null}
+    </div>
+  );
 }
 
 function Delta({ value }: { value: number | null | undefined }) {
@@ -181,7 +177,7 @@ function KpiCard({
   hint,
   deltaPct,
 }: {
-  label: string;
+  label: ReactNode;
   value: string | number;
   hint?: string;
   deltaPct?: number | null;
@@ -523,7 +519,7 @@ function downloadCsv(data: ReportsData) {
     );
   }
   lines.push('');
-  lines.push('Campanha;Tipo;Resgates;Quem resgatou;Elegíveis;Engajamento %;Conclusão %;Receita de quem resgatou');
+  lines.push('Campanha;Tipo;Resgates;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados');
   for (const c of data.campaigns) {
     lines.push(
       [
@@ -535,6 +531,8 @@ function downloadCsv(data: ReportsData) {
         c.engagePct,
         c.fulfillPct,
         c.revenueFromRedeemersCents,
+        c.revenueCoverage?.withAmount ?? '',
+        c.revenueCoverage?.used ?? '',
       ]
         .map(csvEscape)
         .join(';'),
@@ -566,20 +564,6 @@ export default function ReportsPage() {
   const [data, setData] = useState<ReportsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [builder, setBuilder] = useState<AudienceRulesForm>({
-    name: '',
-    spendCentsMin: '200',
-    spendCentsMax: '',
-    windowDays: '90',
-    inactiveDaysMin: '',
-    showBadge: true,
-    badgeTitle: 'Cliente da casa',
-    badgeMessage:
-      'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
-  });
-  const [builderBusy, setBuilderBusy] = useState(false);
-  const [builderMsg, setBuilderMsg] = useState<string | null>(null);
-  const [previewCount, setPreviewCount] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -614,92 +598,7 @@ export default function ReportsPage() {
     if (!authLoading && user) void load();
   }, [authLoading, user, load]);
 
-  const builderRules = useMemo(() => {
-    const spendMin = Number.parseFloat(builder.spendCentsMin);
-    const spendMax = Number.parseFloat(builder.spendCentsMax);
-    const windowDays = Number.parseInt(builder.windowDays, 10);
-    const inactive = Number.parseInt(builder.inactiveDaysMin, 10);
-    return {
-      version: 1 as const,
-      spendCentsMin: Number.isFinite(spendMin)
-        ? Math.round(spendMin * 100)
-        : null,
-      spendCentsMax: Number.isFinite(spendMax)
-        ? Math.round(spendMax * 100)
-        : null,
-      windowDays: Number.isFinite(windowDays) ? windowDays : null,
-      inactiveDaysMin: Number.isFinite(inactive) ? inactive : null,
-    };
-  }, [builder]);
-
-  async function previewAudience() {
-    setBuilderBusy(true);
-    setBuilderMsg(null);
-    try {
-      const token = await getToken();
-      if (!token) throw new Error('Sessão expirada.');
-      const res = await fetch(`${API_URL}/audiences/preview`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ rules: builderRules }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Não foi possível estimar.');
-      setPreviewCount(json.memberCount as number);
-    } catch (e) {
-      setBuilderMsg(e instanceof Error ? e.message : 'Não foi possível estimar.');
-    } finally {
-      setBuilderBusy(false);
-    }
-  }
-
-  async function saveAudience() {
-    if (!builder.name.trim()) {
-      setBuilderMsg('Informe um nome para a audiência.');
-      return;
-    }
-    setBuilderBusy(true);
-    setBuilderMsg(null);
-    try {
-      const token = await getToken();
-      if (!token) throw new Error('Sessão expirada.');
-      const res = await fetch(`${API_URL}/audiences`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: builder.name.trim(),
-          rules: builderRules,
-          showBadge: builder.showBadge,
-          badgeTitle: builder.showBadge
-            ? builder.badgeTitle.trim() || builder.name.trim()
-            : null,
-          badgeMessage: builder.showBadge
-            ? builder.badgeMessage.trim() || null
-            : null,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
-      setBuilderMsg(
-        `Audiência salva · ${json.audience?.memberCount ?? 0} clientes`,
-      );
-      setBuilder((b) => ({ ...b, name: '' }));
-      await load();
-    } catch (e) {
-      setBuilderMsg(e instanceof Error ? e.message : 'Não foi possível salvar.');
-    } finally {
-      setBuilderBusy(false);
-    }
-  }
-
   const kpis = data?.kpis;
-  const audiences = data?.audiences;
 
   return (
     <AppShell
@@ -785,7 +684,7 @@ export default function ReportsPage() {
                 deltaPct={undefined}
               />
               <KpiCard
-                label="Resgates"
+                label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
                 value={kpis.redeems.value.toLocaleString('pt-BR')}
                 deltaPct={kpis.redeems.deltaPct}
               />
@@ -808,7 +707,9 @@ export default function ReportsPage() {
                 deltaPct={kpis.revenueCents.deltaPct}
               />
               <KpiCard
-                label="Taxa de retorno"
+                label={
+                  <TermInfo info={TERM.taxaRetorno}>Taxa de retorno</TermInfo>
+                }
                 value={`${kpis.repeatRate.value}%`}
                 deltaPct={kpis.repeatRate.deltaPct}
               />
@@ -817,288 +718,6 @@ export default function ReportsPage() {
             <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <ActivityChart series={data.series} />
               <CohortChart cohorts={data.cohorts} />
-            </div>
-
-            <div
-              id="audiencias"
-              className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
-            >
-              <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                Audiências
-              </div>
-              <p className="mb-4 text-[12px] text-[var(--color-neutral-400)]">
-                Agrupe por gasto e comportamento — depois crie campanhas só
-                para esses clientes.
-              </p>
-
-              {audiences?.insight && (
-                <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3">
-                  <p className="text-[14px] font-semibold text-[var(--color-ink)]">
-                    {audiences.insight.title}
-                  </p>
-                  <p className="mt-1 text-[13px] text-[var(--color-neutral-600)]">
-                    {audiences.insight.body}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Link
-                      href={`/customers?${audienceRulesQuery(audiences.insight.rules)}`}
-                      className="text-[13px] font-semibold text-[var(--color-primary-600)]"
-                    >
-                      Ver clientes →
-                    </Link>
-                    <Link
-                      href={campaignCreateHref(
-                        audiences.insight.rules,
-                        'Alto valor em risco',
-                      )}
-                      className="text-[13px] font-semibold text-[var(--color-primary-600)]"
-                    >
-                      Criar campanha →
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-              <div className="mb-5">
-                <AudiencePresetCards presets={audiences?.presets ?? []} />
-              </div>
-
-              <div className="mb-5">
-                <div className="mb-2 text-[13px] font-semibold text-[var(--color-ink)]">
-                  Faixas de gasto (90 dias)
-                </div>
-                <div className="flex flex-col gap-2">
-                  {(audiences?.spendTiers ?? []).map((t) => {
-                    const max = Math.max(
-                      1,
-                      ...(audiences?.spendTiers ?? []).map((x) => x.count),
-                    );
-                    const pct = Math.round((t.count / max) * 100);
-                    return (
-                      <div key={t.key} className="flex items-center gap-3">
-                        <span className="w-28 shrink-0 text-[12px] text-[var(--color-neutral-500)]">
-                          {t.label}
-                        </span>
-                        <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-[var(--color-neutral-100)]">
-                          <div
-                            className="h-full rounded-full bg-[var(--color-primary-500)]"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                        <span className="w-8 text-right text-[12px] font-semibold tabular-nums text-[var(--color-ink)]">
-                          {t.count}
-                        </span>
-                        <Link
-                          href={`/customers?spendCentsMin=${t.min}${t.max != null ? `&spendCentsMax=${t.max - 1}` : ''}&windowDays=90`}
-                          className="text-[11px] font-semibold text-[var(--color-primary-500)]"
-                        >
-                          Ver
-                        </Link>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4">
-                <div className="text-[13px] font-semibold text-[var(--color-ink)]">
-                  Criar audiência por gasto
-                </div>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                    Nome
-                    <input
-                      value={builder.name}
-                      onChange={(e) =>
-                        setBuilder((b) => ({ ...b, name: e.target.value }))
-                      }
-                      placeholder="Ex.: clientes a partir de R$ 200"
-                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
-                    />
-                  </label>
-                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                    Gasto mínimo (R$)
-                    <input
-                      type="number"
-                      min={0}
-                      value={builder.spendCentsMin}
-                      onChange={(e) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          spendCentsMin: e.target.value,
-                        }))
-                      }
-                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
-                    />
-                  </label>
-                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                    Gasto máximo (R$)
-                    <input
-                      type="number"
-                      min={0}
-                      value={builder.spendCentsMax}
-                      onChange={(e) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          spendCentsMax: e.target.value,
-                        }))
-                      }
-                      placeholder="opcional"
-                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
-                    />
-                  </label>
-                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                    Janela (dias)
-                    <input
-                      type="number"
-                      min={1}
-                      value={builder.windowDays}
-                      onChange={(e) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          windowDays: e.target.value,
-                        }))
-                      }
-                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
-                    />
-                  </label>
-                  <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                    Inativo há (dias)
-                    <input
-                      type="number"
-                      min={0}
-                      value={builder.inactiveDaysMin}
-                      onChange={(e) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          inactiveDaysMin: e.target.value,
-                        }))
-                      }
-                      placeholder="opcional"
-                      className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
-                    />
-                  </label>
-                </div>
-                <div className="mt-3 rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-3">
-                  <label className="flex items-center gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
-                    <input
-                      type="checkbox"
-                      checked={builder.showBadge}
-                      onChange={(e) =>
-                        setBuilder((b) => ({
-                          ...b,
-                          showBadge: e.target.checked,
-                        }))
-                      }
-                    />
-                    Mostrar selo no app do cliente
-                  </label>
-                  <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
-                    Quem entra nesta audiência vê, no aplicativo, um selo da
-                    loja e a mensagem de que desbloqueou promoções exclusivas.
-                  </p>
-                  {builder.showBadge && (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                      <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                        Título do selo
-                        <input
-                          value={builder.badgeTitle}
-                          onChange={(e) =>
-                            setBuilder((b) => ({
-                              ...b,
-                              badgeTitle: e.target.value,
-                            }))
-                          }
-                          placeholder="Cliente da casa"
-                          className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-2.5 text-[14px]"
-                        />
-                      </label>
-                      <label className="text-[12px] font-medium text-[var(--color-neutral-500)]">
-                        Mensagem
-                        <input
-                          value={builder.badgeMessage}
-                          onChange={(e) =>
-                            setBuilder((b) => ({
-                              ...b,
-                              badgeMessage: e.target.value,
-                            }))
-                          }
-                          placeholder="Você desbloqueou condições exclusivas."
-                          className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-2.5 text-[14px]"
-                        />
-                      </label>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={builderBusy}
-                    onClick={() => void previewAudience()}
-                    className="min-h-9 rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] px-3 text-[13px] font-semibold disabled:opacity-50"
-                  >
-                    Estimar
-                  </button>
-                  <button
-                    type="button"
-                    disabled={builderBusy}
-                    onClick={() => void saveAudience()}
-                    className="min-h-9 rounded-[10px] bg-[var(--color-primary-500)] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
-                  >
-                    Salvar audiência
-                  </button>
-                  <Link
-                    href={`/customers?${audienceRulesQuery(builderRules)}`}
-                    className="text-[13px] font-semibold text-[var(--color-primary-500)]"
-                  >
-                    Ver clientes
-                  </Link>
-                  {previewCount != null && (
-                    <span className="text-[13px] text-[var(--color-neutral-500)]">
-                      ≈ {previewCount} clientes
-                    </span>
-                  )}
-                  {builderMsg && (
-                    <span className="text-[13px] text-[var(--color-neutral-600)]">
-                      {builderMsg}
-                    </span>
-                  )}
-                </div>
-                {(audiences?.saved?.length ?? 0) > 0 && (
-                  <div className="mt-4 border-t border-[var(--color-hairline)] pt-3">
-                    <p className="mb-2 text-[12px] font-medium text-[var(--color-neutral-400)]">
-                      Audiências salvas
-                    </p>
-                    <ul className="flex flex-col gap-1.5">
-                      {audiences!.saved.map((s) => (
-                        <li
-                          key={s.id}
-                          className="flex items-center justify-between gap-2 text-[13px]"
-                        >
-                          <span className="font-medium text-[var(--color-ink)]">
-                            {s.name}
-                          </span>
-                          <span className="text-[var(--color-neutral-500)]">
-                            {s.memberCount}
-                          </span>
-                          <Link
-                            href={`/customers?audienceId=${s.id}`}
-                            className="font-semibold text-[var(--color-primary-500)]"
-                          >
-                            Ver
-                          </Link>
-                          <Link
-                            href={`/campaigns?audienceId=${s.id}&audienceName=${encodeURIComponent(s.name)}`}
-                            className="font-semibold text-[var(--color-primary-500)]"
-                          >
-                            Campanha
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1181,6 +800,21 @@ export default function ReportsPage() {
               </div>
             </div>
 
+            {data.campaigns.length > 1 && (
+              <CampaignCompareChart
+                campaigns={data.campaigns.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  type: c.type,
+                  redeems: c.redeems,
+                  redeemers: c.redeemers,
+                  revenueCents: c.revenueFromRedeemersCents,
+                }))}
+                hrefFor={(id) => `/campaigns?highlight=${id}`}
+                periodHint="Resgates, pessoas e retorno no recorte deste relatório."
+              />
+            )}
+
             <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="text-[15px] font-semibold text-[var(--color-ink)]">
@@ -1198,66 +832,86 @@ export default function ReportsPage() {
                   Nenhuma atividade de campanha no período.
                 </p>
               ) : (
-                <div className="flex flex-col gap-3">
-                  <div className="hidden grid-cols-[minmax(0,2fr)_0.8fr_0.8fr_0.9fr_0.9fr_1fr] gap-3 text-[12px] font-medium text-[var(--color-neutral-400)] lg:grid">
+                <div className="flex flex-col gap-0">
+                  <div className="mb-1 hidden grid-cols-[minmax(0,2fr)_0.9fr_0.8fr_0.9fr_1.1fr] gap-3 text-[12px] font-medium text-[var(--color-neutral-400)] lg:grid">
                     <span>Campanha</span>
-                    <span>Resgates</span>
-                    <span>Resgatadores</span>
-                    <span>Engajamento</span>
-                    <span>Entrega</span>
-                    <span>Receita</span>
+                    <span>
+                      <TermInfo info={TERM.resgates}>Resgates</TermInfo>
+                    </span>
+                    <span>
+                      <TermInfo info={TERM.engajamento}>Engajamento</TermInfo>
+                    </span>
+                    <span>
+                      <TermInfo info={TERM.confirmados}>Confirmados</TermInfo>
+                    </span>
+                    <span>
+                      <TermInfo info={TERM.retorno} align="end">
+                        Receita no resgate
+                      </TermInfo>
+                    </span>
                   </div>
                   {data.campaigns.map((c) => (
                     <div
                       key={c.id}
-                      className="grid grid-cols-1 gap-1.5 border-t border-[var(--color-hairline)] pt-3 first:border-0 first:pt-0 lg:grid-cols-[minmax(0,2fr)_0.8fr_0.8fr_0.9fr_0.9fr_1fr] lg:items-center lg:gap-3"
+                      className="grid grid-cols-2 gap-x-3 gap-y-2.5 border-t border-[var(--color-hairline)] py-3.5 first:border-0 first:pt-0 lg:grid-cols-[minmax(0,2fr)_0.9fr_0.8fr_0.9fr_1.1fr] lg:items-center lg:gap-3 lg:py-3"
                     >
-                      <div className="min-w-0">
+                      <div className="col-span-2 min-w-0 lg:col-span-1">
                         <Link
                           href={`/campaigns?highlight=${c.id}`}
-                          className="truncate text-[13px] font-medium text-[var(--color-ink)] hover:text-[var(--color-primary-500)]"
+                          className="truncate text-[14px] font-semibold text-[var(--color-ink)] hover:text-[var(--color-primary-500)] lg:text-[13px] lg:font-medium"
                         >
                           {c.name}
                         </Link>
-                        <div className="text-[11px] text-[var(--color-neutral-400)]">
+                        <div className="text-[12px] text-[var(--color-neutral-400)] lg:text-[11px]">
                           {TYPE_LABEL[c.type] ?? c.type}
                           {c.audienceName ? ` · ${c.audienceName}` : ''}
                           {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                         </div>
                       </div>
-                      <span className="text-[13px] text-[var(--color-neutral-500)]">
-                        {c.redeems.toLocaleString('pt-BR')}
-                      </span>
-                      <span className="text-[13px] text-[var(--color-neutral-500)]">
-                        {c.redeemers.toLocaleString('pt-BR')}
-                        <span className="text-[11px] text-[var(--color-neutral-400)]">
-                          {' '}
-                          / {c.eligible}
-                        </span>
-                      </span>
-                      <span
-                        className={`text-[13px] font-semibold ${
-                          c.engagePct >= 20
-                            ? 'text-[var(--color-success)]'
-                            : 'text-[var(--color-neutral-500)]'
-                        }`}
-                      >
-                        {c.engagePct}%
-                      </span>
-                      <span
-                        className={`text-[13px] font-semibold ${
-                          c.type !== 'cashback' && c.fulfillPct >= 70
-                            ? 'text-[var(--color-success)]'
-                            : 'text-[var(--color-neutral-500)]'
-                        }`}
-                      >
-                        {c.type === 'cashback'
-                          ? '— no caixa'
-                          : `${c.fulfillPct}% entrega`}
-                      </span>
-                      <span className="text-[13px] text-[var(--color-neutral-500)]">
-                        {formatMoney(c.revenueFromRedeemersCents)}
-                      </span>
+                      <CampaignMetric
+                        label="Resgates"
+                        info={TERM.resgates}
+                        value={c.redeems.toLocaleString('pt-BR')}
+                        hint={peopleHint(c.redeemers, c.eligible)}
+                      />
+                      <CampaignMetric
+                        label="Engajamento"
+                        info={TERM.engajamento}
+                        value={
+                          <span
+                            className={`font-semibold ${
+                              c.engagePct >= 20
+                                ? 'text-[var(--color-success)]'
+                                : 'text-[var(--color-neutral-500)]'
+                            }`}
+                          >
+                            {c.engagePct}%
+                          </span>
+                        }
+                      />
+                      <CampaignMetric
+                        label="Confirmados"
+                        info={TERM.confirmados}
+                        value={
+                          <span
+                            className={`font-semibold ${
+                              c.type !== 'cashback' && c.fulfillPct >= 70
+                                ? 'text-[var(--color-success)]'
+                                : 'text-[var(--color-neutral-500)]'
+                            }`}
+                          >
+                            {c.type === 'cashback'
+                              ? 'No caixa'
+                              : `${c.fulfillPct}%`}
+                          </span>
+                        }
+                      />
+                      <CampaignMetric
+                        label="Receita no resgate"
+                        info={TERM.retorno}
+                        value={formatMoney(c.revenueFromRedeemersCents)}
+                        hint={formatCoverage(c.revenueCoverage)}
+                      />
                     </div>
                   ))}
                 </div>

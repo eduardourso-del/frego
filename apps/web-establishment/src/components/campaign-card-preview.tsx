@@ -1,8 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Banknote, Cake, Coins, Gift, ImageIcon, Stamp } from 'lucide-react';
+import { Banknote, Cake, CalendarRange, Coins, Gift, ImageIcon, Percent, Stamp } from 'lucide-react';
 import { RemoteImg } from '@/components/remote-img';
+import {
+  WEEKDAY_LABELS,
+  promoEndsLine,
+  promoRestrictsWeekdays,
+  promoWeekdays,
+  promoWeekdaysLabel,
+} from '@/lib/promo-label';
 
 type CampaignCardPreviewProps = {
   businessName: string;
@@ -10,13 +17,17 @@ type CampaignCardPreviewProps = {
   primaryColor: string;
   primaryColorDark?: string;
   campaignName: string;
-  campaignType: 'stamps' | 'spend' | 'birthday' | 'cashback';
+  campaignType: 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo';
   unitsNeeded: number;
   pointsPerReal?: number;
   cashbackPercent?: number;
   rewardTitle: string;
   rewardDescription?: string;
   rewardImageUrl?: string | null;
+  promoHint?: string;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  weekdays?: number[];
 };
 
 /** Cartão como o cliente vê — superfície clara, marca só como acento. */
@@ -32,6 +43,9 @@ export function CampaignCardPreview({
   rewardTitle,
   rewardDescription,
   rewardImageUrl,
+  promoHint,
+  endsOn,
+  weekdays,
 }: CampaignCardPreviewProps) {
   const needed = Math.max(1, Math.min(unitsNeeded || 10, 24));
   const sampleProgress =
@@ -96,7 +110,9 @@ export function CampaignCardPreview({
                     ? 'bg-[#FDF2F8] text-[#9D174D]'
                     : campaignType === 'cashback'
                       ? 'bg-[var(--color-cashback-bg)] text-[var(--color-cashback)]'
-                      : ''
+                      : campaignType === 'promo'
+                        ? 'bg-[var(--color-promo-bg)] text-[var(--color-promo)]'
+                        : ''
               }`}
               style={
                 campaignType === 'stamps'
@@ -113,6 +129,8 @@ export function CampaignCardPreview({
                 <Cake size={11} strokeWidth={2.5} aria-hidden />
               ) : campaignType === 'cashback' ? (
                 <Banknote size={11} strokeWidth={2.5} aria-hidden />
+              ) : campaignType === 'promo' ? (
+                <Percent size={11} strokeWidth={2.5} aria-hidden />
               ) : (
                 <Stamp size={11} strokeWidth={2.5} aria-hidden />
               )}
@@ -122,7 +140,9 @@ export function CampaignCardPreview({
                   ? 'Aniversário'
                   : campaignType === 'cashback'
                     ? 'Cashback'
-                    : 'Carimbos'}
+                    : campaignType === 'promo'
+                      ? 'Promoção'
+                      : 'Carimbos'}
             </span>
           </div>
 
@@ -142,6 +162,13 @@ export function CampaignCardPreview({
                     {reward} · 1× ao ano
                   </p>
                 </div>
+              ) : campaignType === 'promo' ? (
+                <PromoPreviewBody
+                  reward={reward}
+                  hint={promoHint}
+                  endsOn={endsOn}
+                  weekdays={weekdays}
+                />
               ) : campaignType === 'cashback' ? (
                 <>
                   <div className="mt-2 flex items-baseline gap-1">
@@ -217,7 +244,7 @@ export function CampaignCardPreview({
             </div>
           </div>
 
-          {!hasImage && campaignType !== 'birthday' && campaignType !== 'cashback' && (
+          {!hasImage && campaignType !== 'birthday' && campaignType !== 'cashback' && campaignType !== 'promo' && (
             <p className="mt-2 truncate text-[12px] font-medium text-[var(--color-neutral-500)]">
               {reward}
               {rewardDescription?.trim()
@@ -232,7 +259,11 @@ export function CampaignCardPreview({
             className="mt-3 flex min-h-9 w-full items-center justify-center rounded-[11px] text-[13px] font-semibold text-white"
             style={{ background: primaryColor }}
           >
-            {campaignType === 'cashback' ? 'Use no caixa' : 'Continuar acumulando'}
+            {campaignType === 'cashback'
+              ? 'Use no caixa'
+              : campaignType === 'promo' || campaignType === 'birthday'
+                ? 'Resgatar e mostrar'
+                : 'Continuar acumulando'}
           </button>
         </div>
       </div>
@@ -240,6 +271,56 @@ export function CampaignCardPreview({
       <p className="mt-2 text-[12px] text-[var(--color-neutral-400)]">
         Assim o cartão aparece no app do cliente.
       </p>
+    </div>
+  );
+}
+
+function PromoPreviewBody({
+  reward,
+  hint,
+  endsOn,
+  weekdays,
+}: {
+  reward: string;
+  hint?: string;
+  endsOn?: string | null;
+  weekdays?: number[];
+}) {
+  const ends = promoEndsLine(endsOn);
+  const days = promoWeekdays(weekdays);
+  const restricted = promoRestrictsWeekdays(days);
+
+  return (
+    <div className="mt-2 rounded-[10px] bg-[var(--color-promo-bg)] px-2.5 py-2">
+      <div className="flex items-center gap-2">
+        <Percent size={14} strokeWidth={2.25} className="shrink-0 text-[var(--color-promo)]" />
+        <p className="text-[11px] font-medium text-[var(--color-promo)]">
+          {reward}
+          {hint ? ` · ${hint}` : ' · resgate na loja'}
+        </p>
+      </div>
+      {ends ? (
+        <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-[var(--color-promo)]">
+          <CalendarRange size={12} strokeWidth={2.25} className="shrink-0" aria-hidden />
+          {ends}
+        </p>
+      ) : null}
+      {restricted ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {days.map((d) => (
+            <span
+              key={d}
+              className="rounded-[6px] bg-white px-1.5 py-0.5 text-[10px] font-semibold text-[var(--color-promo)] ring-1 ring-inset ring-[var(--color-promo-ring)]"
+            >
+              {WEEKDAY_LABELS[d]}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1 text-[10px] font-semibold text-[var(--color-promo)]">
+          {promoWeekdaysLabel(days)}
+        </p>
+      )}
     </div>
   );
 }

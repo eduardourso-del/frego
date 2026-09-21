@@ -5,6 +5,8 @@ import {
   AUDIENCE_PRESETS,
   countMembershipsByRules,
 } from '../lib/audience.js';
+import { buildIntelligence, INTEL_INACTIVE_DAYS, INTEL_LOOKBACK_DAYS } from '../lib/intelligence.js';
+import { foldCampaignReturn, foldStoreCampaignReturn, voucherBelongsToPeriod, voucherLookbackStart } from '../lib/campaign-return.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
@@ -178,11 +180,12 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get('/dashboard', async (request) => {
     const auth = requireAuth(request);
     const query = periodQuerySchema.parse(request.query);
-    const { key: range, from, toExclusive, prevFrom, prevTo } = resolvePeriod(
-      query,
-      { today: 'today', '7d': 7, '30d': 30 },
-      'today',
-    );
+    const { key: range, from, toExclusive, prevFrom, prevTo } =
+      resolvePeriod(
+        query,
+        { today: 'today', '7d': 7, '30d': 30 },
+        'today',
+      );
 
     const business = await prisma.business.findUniqueOrThrow({
       where: { id: auth.businessId },
@@ -208,6 +211,11 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       metadata: true,
     } as const;
 
+    const intelFrom = addDays(
+      startOfDay(new Date()),
+      -(INTEL_LOOKBACK_DAYS - 1),
+    );
+
     const [
       currentTxs,
       previousTxs,
@@ -216,6 +224,9 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       activeCampaigns,
       firstVisits,
       totalMembers,
+      intelTxs,
+      lateVoucherTxs,
+      prevLateVoucherTxs,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -279,7 +290,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         where: {
           businessId: auth.businessId,
           status: 'active',
-          type: { in: ['stamps', 'spend', 'cashback'] },
+          type: { in: ['stamps', 'spend', 'cashback', 'promo'] },
         },
         orderBy: { createdAt: 'asc' },
         select: {
@@ -299,6 +310,38 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         _min: { createdAt: true },
       }),
       prisma.membership.count({ where: { businessId: auth.businessId } }),
+      prisma.transaction.findMany({
+        where: {
+          businessId: auth.businessId,
+          createdAt: { gte: intelFrom, lt: new Date() },
+        },
+        select: txSelect,
+      }),
+      prisma.transaction.findMany({
+        where: {
+          businessId: auth.businessId,
+          type: 'redeem',
+          createdAt: { gte: voucherLookbackStart(from), lt: from },
+        },
+        select: txSelect,
+      }),
+      prisma.transaction.findMany({
+        where: {
+          businessId: auth.businessId,
+          type: 'redeem',
+          createdAt: { gte: voucherLookbackStart(prevFrom), lt: prevFrom },
+        },
+        select: {
+          type: true,
+          quantity: true,
+          membershipId: true,
+          createdAt: true,
+          amountCents: true,
+          unitKind: true,
+          campaignId: true,
+          metadata: true,
+        },
+      }),
     ]);
 
     const firstVisitByMember = new Map<string, Date>();
@@ -310,6 +353,25 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
 
     const current = summarizePeriod(currentTxs, firstVisitByMember);
     const previous = summarizePeriod(previousTxs, firstVisitByMember);
+    const intelLookback = summarizePeriod(intelTxs, firstVisitByMember);
+    const periodRange = { from, to: toExclusive };
+    const prevRange = { from: prevFrom, to: prevTo };
+    const campaignPeriodTxs = [
+      ...currentTxs,
+      ...lateVoucherTxs.filter((tx) => voucherBelongsToPeriod(tx, periodRange)),
+    ];
+    const prevCampaignPeriodTxs = [
+      ...previousTxs,
+      ...prevLateVoucherTxs.filter((tx) => voucherBelongsToPeriod(tx, prevRange)),
+    ];
+    const campaignReturn = foldStoreCampaignReturn(
+      campaignPeriodTxs,
+      periodRange,
+    );
+    const previousCampaignReturn = foldStoreCampaignReturn(
+      prevCampaignPeriodTxs,
+      prevRange,
+    );
 
     // Top clientes do período
     const topAggs = [...current.byMember.values()]
@@ -435,19 +497,46 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     // Campaign performance strip for dashboard
     const campaignStats = new Map<
       string,
-      { redeems: number; redeemers: Set<string>; used: number; total: number }
+      {
+        redeems: number;
+        redeemers: Set<string>;
+        used: number;
+        open: number;
+        expired: number;
+        total: number;
+      }
     >();
-    for (const tx of currentTxs as Array<
+    const campaignRedeemTxs = new Map<string, TxRow[]>();
+    for (const tx of campaignPeriodTxs as Array<
       TxRow & { campaignId?: string | null; metadata?: unknown }
     >) {
       if (shouldOmitFromLedger(tx.metadata)) continue;
       if (tx.type !== 'redeem' || !tx.campaignId) continue;
+      if (
+        !isCashbackUnit(tx.unitKind) &&
+        !voucherBelongsToPeriod(tx, periodRange)
+      ) {
+        continue;
+      }
       let s = campaignStats.get(tx.campaignId);
       if (!s) {
-        s = { redeems: 0, redeemers: new Set(), used: 0, total: 0 };
+        s = {
+          redeems: 0,
+          redeemers: new Set(),
+          used: 0,
+          open: 0,
+          expired: 0,
+          total: 0,
+        };
         campaignStats.set(tx.campaignId, s);
       }
       s.redeemers.add(tx.membershipId);
+      let list = campaignRedeemTxs.get(tx.campaignId);
+      if (!list) {
+        list = [];
+        campaignRedeemTxs.set(tx.campaignId, list);
+      }
+      list.push(tx);
       if (isCashbackUnit(tx.unitKind)) {
         s.redeems += 1;
         continue;
@@ -459,6 +548,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       if (voucher) {
         s.total += 1;
         if (voucher.status === 'used') s.used += 1;
+        else if (voucher.status === 'expired') s.expired += 1;
+        else s.open += 1;
       }
     }
 
@@ -468,6 +559,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         c.type === 'cashback' || !s || s.total === 0
           ? 0
           : Math.round((s.used / s.total) * 100);
+      const ret = foldCampaignReturn(campaignRedeemTxs.get(c.id) ?? [], {
+        isCashback: c.type === 'cashback',
+        range: periodRange,
+      });
       return {
         id: c.id,
         name: c.name,
@@ -480,17 +575,33 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         redeems: s?.redeems ?? 0,
         redeemers: s?.redeemers.size ?? 0,
         fulfillPct,
+        openVouchers: s?.open ?? 0,
+        usedVouchers: s?.used ?? 0,
+        expiredVouchers: s?.expired ?? 0,
+        redeemRevenueCents: ret.revenueCents,
+        revenueCoverage: ret.coverage,
       };
     });
-    const topCampaign = [...campaignPerf].sort(
-      (a, b) => b.redeems - a.redeems || b.fulfillPct - a.fulfillPct,
-    )[0] ?? null;
+    const moved = campaignPerf.filter((c) => c.redeems > 0);
+    const topCampaign =
+      [...moved].sort(
+        (a, b) =>
+          b.redeems - a.redeems ||
+          b.redeemRevenueCents - a.redeemRevenueCents ||
+          b.fulfillPct - a.fulfillPct,
+      )[0] ?? null;
+    const rest = campaignPerf.filter((c) => c.id !== topCampaign?.id);
+    const pendingConfirm = [...rest]
+      .filter((c) => c.type !== 'cashback' && c.openVouchers > 0)
+      .sort((a, b) => b.openVouchers - a.openVouchers);
+    const lowFulfill = [...rest]
+      .filter((c) => c.type !== 'cashback' && c.redeems > 0)
+      .sort((a, b) => a.fulfillPct - b.fulfillPct || a.redeems - b.redeems);
+    const idle = rest.filter((c) => c.redeems === 0);
     const weakCampaign =
-      [...campaignPerf]
-        .filter((c) => c.type !== 'cashback')
-        .filter((c) => c.redeems > 0 || activeCampaigns.length > 0)
-        .sort((a, b) => a.fulfillPct - b.fulfillPct || a.redeems - b.redeems)[0] ??
-      null;
+      pendingConfirm[0] ??
+      (lowFulfill[0] && lowFulfill[0].fulfillPct < 70 ? lowFulfill[0] : null) ??
+      (moved.length > 0 ? idle[0] ?? null : null);
 
     const audiencePresets = await Promise.all(
       AUDIENCE_PRESETS.map(async (p) => ({
@@ -503,13 +614,53 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     );
     const atRiskCount =
       audiencePresets.find((p) => p.key === 'at_risk')?.memberCount ?? 0;
+    const nearRewardCount =
+      audiencePresets.find((p) => p.key === 'near_reward')?.memberCount ?? 0;
+    const hasRewardCampaign = activeCampaigns.some(
+      (c) => c.type === 'stamps' || c.type === 'spend',
+    );
+
+    const inactiveFrom = addDays(
+      startOfDay(new Date()),
+      -(INTEL_INACTIVE_DAYS - 1),
+    );
+    const activeRecently = new Set<string>();
+    for (const tx of intelTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
+      if (tx.createdAt >= inactiveFrom) activeRecently.add(tx.membershipId);
+    }
+    const intelInactiveCount = Math.max(0, totalMembers - activeRecently.size);
+
+    const vipQuietCount = await prisma.membership.count({
+      where: {
+        businessId: auth.businessId,
+        isVip: true,
+        ...(activeRecently.size > 0
+          ? { id: { notIn: [...activeRecently] } }
+          : {}),
+      },
+    });
+
+    const intelligence = buildIntelligence({
+      totalMembers,
+      inactiveCount: intelInactiveCount,
+      current: {
+        customers: intelLookback.customers,
+        returning: intelLookback.returning,
+        spenders: [...intelLookback.byMember.values()],
+      },
+      nearRewardCount,
+      hasRewardCampaign,
+      vipQuietCount,
+      txs: intelTxs,
+    });
 
     const insight =
       atRiskCount > 0
         ? {
             title: `Alto valor: ${atRiskCount} sem visita há 30 dias`,
             body: `${atRiskCount} clientes que mais gastam estão sumidos. Crie uma campanha só para eles e chame de volta.`,
-            href: `/reports#audiencias`,
+            href: '/audiences',
             cta: 'Ver audiência',
           }
         : current.customers === 0
@@ -572,6 +723,13 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           value: current.newCustomers,
           deltaPct: deltaPct(current.newCustomers, previous.newCustomers),
         },
+        campaignReturnCents: {
+          value: campaignReturn.revenueCents,
+          deltaPct: deltaPct(
+            campaignReturn.revenueCents,
+            previousCampaignReturn.revenueCents,
+          ),
+        },
       },
       funnel: {
         base: totalMembers,
@@ -581,6 +739,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         inactive: inactiveBase,
       },
       insight,
+      intelligence,
       audiencePresets,
       audienceInsight: {
         key: 'at_risk',

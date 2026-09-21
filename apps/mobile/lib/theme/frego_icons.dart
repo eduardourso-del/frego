@@ -42,6 +42,10 @@ abstract final class FregoIcons {
       _lucide('cake', size: size, color: color);
   static Widget birthdayFilled({double size = 24, Color? color}) =>
       birthday(size: size, color: color);
+  static Widget promo({double size = 24, Color? color}) =>
+      _lucide('percent', size: size, color: color);
+  static Widget promoFilled({double size = 24, Color? color}) =>
+      promo(size: size, color: color);
 
   static const gift = Icons.card_giftcard_rounded;
   static const stampCheck = Icons.check_rounded;

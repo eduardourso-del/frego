@@ -11,6 +11,7 @@ class AppConfig {
   static const legalBaseUrl = 'https://frego.app.br';
   static const privacyPolicyUrl = '$legalBaseUrl/privacidade';
   static const termsOfUseUrl = '$legalBaseUrl/termos';
+  static const supportUrl = '$legalBaseUrl/suporte';
 
   static const _debugDefaultApiUrl = 'http://127.0.0.1:8080';
 

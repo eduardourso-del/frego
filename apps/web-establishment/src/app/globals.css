@@ -36,6 +36,12 @@
   --color-cashback: var(--color-cashback);
   --color-cashback-bg: var(--color-cashback-bg);
   --color-cashback-ring: var(--color-cashback-ring);
+  --color-promo: var(--color-promo);
+  --color-promo-bg: var(--color-promo-bg);
+  --color-promo-ring: var(--color-promo-ring);
+  --color-intel: var(--color-intel);
+  --color-intel-bg: var(--color-intel-bg);
+  --color-intel-fill: var(--color-intel-fill);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --radius-sm: var(--radius-sm);

@@ -4,6 +4,14 @@ Loyalty at the till and in the customer’s pocket. The phone number is the cust
 
 ## Language
 
+**Campanha**:
+A shop-defined program at a business that may entitle a Prêmio. Kinds: stamps, spend, birthday, cashback, Promoção.
+_Avoid_: offer, promotion (as the name for every Campanha)
+
+**Promoção**:
+A Campanha whose Prêmio is entitled by Audience, shop calendar, and a Resgatar frequency cap — not by stamps or points.
+_Avoid_: offer, gift, brinde, perk
+
 **Prêmio**:
 The in-store reward a customer is entitled to collect.
 _Avoid_: gift, reward, coupon

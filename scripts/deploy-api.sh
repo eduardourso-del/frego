@@ -17,8 +17,11 @@ fi
 
 # shellcheck disable=SC1090
 set -a
-# Load env without exporting comments/empty
-source <(grep -E '^[A-Z_]+=' "$ENV_FILE" | sed 's/\r$//')
+# Load via a temp file: `source <(grep …)` drops quoted DATABASE_URL on bash 3.2/macOS.
+ENV_EXPORT="$(mktemp)"
+grep -E '^[A-Z_]+=' "$ENV_FILE" | sed 's/\r$//' > "$ENV_EXPORT"
+source "$ENV_EXPORT"
+rm -f "$ENV_EXPORT"
 set +a
 
 : "${DATABASE_URL:?DATABASE_URL required}"

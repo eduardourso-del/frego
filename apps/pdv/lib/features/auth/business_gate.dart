@@ -38,18 +38,24 @@ class _BusinessGateState extends State<BusinessGate> {
     return ListenableBuilder(
       listenable: _session,
       builder: (context, _) {
+        // Always clear the native splash once Flutter is painting — otherwise a
+        // hung API call (e.g. debug localhost on a physical device) looks stuck.
+        removeFregoNativeSplash();
+
         if (_session.loading) {
           return const FregoSplash();
         }
-
-        removeFregoNativeSplash();
 
         if (_session.error != null && _session.businesses.isEmpty) {
           return _StatusScaffold(
             title: 'Sem loja',
             body: humanizeError(_session.error!),
-            actionLabel: 'Sair',
-            onAction: _session.signOut,
+            actionLabel: 'Tentar de novo',
+            onAction: _session.load,
+            extra: TextButton(
+              onPressed: _session.signOut,
+              child: const Text('Sair'),
+            ),
           );
         }
 

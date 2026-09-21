@@ -39,6 +39,9 @@ abstract final class FregoColors {
   static const cashback = Color(0xFF0F766E);
   static const cashbackBg = Color(0xFFF0FDFA);
   static const cashbackRing = Color(0xFF99F6E4);
+  static const promo = Color(0xFF0369A1);
+  static const promoBg = Color(0xFFF0F9FF);
+  static const promoRing = Color(0xFFBAE6FD);
 
   static const darkBg = Color(0xFF0C0D10);
   static const darkCard = Color(0xFF15171C);

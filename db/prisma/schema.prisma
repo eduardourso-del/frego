@@ -42,6 +42,16 @@ enum CampaignType {
   visits
   birthday
   cashback
+  promo
+}
+
+/// How often a customer may Resgatar a Promoção. Null on the Campanha means unlimited.
+enum PromoRedeemPeriod {
+  day
+  week
+  month
+  year
+  campaign
 }
 
 enum CampaignStatus {
@@ -151,6 +161,7 @@ model Business {
   memberships  Membership[]
   campaigns    Campaign[]
   audienceSegments AudienceSegment[]
+  tags         BusinessTag[]
   transactions Transaction[]
   billing      BillingAccount?
   whatsapp     BusinessWhatsAppConnection?
@@ -195,6 +206,7 @@ model TeamMember {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
   transactions Transaction[]
+  taggedMemberships MembershipTag[]
 
   @@unique([businessId, firebaseUid])
   @@index([firebaseUid])
@@ -262,11 +274,46 @@ model Membership {
   customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  tags         MembershipTag[]
 
   @@unique([customerId, businessId])
   @@index([businessId])
   @@index([customerId, isFavorite])
   @@map("memberships")
+}
+
+/// House-defined label. Catalog lives on the business; assignment is per membership.
+model BusinessTag {
+  id         String    @id @default(cuid())
+  businessId String    @map("business_id")
+  name       String
+  color      String?
+  sortOrder  Int       @default(0) @map("sort_order")
+  archivedAt DateTime? @map("archived_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  business    Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  memberships MembershipTag[]
+
+  @@index([businessId])
+  @@map("business_tags")
+}
+
+model MembershipTag {
+  membershipId         String   @map("membership_id")
+  tagId                String   @map("tag_id")
+  taggedAt             DateTime @default(now()) @map("tagged_at")
+  taggedByTeamMemberId String?  @map("tagged_by_team_member_id")
+
+  membership         Membership  @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  tag                BusinessTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  taggedByTeamMember TeamMember? @relation(fields: [taggedByTeamMemberId], references: [id], onDelete: SetNull)
+
+  @@id([membershipId, tagId])
+  @@index([tagId])
+  @@index([taggedByTeamMemberId])
+  @@map("membership_tags")
 }
 
 // ─── Campaigns & rewards ─────────────────────────────────────────────────────
@@ -283,6 +330,15 @@ model Campaign {
   pointsPerReal Int?          @map("points_per_real")
   /// Cashback: % do valor pago creditado em R$ (0–100). Só type cashback.
   cashbackPercent Int?        @map("cashback_percent")
+  /// Promoção: first calendar day (America/Sao_Paulo), inclusive.
+  startsOn     DateTime?      @map("starts_on") @db.Date
+  /// Promoção: last calendar day (America/Sao_Paulo), inclusive.
+  endsOn       DateTime?      @map("ends_on") @db.Date
+  /// Promoção: 0=Sun … 6=Sat in America/Sao_Paulo. Empty = all days.
+  weekdays     Int[]          @default([]) @map("weekdays")
+  /// Promoção: max Resgates in the period. Null = unlimited.
+  redeemMax    Int?           @map("redeem_max")
+  redeemPeriod PromoRedeemPeriod? @map("redeem_period")
   rewardTitle  String?        @map("reward_title")
   rewardDescription String?   @map("reward_description")
   /// Foto do prêmio (produto) — aparece no app e no balcão.

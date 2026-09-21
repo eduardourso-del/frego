@@ -60,16 +60,16 @@ NEXT_PUBLIC_META_EMBEDDED_CONFIG_ID=...
 6. Frego **auto-creates** templates `frego_earn_summary`, `frego_welcome`, and `frego_campaign_notice` (`pt_BR`) on that WABA after connect. Wait until status is **Approved** (shown in Configurações). You can also tap **Criar / sincronizar template**.
 7. Register a customer at the balcão → welcome WhatsApp. Stamp → earn WhatsApp from the **store’s** number once templates are approved.
 
-### Coexistence (after App Review)
+### Coexistence (production)
 
-Embedded Signup can launch with `featureType: whatsapp_business_app_onboarding`.
+Requires the Meta app in **Live** mode and **Advanced Access** on `whatsapp_business_management` + `whatsapp_business_messaging`. Embedded Signup launches with `featureType: whatsapp_business_app_onboarding`.
 
 - Owners keep WhatsApp Business app + Cloud API on the **same number**.
 - Frego **skips** `/PHONE_NUMBER_ID/register` for coexistence numbers.
 - Immediately after connect, Frego calls `smb_app_data` for contacts + history (Meta requires this within 24h).
 - Frego does **not** show an inbox yet; sync webhooks are accepted and stored so Meta does not offboard the number.
 
-**Before App Review**, use **Conectar para testes** (standard Cloud API Embedded Signup, no `featureType`). Coexistence needs Advanced Access and will fail with `#2655111` until Meta approves.
+UI: Configurações → **Conectar WhatsApp Business**. Fallback **Número só na API** is Cloud API without the Business app (dedicated / test number).
 
 Subscribe the Meta app webhook to (in addition to `messages` / `message_template_status_update`):
 
@@ -78,23 +78,17 @@ Subscribe the Meta app webhook to (in addition to `messages` / `message_template
 - `smb_message_echoes`
 - `account_update` (optional; detects app-side disconnect)
 
-### Pre–App Review testing
+### Production smoke test
 
-You can fully test connect + template + send **without** Advanced Access:
-
-1. Meta App Dashboard → **Roles** → add your Facebook user as **Admin** or **Developer**.
+1. Confirm App Dashboard → **App Mode: Live**, and WhatsApp permissions are **Advanced Access**.
 2. Fix or avoid restricted Business Portfolios (e.g. Bearlabs “Business restriction”).
-3. On production HTTPS ([voltei-establishment.vercel.app](https://voltei-establishment.vercel.app)) → Configurações → **Conectar para testes**.
-4. Complete Embedded Signup with an eligible portfolio + BR phone (or Meta sandbox / test number).
-5. Wait for `frego_earn_summary` **Approved** (or tap Criar / sincronizar template).
-6. Use **Enviar mensagem de teste** (`POST /whatsapp/test-send`) — record this for App Review videos.
-7. Optionally stamp a customer at `/counter` to validate the real earn path.
+3. On production HTTPS ([voltei-establishment.vercel.app](https://voltei-establishment.vercel.app)) → Configurações → **Conectar WhatsApp Business**.
+4. Complete Embedded Signup with the store’s WhatsApp Business number (app on the phone, version ≥ 2.24.17). Keep the app open a few minutes.
+5. Wait for templates **Approved** (or tap Criar / sincronizar template).
+6. Use **Enviar mensagem de teste** (`POST /whatsapp/test-send`).
+7. Register a customer / stamp at `/counter` and confirm welcome + earn WhatsApp from the store number.
 
-Limits until App Review + Access Verification:
-
-- Only people with app roles can complete Embedded Signup with the needed permissions.
-- You cannot onboard arbitrary third-party businesses yet.
-- Coexistence button stays secondary until Advanced Access is granted.
+If coexistence fails with `#2655111`, Advanced Access is not granted yet — use **Número só na API** as fallback.
 
 ### Earn template (auto)
 
@@ -158,7 +152,7 @@ Manual creation in WhatsApp Manager is only a fallback if the API create fails.
 | POST | `/whatsapp/ensure-template` | Owner/manager | Create earn template if missing + refresh status |
 | POST | `/whatsapp/sync-template` | Owner/manager | Refresh template status only |
 | POST | `/whatsapp/register-phone` | Owner/manager | Re-run Cloud API phone registration (not for coexistence) |
-| POST | `/whatsapp/test-send` | Owner/manager | `{ toE164 }` sample earn template for QA / App Review video |
+| POST | `/whatsapp/test-send` | Owner/manager | `{ toE164 }` sample earn template for QA |
 | POST | `/whatsapp/disconnect` | Owner/manager | Disconnect |
 | GET/POST | `/webhooks/meta` | Public (verify token) | Meta webhooks |
 
@@ -179,8 +173,8 @@ Earn paths (`POST /transactions`, customer `addFirstStamp`) call WhatsApp only i
 | `META_APP_NOT_CONFIGURED` | Set `META_APP_ID` + `META_APP_SECRET` on API |
 | `TOKEN_ENCRYPTION_NOT_CONFIGURED` | Set `WHATSAPP_TOKEN_ENCRYPTION_KEY` |
 | Stuck on Facebook cancel / `reentry_finish` URL | Popup didn’t finish — `selected_business_id` empty. Close it, retry, and complete Business + WABA + phone. Prefer **HTTPS** (Vercel); Meta documents HTTPS-only domains for Embedded Signup. Ensure app is Tech Provider / config is WhatsApp Embedded Signup. |
-| Phone number already registered / in use | Prefer **Conectar para testes** with a free Cloud API number, or coexistence after App Review. Personal WhatsApp cannot coexist. |
-| `#2655111` advanced permissions | Use **Conectar para testes** until App Review grants Advanced Access; coexistence needs that approval. |
+| Phone number already registered / in use | Prefer coexistence on that WhatsApp Business number, or **Número só na API** with a free Cloud API number. Personal WhatsApp cannot coexist. |
+| `#2655111` advanced permissions | App is Live but WhatsApp permissions still Standard Access. Grant Advanced Access, or use **Número só na API**. |
 | Business portfolio not eligible / restricted | Fix or appeal in Meta Business Support Home; or pick another portfolio |
 | `(#132001) Template name does not exist` | Template missing/unapproved on that WABA. Use **Criar / sincronizar template** or wait for Meta approval. |
 | `(#133010) Account not registered` | Cloud-only number not registered. Connect flow calls `/register` when not coexistence. Or `POST /whatsapp/register-phone`. Prefer a real BR number over Meta `+1 555…` test numbers for messaging `+55`. |

@@ -6,7 +6,20 @@ import {
   type CampaignWalletEntry,
   type WalletSnapshot,
 } from './wallet.js';
+import { foldCampaignReturn, type CampaignReturnCoverage, voucherBelongsToPeriod, voucherEventAt, voucherLookbackStart } from './campaign-return.js';
+import { shouldOmitFromLedger } from './ledger-meta.js';
 import { voucherFromMetadata } from './voucher.js';
+
+function parseTagIds(value: unknown): unknown {
+  if (value == null || value === '') return undefined;
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return value;
+}
 
 /** Audience rules v1 — stored as Campaign/AudienceSegment.rules JSON. */
 export const audienceRulesSchema = z.object({
@@ -20,6 +33,12 @@ export const audienceRulesSchema = z.object({
   visitsMax: z.number().int().nonnegative().nullable().optional(),
   nearReward: z.boolean().nullable().optional(),
   isVip: z.boolean().nullable().optional(),
+  /** Optional house tags — empty/omitted means no tag filter. */
+  tagIds: z.preprocess(
+    parseTagIds,
+    z.array(z.string().min(1)).max(40).optional(),
+  ),
+  tagMatch: z.enum(['any', 'all']).optional(),
 });
 
 export type AudienceRules = z.infer<typeof audienceRulesSchema>;
@@ -30,6 +49,7 @@ export type MembershipAudienceStats = {
   displayName: string | null;
   phoneE164: string;
   isVip: boolean;
+  tagIds: string[];
   spendCents: number;
   visits: number;
   lastVisitAt: Date | null;
@@ -62,7 +82,7 @@ export function parseAudienceRules(raw: unknown): AudienceRules {
 export function evaluateAudience(
   stats: Pick<
     MembershipAudienceStats,
-    'spendCents' | 'visits' | 'lastVisitAt' | 'isVip' | 'nearReward'
+    'spendCents' | 'visits' | 'lastVisitAt' | 'isVip' | 'nearReward' | 'tagIds'
   >,
   rules: AudienceRules,
   now = new Date(),
@@ -83,6 +103,16 @@ export function evaluateAudience(
   if (rules.isVip === false && stats.isVip) return false;
   if (rules.nearReward === true && !stats.nearReward) return false;
   if (rules.nearReward === false && stats.nearReward) return false;
+
+  const requiredTags = rules.tagIds?.filter(Boolean) ?? [];
+  if (requiredTags.length > 0) {
+    const held = new Set(stats.tagIds ?? []);
+    if (rules.tagMatch === 'all') {
+      if (!requiredTags.every((id) => held.has(id))) return false;
+    } else if (!requiredTags.some((id) => held.has(id))) {
+      return false;
+    }
+  }
 
   if (rules.inactiveDaysMin != null) {
     if (!stats.lastVisitAt) {
@@ -206,12 +236,46 @@ export async function loadMembershipAudienceStats(
   const from = windowFrom(rules, now);
   const needNear = rulesNeedNearReward(rules);
 
+  const requiredTags = rules.tagIds?.filter(Boolean) ?? [];
+  let membershipIdFilter = opts?.membershipIds;
+  const tagsByMember = new Map<string, string[]>();
+
+  if (requiredTags.length > 0) {
+    const taggedRows = await prisma.membershipTag.findMany({
+      where: {
+        tagId: { in: requiredTags },
+        membership: { businessId },
+        ...(opts?.membershipIds
+          ? { membershipId: { in: opts.membershipIds } }
+          : {}),
+      },
+      select: { membershipId: true, tagId: true },
+    });
+    const byMember = new Map<string, Set<string>>();
+    for (const row of taggedRows) {
+      const set = byMember.get(row.membershipId) ?? new Set<string>();
+      set.add(row.tagId);
+      byMember.set(row.membershipId, set);
+      const list = tagsByMember.get(row.membershipId) ?? [];
+      list.push(row.tagId);
+      tagsByMember.set(row.membershipId, list);
+    }
+    const matchedIds: string[] = [];
+    for (const [id, held] of byMember) {
+      const ok =
+        rules.tagMatch === 'all'
+          ? requiredTags.every((tagId) => held.has(tagId))
+          : requiredTags.some((tagId) => held.has(tagId));
+      if (ok) matchedIds.push(id);
+    }
+    membershipIdFilter = matchedIds;
+    if (membershipIdFilter.length === 0) return [];
+  }
+
   const memberships = await prisma.membership.findMany({
     where: {
       businessId,
-      ...(opts?.membershipIds
-        ? { id: { in: opts.membershipIds } }
-        : {}),
+      ...(membershipIdFilter ? { id: { in: membershipIdFilter } } : {}),
     },
     select: {
       id: true,
@@ -251,10 +315,18 @@ export async function loadMembershipAudienceStats(
         const wallet = await deriveWallet(m.id, businessId);
         const primary =
           wallet.campaigns.find(
-            (c) => c.type !== 'birthday' && c.canRedeem,
+            (c) =>
+              c.type !== 'birthday' &&
+              c.type !== 'cashback' &&
+              c.type !== 'promo' &&
+              c.canRedeem,
           ) ??
-          wallet.campaigns.find((c) => c.type !== 'birthday') ??
-          wallet.campaigns[0] ??
+          wallet.campaigns.find(
+            (c) =>
+              c.type !== 'birthday' &&
+              c.type !== 'cashback' &&
+              c.type !== 'promo',
+          ) ??
           null;
         return [
           m.id,
@@ -278,6 +350,7 @@ export async function loadMembershipAudienceStats(
       displayName: m.customer.displayName,
       phoneE164: m.customer.phoneE164,
       isVip: m.isVip,
+      tagIds: tagsByMember.get(m.id) ?? [],
       spendCents: agg.spendCents,
       visits: agg.visits,
       lastVisitAt: agg.lastVisitAt,
@@ -408,6 +481,7 @@ export type CampaignPerformance = {
   usedVouchers: number;
   expiredVouchers: number;
   revenueFromRedeemersCents: number;
+  revenueCoverage: CampaignReturnCoverage;
   engagePct: number;
   cashbackSpentCents?: number;
   cashbackEarnedCents?: number;
@@ -453,35 +527,48 @@ export async function computeCampaignPerformance(
     eligible = active.length;
   }
 
-  const campaignTxs = await prisma.transaction.findMany({
-    where: {
-      businessId,
-      campaignId,
-      createdAt: { gte: range.from, lt: range.to },
-      ...(isCashback
-        ? { unitKind: 'cashback_cents' }
-        : { type: 'redeem' }),
-    },
-    select: {
-      type: true,
-      membershipId: true,
-      quantity: true,
-      metadata: true,
-      createdAt: true,
-      amountCents: true,
-      membership: {
-        select: {
-          customer: { select: { displayName: true, phoneE164: true } },
+  const campaignTxs = (
+    await prisma.transaction.findMany({
+      where: {
+        businessId,
+        campaignId,
+        createdAt: { gte: voucherLookbackStart(range.from), lt: range.to },
+        ...(isCashback
+          ? { unitKind: 'cashback_cents' }
+          : { type: 'redeem' }),
+      },
+      select: {
+        type: true,
+        membershipId: true,
+        quantity: true,
+        metadata: true,
+        createdAt: true,
+        amountCents: true,
+        unitKind: true,
+        membership: {
+          select: {
+            customer: { select: { displayName: true, phoneE164: true } },
+          },
         },
       },
-    },
-  });
+    })
+  ).filter((tx) => !shouldOmitFromLedger(tx.metadata));
 
-  const redeemTxs = isCashback
+  const redeemTxs = (isCashback
     ? campaignTxs.filter((tx) => tx.type === 'redeem')
-    : campaignTxs;
+    : campaignTxs
+  ).filter((tx) =>
+    isCashback
+      ? tx.createdAt >= range.from && tx.createdAt < range.to
+      : voucherBelongsToPeriod(tx, { from: range.from, to: range.to }),
+  );
   const earnTxs = isCashback
-    ? campaignTxs.filter((tx) => tx.type !== 'redeem')
+    ? campaignTxs.filter(
+        (tx) =>
+          tx.type !== 'redeem' &&
+          tx.createdAt >= range.from &&
+          tx.createdAt < range.to,
+      )
     : [];
 
   const redeemerMap = new Map<
@@ -538,30 +625,11 @@ export async function computeCampaignPerformance(
   const engagePct =
     eligible === 0 ? 0 : Math.round((redeemers / eligible) * 100);
 
-  let revenueFromRedeemersCents = 0;
-  if (isCashback) {
-    for (const tx of redeemTxs) {
-      if (tx.amountCents) revenueFromRedeemersCents += tx.amountCents;
-    }
-  } else {
-    const redeemerIds = [...redeemerMap.keys()];
-    if (redeemerIds.length > 0) {
-      const spendTxs = await prisma.transaction.findMany({
-        where: {
-          businessId,
-          membershipId: { in: redeemerIds },
-          type: 'stamp',
-          createdAt: { gte: range.from, lt: range.to },
-          amountCents: { not: null },
-        },
-        select: { amountCents: true, unitKind: true },
-      });
-      for (const tx of spendTxs) {
-        if (tx.unitKind === 'cashback_cents') continue;
-        if (tx.amountCents) revenueFromRedeemersCents += tx.amountCents;
-      }
-    }
-  }
+  const campaignReturn = foldCampaignReturn(redeemTxs, {
+    isCashback,
+    range: { from: range.from, to: range.to },
+  });
+  const revenueFromRedeemersCents = campaignReturn.revenueCents;
 
   const seriesSource = isCashback ? redeemTxs : redeemTxs;
   const series = Array.from({ length: range.days }, (_, i) => {
@@ -569,7 +637,7 @@ export async function computeCampaignPerformance(
     const key = dayKey(day);
     let dayRedeems = 0;
     for (const tx of seriesSource) {
-      if (dayKey(tx.createdAt) !== key) continue;
+      if (dayKey(voucherEventAt(tx)) !== key) continue;
       dayRedeems += isCashback ? 1 : tx.quantity;
     }
     return { date: key, redeems: dayRedeems };
@@ -595,6 +663,7 @@ export async function computeCampaignPerformance(
     usedVouchers,
     expiredVouchers,
     revenueFromRedeemersCents,
+    revenueCoverage: campaignReturn.coverage,
     engagePct,
     ...(isCashback ? { cashbackSpentCents, cashbackEarnedCents } : {}),
     series,
@@ -611,7 +680,8 @@ export function queryRulesFromParams(query: Record<string, string | undefined>):
     query.visitsMin != null ||
     query.visitsMax != null ||
     query.nearReward != null ||
-    query.isVip != null;
+    query.isVip != null ||
+    (query.tagIds != null && query.tagIds !== '');
   if (!hasAny) return null;
 
   const num = (v: string | undefined) => {
@@ -636,6 +706,8 @@ export function queryRulesFromParams(query: Record<string, string | undefined>):
     visitsMax: num(query.visitsMax),
     nearReward: bool(query.nearReward),
     isVip: bool(query.isVip),
+    tagIds: query.tagIds,
+    tagMatch: query.tagMatch === 'all' ? 'all' : query.tagMatch === 'any' ? 'any' : undefined,
   });
 }
 
@@ -790,9 +862,13 @@ export async function resolveMembershipRecognition(
       audienceUnlockMessage:
         c.type === 'cashback'
           ? `${title} — cashback no caixa`
-          : c.canRedeem
-            ? `Conquista liberada · ${title}`
-            : `${title} — continue acumulando para o prêmio exclusivo`,
+          : c.type === 'promo'
+            ? c.canRedeem
+              ? `Conquista liberada · ${title}`
+              : `${title} — disponível nas regras da promoção`
+            : c.canRedeem
+              ? `Conquista liberada · ${title}`
+              : `${title} — continue acumulando para o prêmio exclusivo`,
     };
   });
 

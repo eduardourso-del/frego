@@ -6,6 +6,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/promo_copy.dart';
 import '../../ui/shop_summary_card.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
@@ -254,6 +255,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     final canRedeem = campaign['canRedeem'] == true;
     final isCashback = type == 'cashback';
     final isBirthday = type == 'birthday';
+    final isPromo = type == 'promo';
     final cashbackBalance =
         (campaign['cashbackBalanceCents'] as num?)?.toInt() ?? cashbackCents;
     final pool = type == 'spend'
@@ -285,6 +287,16 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
               : lockedReason == 'already_redeemed'
                   ? 'Já resgatado este ano'
                   : 'Ainda não liberou';
+    } else if (isPromo) {
+      statusHint = promoStatusLine(
+        lockedReason: lockedReason,
+        canRedeem: canRedeem,
+        unlocksAt: unlocksAt,
+      );
+      buttonLabel = promoButtonLabel(
+        lockedReason: lockedReason,
+        canRedeem: canRedeem,
+      );
     } else if (isCashback) {
       if (audienceLocked) {
         statusHint = 'Promo exclusiva para outro perfil de cliente';
@@ -362,6 +374,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
         cashbackBalanceCents: cashbackBalance,
         busy: _redeeming,
+        promoCalendar: isPromo ? PromoCalendar.fromCampaign(campaign) : null,
         audienceUnlocked: audienceEligible && !audienceLocked,
         audienceLabel: unlockMessage ??
             (audienceEligible ? 'Conquista liberada pra você' : null),
@@ -369,6 +382,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
             ? null
             : () => _redeem(campaign),
       ),
+      if (isPromo) ..._promoWhenSection(campaign),
       if (isCashback) ..._cashbackLotSections(),
       if (description != null && description.isNotEmpty) ...[
         const SizedBox(height: 20),
@@ -391,6 +405,78 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
           ),
         ),
       ],
+    ];
+  }
+
+  List<Widget> _promoWhenSection(Map<String, dynamic> campaign) {
+    final calendar = PromoCalendar.fromCampaign(campaign);
+    final ends = promoEndsLine(calendar);
+    final restricted = calendar.restrictsWeekdays;
+    return [
+      const SizedBox(height: 20),
+      const Text(
+        'Quando vale',
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.04,
+          color: FregoColors.neutral400,
+        ),
+      ),
+      if (ends != null) ...[
+        const SizedBox(height: 8),
+        Text(
+          ends,
+          style: const TextStyle(
+            fontSize: 15,
+            height: 1.4,
+            color: FregoColors.ink,
+          ),
+        ),
+      ],
+      const SizedBox(height: 10),
+      if (restricted)
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final d in calendar.weekdays)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: FregoColors.promoBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: FregoColors.promoRing),
+                ),
+                child: Text(
+                  kPromoWeekdayLabels[d],
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: FregoColors.promo,
+                  ),
+                ),
+              ),
+          ],
+        )
+      else
+        const Text(
+          'Todos os dias',
+          style: TextStyle(
+            fontSize: 15,
+            height: 1.4,
+            color: FregoColors.ink,
+          ),
+        ),
+      const SizedBox(height: 8),
+      Text(
+        promoFrequencyLine(calendar),
+        style: const TextStyle(
+          fontSize: 13,
+          height: 1.4,
+          color: FregoColors.neutral500,
+        ),
+      ),
     ];
   }
 

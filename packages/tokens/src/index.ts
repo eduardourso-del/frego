@@ -39,6 +39,9 @@ export const colors = {
     cashback: '#0F766E',
     cashbackBg: '#F0FDFA',
     cashbackRing: '#99F6E4',
+    promo: '#0369A1',
+    promoBg: '#F0F9FF',
+    promoRing: '#BAE6FD',
   },
   dark: {
     primary500: '#5C82DE',
@@ -69,6 +72,9 @@ export const colors = {
     cashback: '#5EEAD4',
     cashbackBg: 'rgba(15, 118, 110, 0.18)',
     cashbackRing: 'rgba(94, 234, 212, 0.30)',
+    promo: '#7DD3FC',
+    promoBg: 'rgba(3, 105, 161, 0.18)',
+    promoRing: 'rgba(125, 211, 252, 0.30)',
   },
 } as const;
 

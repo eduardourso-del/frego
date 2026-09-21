@@ -65,6 +65,29 @@ class StaffBusiness {
   }
 }
 
+class CustomerTag {
+  const CustomerTag({required this.id, required this.name, this.color});
+
+  final String id;
+  final String name;
+  final String? color;
+
+  factory CustomerTag.fromJson(Map<String, dynamic> json) {
+    return CustomerTag(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      color: json['color'] as String?,
+    );
+  }
+}
+
+List<CustomerTag> parseTags(Object? raw) {
+  return jsonMaps(raw)
+      .map(CustomerTag.fromJson)
+      .where((t) => t.id.isNotEmpty)
+      .toList();
+}
+
 class CustomerMatch {
   const CustomerMatch({
     required this.customerId,
@@ -73,6 +96,7 @@ class CustomerMatch {
     this.isVip = false,
     this.membershipId,
     this.associatedHere = true,
+    this.tags = const [],
   });
 
   final String customerId;
@@ -81,6 +105,7 @@ class CustomerMatch {
   final bool isVip;
   final String? membershipId;
   final bool associatedHere;
+  final List<CustomerTag> tags;
 
   factory CustomerMatch.fromJson(Map<String, dynamic> json) {
     return CustomerMatch(
@@ -90,6 +115,7 @@ class CustomerMatch {
       isVip: json['isVip'] as bool? ?? false,
       membershipId: json['membershipId'] as String?,
       associatedHere: json['associatedHere'] as bool? ?? true,
+      tags: parseTags(json['tags']),
     );
   }
 }
@@ -189,6 +215,7 @@ class LookupResult {
     this.pointsPerReal,
     this.cashbackPercent,
     this.matches = const [],
+    this.tags = const [],
     this.openVouchers = const [],
     this.recentSales = const [],
     this.activeEarnKinds = const [],
@@ -211,6 +238,7 @@ class LookupResult {
   final int? pointsPerReal;
   final int? cashbackPercent;
   final List<CustomerMatch> matches;
+  final List<CustomerTag> tags;
   final List<OpenVoucher> openVouchers;
   final List<CounterSale> recentSales;
   final List<String> activeEarnKinds;
@@ -224,6 +252,7 @@ class LookupResult {
     String? membershipId,
     List<OpenVoucher>? openVouchers,
     List<CounterSale>? recentSales,
+    List<CustomerTag>? tags,
   }) {
     return LookupResult(
       found: found,
@@ -242,6 +271,7 @@ class LookupResult {
       pointsPerReal: pointsPerReal,
       cashbackPercent: cashbackPercent,
       matches: matches,
+      tags: tags ?? this.tags,
       openVouchers: openVouchers ?? this.openVouchers,
       recentSales: recentSales ?? this.recentSales,
       activeEarnKinds: activeEarnKinds,
@@ -281,6 +311,7 @@ class LookupResult {
           (json['cashbackPercent'] as num?)?.toInt() ??
           (cashback?['percent'] as num?)?.toInt(),
       matches: jsonMaps(json['matches']).map(CustomerMatch.fromJson).toList(),
+      tags: parseTags(json['tags']),
       openVouchers: jsonMaps(json['openVouchers'])
           .map(OpenVoucher.fromJson)
           .where((v) => v.transactionId.isNotEmpty)
@@ -336,6 +367,7 @@ class FulfillResult {
     this.usedAt,
     this.transactionId,
     this.voucherCode,
+    this.amountCents,
   });
 
   final FulfillKind kind;
@@ -347,6 +379,7 @@ class FulfillResult {
   final DateTime? usedAt;
   final String? transactionId;
   final String? voucherCode;
+  final int? amountCents;
 }
 
 enum FulfillKind { used, alreadyUsed, expired, notFound, error }
@@ -374,6 +407,19 @@ class PdvApi {
     );
   }
 
+  Future<List<CustomerTag>> listTags() async {
+    final json = await _get('/tags');
+    return parseTags(json['tags']);
+  }
+
+  Future<List<CustomerTag>> patchCustomerTags({
+    required String customerId,
+    required List<String> tagIds,
+  }) async {
+    final json = await _patch('/customers/$customerId', {'tagIds': tagIds});
+    return parseTags(json['tags']);
+  }
+
   Future<LookupResult> lookup({String? last4, String? phone}) async {
     final json = await _post(
       '/customers/lookup',
@@ -386,10 +432,13 @@ class PdvApi {
   Future<LookupResult> createCustomer({
     required String phone,
     bool addFirstStamp = false,
+    String? displayName,
   }) async {
+    final name = displayName?.trim();
     final json = await _post('/customers', {
       'phone': phone,
       'addFirstStamp': addFirstStamp,
+      if (name != null && name.isNotEmpty) 'displayName': name,
     });
     final customer = json['customer'] as Map<String, dynamic>? ?? {};
     final membership = json['membership'] as Map<String, dynamic>?;
@@ -407,6 +456,7 @@ class PdvApi {
       displayName: customer['displayName'] as String?,
       membershipId: membership?['id'] as String?,
       isVip: membership?['isVip'] as bool? ?? false,
+      tags: parseTags(json['tags']),
       stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
       points: (pools?['points'] as num?)?.toInt() ?? 0,
       cashbackCents: (pools?['cashbackCents'] as num?)?.toInt() ?? 0,
@@ -471,6 +521,7 @@ class PdvApi {
     String? voucherCode,
     String? transactionId,
     bool acceptExpired = false,
+    int? amountCents,
   }) async {
     final json = await _post(
       '/vouchers/fulfill',
@@ -478,6 +529,7 @@ class PdvApi {
         'voucherCode': ?voucherCode,
         'transactionId': ?transactionId,
         if (acceptExpired) 'acceptExpired': true,
+        'amountCents': ?amountCents,
       },
       allowStatuses: const {404, 409},
     );
@@ -521,15 +573,26 @@ class PdvApi {
       expiresAt: voucher?['expiresAt'] != null
           ? DateTime.tryParse(voucher!['expiresAt'] as String)
           : null,
+      amountCents: (voucher?['amountCents'] as num?)?.toInt(),
     );
   }
 
+  static const _timeout = Duration(seconds: 20);
+
   Future<Map<String, dynamic>> _get(String path) async {
-    final res = await http.get(
-      Uri.parse('$_base$path'),
-      headers: await _headers(),
-    );
-    return _decode(res);
+    try {
+      final res = await http
+          .get(
+            Uri.parse('$_base$path'),
+            headers: await _headers(),
+          )
+          .timeout(_timeout);
+      return _decode(res);
+    } on ApiException {
+      rethrow;
+    } on Exception catch (e) {
+      throw _networkError(e);
+    }
   }
 
   Future<Map<String, dynamic>> _post(
@@ -537,12 +600,47 @@ class PdvApi {
     Map<String, dynamic> body, {
     Set<int> allowStatuses = const {},
   }) async {
-    final res = await http.post(
-      Uri.parse('$_base$path'),
-      headers: await _headers(),
-      body: jsonEncode(body),
+    try {
+      final res = await http
+          .post(
+            Uri.parse('$_base$path'),
+            headers: await _headers(),
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return _decode(res, allowStatuses: allowStatuses);
+    } on ApiException {
+      rethrow;
+    } on Exception catch (e) {
+      throw _networkError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> _patch(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final res = await http
+          .patch(
+            Uri.parse('$_base$path'),
+            headers: await _headers(),
+            body: jsonEncode(body),
+          )
+          .timeout(_timeout);
+      return _decode(res);
+    } on ApiException {
+      rethrow;
+    } on Exception catch (e) {
+      throw _networkError(e);
+    }
+  }
+
+  ApiException _networkError(Exception e) {
+    return ApiException(
+      code: 'NETWORK',
+      message: 'Sem conexão com a API ($_base). $e',
     );
-    return _decode(res, allowStatuses: allowStatuses);
   }
 
   Map<String, dynamic> _decode(

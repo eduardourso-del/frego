@@ -81,19 +81,44 @@ export function audienceRulesQuery(rules: Record<string, unknown>) {
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(rules)) {
     if (k === 'version' || v == null) continue;
+    if (Array.isArray(v)) {
+      if (v.length === 0) continue;
+      params.set(k, v.join(','));
+      continue;
+    }
     params.set(k, String(v));
   }
   return params.toString();
 }
 
-export function campaignCreateHref(rules: Record<string, unknown>, name?: string) {
+export function campaignCreateHref(
+  rules?: Record<string, unknown> | null,
+  name?: string,
+  extras?: {
+    campaignName?: string;
+    rewardTitle?: string;
+  },
+) {
   const params = new URLSearchParams();
-  params.set('fromAudience', '1');
-  if (name) params.set('audienceName', name);
-  for (const [k, v] of Object.entries(rules)) {
-    if (k === 'version' || v == null) continue;
-    params.set(k, String(v));
+  params.set('compose', '1');
+  const hasRules =
+    !!rules &&
+    Object.entries(rules).some(([k, v]) => k !== 'version' && v != null);
+  if (hasRules && rules) {
+    params.set('fromAudience', '1');
+    if (name) params.set('audienceName', name);
+    for (const [k, v] of Object.entries(rules)) {
+      if (k === 'version' || v == null) continue;
+      if (Array.isArray(v)) {
+        if (v.length === 0) continue;
+        params.set(k, v.join(','));
+        continue;
+      }
+      params.set(k, String(v));
+    }
   }
+  if (extras?.campaignName) params.set('campaignName', extras.campaignName);
+  if (extras?.rewardTitle) params.set('rewardTitle', extras.rewardTitle);
   return `/campaigns?${params.toString()}`;
 }
 

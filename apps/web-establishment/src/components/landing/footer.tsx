@@ -5,13 +5,13 @@ import { FregoWordmark } from '@/components/brand';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 
 const productLinks = [
-  { href: '#fregueses', label: 'A promessa' },
   { href: '#como-funciona', label: 'Como funciona' },
-  { href: '#campanhas', label: 'Campanhas' },
-  { href: '#audiencias', label: 'Audiências' },
+  { href: '#atencao', label: 'Quem merece atenção' },
+  { href: '#hoje', label: 'Inteligência' },
+  { href: '#resultado', label: 'Resultado' },
+  { href: '#campanhas', label: 'Relacionamento' },
   { href: '#app', label: 'App do cliente' },
-  { href: '#resultado', label: 'No caixa' },
-  { href: '#comparacao', label: 'Por que o Frego' },
+  { href: '#simplicidade', label: 'Simplicidade' },
 ];
 
 const accountLinks = [
@@ -20,6 +20,7 @@ const accountLinks = [
 ];
 
 const legalLinks = [
+  { href: '/suporte', label: 'Suporte' },
   { href: '/privacidade', label: 'Privacidade' },
   { href: '/termos', label: 'Termos de uso' },
 ];
@@ -31,8 +32,8 @@ export function LandingFooter() {
         <div>
           <FregoWordmark height={28} />
           <p className="mt-4 max-w-sm text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
-            Não vendemos fidelidade. Criamos fregueses. Relacionamentos que fazem
-            o cliente do negócio local voltar — com WhatsApp, IA e automações.
+            Transforme clientes em fregueses. Inteligência comercial simples
+            para o pequeno negócio local — sem CRM, sem equipe de marketing.
           </p>
           <p className="mt-4 text-[13px] text-[var(--color-neutral-500)]">
             Contato:{' '}
@@ -83,7 +84,7 @@ export function LandingFooter() {
 
         <div>
           <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
-            Legal
+            Ajuda
           </p>
           <ul className="mt-3 space-y-2">
             {legalLinks.map((l) => (
@@ -107,6 +108,9 @@ export function LandingFooter() {
             reservados.
           </p>
           <p className="flex flex-wrap gap-x-3 gap-y-1">
+            <Link href="/suporte" className="hover:text-[var(--color-ink)]">
+              Suporte
+            </Link>
             <Link href="/privacidade" className="hover:text-[var(--color-ink)]">
               Privacidade
             </Link>

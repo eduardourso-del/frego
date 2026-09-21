@@ -15,6 +15,7 @@ class AuthGate extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          removeFregoNativeSplash();
           return const FregoSplash();
         }
         final user = snap.data;

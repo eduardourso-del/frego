@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_error.dart';
 import '../api/pdv_api.dart';
+import '../config/app_config.dart';
 
 class StaffSession extends ChangeNotifier {
   StaffSession({required this.user});
@@ -30,12 +31,37 @@ class StaffSession extends ChangeNotifier {
   String _storageKey() => 'frego.activeBusinessId.${user.uid}';
 
   Future<Map<String, String>> authHeaders() async {
-    final token = await user.getIdToken();
+    final token = await _idToken();
     return {
-      'Authorization': 'Bearer $token',
+      if (token != null) 'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
       'X-Business-Id': ?businessId,
     };
+  }
+
+  /// Local API (`AUTH_BYPASS`) can run without a bearer. Production cannot.
+  Future<String?> _idToken() async {
+    final current = FirebaseAuth.instance.currentUser ?? user;
+    try {
+      final token = await current.getIdToken();
+      if (token != null && token.isNotEmpty) return token;
+    } on FirebaseAuthException catch (e) {
+      if (AppConfig.isLocalDebugApi) {
+        debugPrint(
+          'PDV local: token Firebase indisponível (${e.code}). AUTH_BYPASS.',
+        );
+        return null;
+      }
+      throw ApiException(
+        code: 'AUTH',
+        message: 'Falha ao autenticar (${e.code}). ${e.message ?? ''}'.trim(),
+      );
+    }
+    if (AppConfig.isLocalDebugApi) return null;
+    throw ApiException(
+      code: 'AUTH',
+      message: 'Sessão expirada. Entre de novo.',
+    );
   }
 
   Future<void> load() async {

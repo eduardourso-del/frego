@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Target,
+  Layers,
   BarChart3,
   Settings,
   Stamp,
@@ -22,6 +23,7 @@ import { PendingGate } from '@/components/pending-gate';
 const mainNav = [
   { href: '/dashboard', label: 'Painel', icon: LayoutDashboard },
   { href: '/customers', label: 'Clientes', icon: Users },
+  { href: '/audiences', label: 'Audiências', icon: Layers },
   { href: '/campaigns', label: 'Campanhas', icon: Target },
   { href: '/reports', label: 'Relatórios', icon: BarChart3 },
 ];
@@ -92,6 +94,7 @@ export function AppShell({
   const moreActive =
     isActivePath(pathname, '/settings') ||
     isActivePath(pathname, '/reports') ||
+    isActivePath(pathname, '/audiences') ||
     moreOpen;
 
   const brandTheme = business?.primaryColor
@@ -199,7 +202,7 @@ export function AppShell({
 
   return (
     <div
-      className="flex h-dvh overflow-hidden bg-[var(--color-bg)]"
+      className="flex h-dvh overflow-hidden bg-[var(--color-bg)] [--app-sidebar-w:228px]"
       style={brandTheme}
     >
       {/* Desktop sidebar */}
@@ -384,7 +387,7 @@ export function AppShell({
                   Mais
                 </p>
                 <p className="text-[13px] text-[var(--color-neutral-500)]">
-                  Relatórios, configurações e a conta
+                  Audiências, relatórios, configurações e a conta
                 </p>
               </div>
               <button
@@ -436,6 +439,12 @@ export function AppShell({
               ) : null}
 
               <div className="flex flex-col gap-0.5">
+                <NavLink
+                  href="/audiences"
+                  label="Audiências"
+                  icon={Layers}
+                  onNavigate={() => setMoreOpen(false)}
+                />
                 <NavLink
                   href="/reports"
                   label="Relatórios"

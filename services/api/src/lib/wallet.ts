@@ -1,5 +1,10 @@
 import { prisma } from '@frego/db';
 import { shouldOmitFromLedger } from './ledger-meta.js';
+import {
+  civilYmd,
+  evaluatePromoEntitlement,
+  normalizeWeekdays,
+} from './promo.js';
 
 export type UnitKind = 'stamps' | 'points' | 'cashback_cents';
 
@@ -15,10 +20,19 @@ export type BirthdayLockedReason =
   | 'already_redeemed'
   | 'audience';
 
+export type PromoLockedReason =
+  | 'outside_dates'
+  | 'wrong_weekday'
+  | 'open_voucher'
+  | 'quota_exhausted'
+  | 'audience';
+
+export type CampaignLockedReason = BirthdayLockedReason | PromoLockedReason;
+
 export type CampaignWalletEntry = {
   campaignId: string;
   campaignName: string;
-  type: 'stamps' | 'spend' | 'visits' | 'birthday' | 'cashback';
+  type: 'stamps' | 'spend' | 'visits' | 'birthday' | 'cashback' | 'promo';
   /** Meta da recompensa (carimbos ou pontos). */
   unitsNeeded: number;
   /** @deprecated use unitsNeeded */
@@ -34,12 +48,18 @@ export type CampaignWalletEntry = {
   rewardImageUrl: string | null;
   /** Quantas recompensas cabem no pool atual (floor). */
   rewardsAvailable: number;
-  /** Só em campanhas de aniversário / audiência. */
-  lockedReason?: BirthdayLockedReason | null;
+  /** Só em campanhas de aniversário / Promoção / audiência. */
+  lockedReason?: CampaignLockedReason | null;
   /** Próxima data de desbloqueio (ISO date). */
   unlocksAt?: string | null;
   /** Dias até o aniversário (0 se na janela). */
   daysUntilBirthday?: number | null;
+  /** Promoção: civil YYYY-MM-DD in America/Sao_Paulo. */
+  startsOn?: string | null;
+  endsOn?: string | null;
+  weekdays?: number[];
+  redeemMax?: number | null;
+  redeemPeriod?: string | null;
   audienceSegmentId?: string | null;
   audienceEligible?: boolean | null;
   audienceName?: string | null;
@@ -72,7 +92,13 @@ export type WalletLot = {
 };
 
 const LOYALTY_TYPES = ['stamps', 'spend'] as const;
-const WALLET_CAMPAIGN_TYPES = ['stamps', 'spend', 'birthday', 'cashback'] as const;
+const WALLET_CAMPAIGN_TYPES = [
+  'stamps',
+  'spend',
+  'birthday',
+  'cashback',
+  'promo',
+] as const;
 
 /** Janela de resgate: dia do aniversário + 6 dias seguintes. */
 export const BIRTHDAY_WINDOW_DAYS = 7;
@@ -302,7 +328,7 @@ function toWalletLots(
  * Earns go to shared pools (stamps / points / cashback_cents); redeems consume
  * from the pool of the campaign's type (quantity × unitsNeeded), except
  * cashback apply which consumes `quantity` cents via unitKind.
- * Birthday gifts do not consume pools — once per calendar year in the window.
+ * Birthday gifts and Promoção do not consume pools.
  * When the business sets expire days, unused units expire FIFO after that TTL.
  */
 export async function deriveWallet(
@@ -328,6 +354,11 @@ export async function deriveWallet(
         rewardImageUrl: true,
         audienceSegmentId: true,
         cashbackPercent: true,
+        startsOn: true,
+        endsOn: true,
+        weekdays: true,
+        redeemMax: true,
+        redeemPeriod: true,
       },
     }),
     prisma.transaction.findMany({
@@ -423,6 +454,7 @@ export async function deriveWallet(
   );
   const birthdayCampaigns = campaigns.filter((c) => c.type === 'birthday');
   const cashbackCampaigns = campaigns.filter((c) => c.type === 'cashback');
+  const promoCampaigns = campaigns.filter((c) => c.type === 'promo');
 
   const entries: CampaignWalletEntry[] = loyalty.map((campaign) => {
     const needed =
@@ -483,6 +515,39 @@ export async function deriveWallet(
         ? window.unlocksAt.toISOString().slice(0, 10)
         : null,
       daysUntilBirthday: window.daysUntil,
+      audienceSegmentId: campaign.audienceSegmentId,
+      audienceEligible: null,
+      audienceName: null,
+      audienceUnlockMessage: null,
+    });
+  }
+
+  for (const campaign of promoCampaigns) {
+    const entitlement = evaluatePromoEntitlement(
+      campaign,
+      transactions.filter(
+        (tx) => tx.type === 'redeem' && tx.campaignId === campaign.id,
+      ),
+    );
+    entries.push({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      type: 'promo',
+      unitsNeeded: 1,
+      stampsNeeded: 1,
+      pointsPerReal: null,
+      canRedeem: entitlement.canRedeem,
+      rewardsAvailable: entitlement.rewardsAvailable,
+      rewardTitle: campaign.rewardTitle,
+      rewardDescription: campaign.rewardDescription,
+      rewardImageUrl: campaign.rewardImageUrl,
+      lockedReason: entitlement.lockedReason,
+      unlocksAt: entitlement.unlocksAt,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
+      weekdays: normalizeWeekdays(campaign.weekdays),
+      redeemMax: campaign.redeemMax,
+      redeemPeriod: campaign.redeemPeriod,
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: null,
       audienceName: null,

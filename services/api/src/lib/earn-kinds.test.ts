@@ -12,6 +12,7 @@ describe('earnKindFromCampaignType', () => {
     assert.equal(earnKindFromCampaignType('spend'), 'points');
     assert.equal(earnKindFromCampaignType('cashback'), 'cashback');
     assert.equal(earnKindFromCampaignType('birthday'), null);
+    assert.equal(earnKindFromCampaignType('promo'), null);
   });
 });
 

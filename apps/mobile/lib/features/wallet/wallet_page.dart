@@ -6,6 +6,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
@@ -387,6 +388,7 @@ class _WalletPageState extends State<WalletPage> {
                                         ? cashbackBalance
                                         : stamps;
                                 final isBirthday = type == 'birthday';
+                                final isPromo = type == 'promo';
                                 final lockedReason =
                                     c['lockedReason'] as String?;
                                 final daysUntil =
@@ -464,12 +466,68 @@ class _WalletPageState extends State<WalletPage> {
                                             'Presente de aniversário';
                                     buttonLabel = 'Bloqueado';
                                   }
+                                } else if (isPromo) {
+                                  subtitle = promoStatusLine(
+                                    lockedReason: lockedReason,
+                                    canRedeem: canRedeem,
+                                    unlocksAt: unlocksAt,
+                                  );
+                                  buttonLabel = promoButtonLabel(
+                                    lockedReason: lockedReason,
+                                    canRedeem: canRedeem,
+                                  );
                                 } else {
                                   subtitle =
                                       'Meta $needed · você tem $pool'
                                       '${c['rewardTitle'] != null ? ' · ${c['rewardTitle']}' : ''}';
                                   buttonLabel =
                                       canRedeem ? 'Resgatar' : 'Ainda falta';
+                                }
+
+                                if (isPromo) {
+                                  final primary = _parseHex(
+                                        business?['primaryColor'] as String?,
+                                      ) ??
+                                      0xFF3B5BDB;
+                                  final primaryDark = _parseHex(
+                                        business?['primaryColorDark']
+                                            as String?,
+                                      ) ??
+                                      0xFF2F49C4;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: LoyaltyCampaignCard(
+                                      businessName:
+                                          business?['name'] as String? ??
+                                              'Sua loja',
+                                      businessLogoUrl:
+                                          business?['logoUrl'] as String?,
+                                      primary: primary,
+                                      primaryDark: primaryDark,
+                                      campaignName: c['campaignName']
+                                              as String? ??
+                                          'Promoção',
+                                      campaignType: 'promo',
+                                      unitsNeeded: 1,
+                                      currentUnits: canRedeem ? 1 : 0,
+                                      rewardTitle: c['rewardTitle']
+                                              as String? ??
+                                          'Prêmio',
+                                      rewardDescription:
+                                          c['rewardDescription'] as String?,
+                                      rewardImageUrl:
+                                          c['rewardImageUrl'] as String?,
+                                      canRedeem: canRedeem,
+                                      buttonLabel: buttonLabel,
+                                      statusHint: subtitle,
+                                      promoCalendar:
+                                          PromoCalendar.fromCampaign(c),
+                                      onRedeem: !canRedeem || _redeeming
+                                          ? null
+                                          : () => _redeem(c),
+                                      onOpen: () => _openCampaign(c),
+                                    ),
+                                  );
                                 }
 
                                 return Padding(
@@ -520,29 +578,35 @@ class _WalletPageState extends State<WalletPage> {
                                               decoration: BoxDecoration(
                                                 color: isBirthday
                                                     ? const Color(0xFFEEF1FD)
-                                                    : type == 'spend'
-                                                        ? const Color(
-                                                            0xFFFFFBEB)
-                                                        : FregoColors.stampsBg,
+                                                    : isPromo
+                                                        ? FregoColors.promoBg
+                                                        : type == 'spend'
+                                                            ? const Color(
+                                                                0xFFFFFBEB)
+                                                            : FregoColors.stampsBg,
                                                 borderRadius:
                                                     BorderRadius.circular(999),
                                               ),
                                               child: Text(
                                                 isBirthday
                                                     ? 'Aniversário'
-                                                    : type == 'spend'
-                                                        ? 'Pontos'
-                                                        : 'Carimbos',
+                                                    : isPromo
+                                                        ? 'Promoção'
+                                                        : type == 'spend'
+                                                            ? 'Pontos'
+                                                            : 'Carimbos',
                                                 style: TextStyle(
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w600,
                                                   color: isBirthday
                                                       ? FregoColors.primary500
-                                                      : type == 'spend'
-                                                          ? const Color(
-                                                              0xFF92400E)
-                                                          : const Color(
-                                                              0xFF115E59),
+                                                      : isPromo
+                                                          ? FregoColors.promo
+                                                          : type == 'spend'
+                                                              ? const Color(
+                                                                  0xFF92400E)
+                                                              : const Color(
+                                                                  0xFF115E59),
                                                 ),
                                               ),
                                             ),

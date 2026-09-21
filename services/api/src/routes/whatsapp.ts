@@ -615,7 +615,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /**
-   * Send a sample earn template to a phone for pre–App Review testing / demos.
+   * Send a sample earn template to a phone for QA / demos.
    * Requires connected WABA + approved template.
    */
   app.post('/whatsapp/test-send', async (request, reply) => {
@@ -673,7 +673,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         business?.name ?? 'Frego',
         '1 carimbo de teste',
         'Saldo de teste: 1 carimbo',
-        'Mensagem de teste do Frego (pré-App Review).',
+        'Mensagem de teste do Frego.',
       ],
     });
 

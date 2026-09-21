@@ -471,7 +471,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         id: body.campaignId,
         businessId: body.businessId,
         status: 'active',
-        type: { in: ['stamps', 'spend', 'birthday'] },
+        type: { in: ['stamps', 'spend', 'birthday', 'promo'] },
       },
       include: {
         audienceSegment: { select: { id: true, rules: true } },
@@ -496,8 +496,16 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    if (campaign.type === 'birthday' && quantity !== 1) {
-      return reply.code(400).send({ error: 'BIRTHDAY_QUANTITY_MUST_BE_ONE' });
+    if (
+      (campaign.type === 'birthday' || campaign.type === 'promo') &&
+      quantity !== 1
+    ) {
+      return reply.code(400).send({
+        error:
+          campaign.type === 'promo'
+            ? 'PROMO_QUANTITY_MUST_BE_ONE'
+            : 'BIRTHDAY_QUANTITY_MUST_BE_ONE',
+      });
     }
 
     const wallet = await deriveWallet(membership.id, body.businessId);
@@ -513,7 +521,15 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
                 ? 'BIRTHDAY_OUTSIDE_WINDOW'
                 : entry?.lockedReason === 'audience'
                   ? 'AUDIENCE_NOT_ELIGIBLE'
-                  : 'NO_REWARD_AVAILABLE',
+                  : entry?.lockedReason === 'outside_dates'
+                    ? 'PROMO_OUTSIDE_DATES'
+                    : entry?.lockedReason === 'wrong_weekday'
+                      ? 'PROMO_WRONG_WEEKDAY'
+                      : entry?.lockedReason === 'quota_exhausted'
+                        ? 'PROMO_QUOTA_EXHAUSTED'
+                        : entry?.lockedReason === 'open_voucher'
+                          ? 'PROMO_OPEN_VOUCHER'
+                          : 'NO_REWARD_AVAILABLE',
         lockedReason: entry?.lockedReason ?? null,
         unlocksAt: entry?.unlocksAt ?? null,
         wallet,

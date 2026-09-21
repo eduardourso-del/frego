@@ -9,6 +9,9 @@ https://frego.app.br/privacidade
 Terms of use:
 https://frego.app.br/termos
 
+Support:
+https://frego.app.br/suporte
+
 Sign-in is phone number + SMS OTP only (Firebase Authentication).
 There is no Google, Facebook, or other social login, so Sign in with
 Apple is not required (Guideline 4.8). Name and birthday are optional.

@@ -2,13 +2,15 @@
 
 import { LandingNav } from '@/components/landing/nav';
 import { LandingHero } from '@/components/landing/hero';
+import { LandingHowItWorks } from '@/components/landing/how-it-works';
 import { LandingProblem } from '@/components/landing/problem';
 import { LandingLoyalty } from '@/components/landing/loyalty';
-import { LandingCampaigns } from '@/components/landing/campaigns';
 import { LandingIntelligence } from '@/components/landing/intelligence';
-import { LandingCustomerApp } from '@/components/landing/customer-app';
 import { LandingSales } from '@/components/landing/sales';
-import { LandingHowItWorks } from '@/components/landing/how-it-works';
+import { LandingOutcomes } from '@/components/landing/outcomes';
+import { LandingCampaigns } from '@/components/landing/campaigns';
+import { LandingCustomerApp } from '@/components/landing/customer-app';
+import { LandingNetwork } from '@/components/landing/network';
 import { LandingComparison } from '@/components/landing/comparison';
 import { LandingPricingCta } from '@/components/landing/pricing-cta';
 import { LandingFooter } from '@/components/landing/footer';
@@ -19,13 +21,15 @@ export function LandingPage() {
       <LandingNav />
       <main className="overflow-x-hidden">
         <LandingHero />
+        <LandingHowItWorks />
         <LandingProblem />
         <LandingLoyalty />
-        <LandingHowItWorks />
-        <LandingCampaigns />
         <LandingIntelligence />
-        <LandingCustomerApp />
         <LandingSales />
+        <LandingOutcomes />
+        <LandingCampaigns />
+        <LandingCustomerApp />
+        <LandingNetwork />
         <LandingComparison />
         <LandingPricingCta />
       </main>

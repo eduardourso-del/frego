@@ -34,6 +34,8 @@ class ApiException implements Exception {
         return message ?? 'Não foi possível desfazer.';
       case 'INVALID_VOUCHER':
         return 'Voucher inválido';
+      case 'AUTH':
+        return message ?? 'Sessão expirada. Entre de novo.';
       default:
         return message ?? code;
     }

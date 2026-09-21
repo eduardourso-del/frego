@@ -4,6 +4,7 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
@@ -48,7 +49,7 @@ class _RewardItem {
 
   int get pool {
     if (type == 'spend') return points;
-    if (type == 'birthday') return canRedeem ? 1 : 0;
+    if (type == 'birthday' || type == 'promo') return canRedeem ? 1 : 0;
     if (type == 'cashback') {
       return (campaign['cashbackBalanceCents'] as num?)?.toInt() ?? 0;
     }
@@ -56,7 +57,7 @@ class _RewardItem {
   }
 
   int get remaining {
-    if (type == 'birthday') return canRedeem ? 0 : 1;
+    if (type == 'birthday' || type == 'promo') return canRedeem ? 0 : 1;
     if (type == 'cashback') return 0;
     final n = needed <= 0 ? 1 : needed;
     if (canRedeem) return 0;
@@ -65,7 +66,9 @@ class _RewardItem {
   }
 
   bool get isClose {
-    if (canRedeem || type == 'birthday' || type == 'cashback') return false;
+    if (canRedeem || type == 'birthday' || type == 'cashback' || type == 'promo') {
+      return false;
+    }
     final n = needed;
     if (n <= 0) return false;
     return remaining > 0 &&
@@ -364,6 +367,13 @@ class _RewardsPageState extends State<RewardsPage> {
           final birthdayHint = type == 'birthday'
               ? _birthdayStatusLine(item.campaign)
               : null;
+          final promoHint = type == 'promo'
+              ? promoStatusLine(
+                  lockedReason: item.campaign['lockedReason'] as String?,
+                  canRedeem: canRedeem,
+                  unlocksAt: item.campaign['unlocksAt'] as String?,
+                )
+              : null;
           final audienceEligible = item.campaign['audienceEligible'] == true;
           final audienceLocked = item.campaign['lockedReason'] == 'audience';
           final unlockMessage =
@@ -372,7 +382,8 @@ class _RewardsPageState extends State<RewardsPage> {
             if (audienceLocked) 'Promo exclusiva para outro perfil',
             if (!audienceLocked && unlockMessage != null) unlockMessage,
             ?birthdayHint,
-            if (!audienceLocked) ?expireHint,
+            ?promoHint,
+            if (!audienceLocked && type != 'promo') ?expireHint,
           ].join(' · ');
 
           late final String buttonLabel;
@@ -385,6 +396,11 @@ class _RewardsPageState extends State<RewardsPage> {
                     : locked == 'already_redeemed'
                         ? 'Já resgatado este ano'
                         : 'Ainda não liberou';
+          } else if (type == 'promo') {
+            buttonLabel = promoButtonLabel(
+              lockedReason: item.campaign['lockedReason'] as String?,
+              canRedeem: canRedeem,
+            );
           } else if (type == 'cashback') {
             buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
           } else if (audienceLocked) {
@@ -422,6 +438,8 @@ class _RewardsPageState extends State<RewardsPage> {
                   (item.campaign['cashbackPercent'] as num?)?.toInt(),
               cashbackBalanceCents: item.pool,
               busy: _redeeming,
+              promoCalendar:
+                  type == 'promo' ? PromoCalendar.fromCampaign(item.campaign) : null,
               audienceUnlocked: audienceEligible && !audienceLocked,
               audienceLabel: unlockMessage ??
                   (audienceEligible

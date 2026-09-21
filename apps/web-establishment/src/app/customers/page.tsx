@@ -9,7 +9,7 @@ import {
   type FormEvent,
 } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Banknote,
   Gift,
@@ -18,19 +18,24 @@ import {
   Search,
   Stamp,
   X,
+  Crown,
 } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
+import { campaignCreateHref } from '@/components/audience-preset-cards';
+import { TagChipRow } from '@/components/tag-chips';
 import {
   Alert,
   Button,
   Card,
   EmptyState,
+  SegmentedControl,
   Skeleton,
 } from '@/components/ui';
 import { API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { formatPhoneBr } from '@/lib/phone';
+import { tagChipStyle, type CatalogTag, type CustomerTag } from '@/lib/tags';
 
 type Progress = {
   campaignId: string;
@@ -49,6 +54,7 @@ type CustomerListItem = {
   phoneE164: string;
   birthday: string | null;
   isVip: boolean;
+  tags?: CustomerTag[];
   associatedAt: string;
   stats: {
     visits: number;
@@ -90,6 +96,7 @@ type ProfileResponse = {
     isVip: boolean;
     associatedAt: string;
   };
+  tags?: CustomerTag[];
   stats: {
     visits: number;
     lastVisitAt: string | null;
@@ -305,6 +312,71 @@ export default function CustomersPage() {
   );
 }
 
+type SavedAudience = {
+  id: string;
+  name: string;
+  memberCount: number;
+};
+
+const RULE_KEYS = [
+  'spendCentsMin',
+  'spendCentsMax',
+  'windowDays',
+  'inactiveDaysMin',
+  'visitsMin',
+  'visitsMax',
+  'nearReward',
+  'isVip',
+  'tagIds',
+  'tagMatch',
+] as const;
+
+type QuickFilter = 'all' | 'vip' | 'missing' | 'near_reward';
+
+const QUICK_FILTERS: { value: QuickFilter; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'vip', label: 'VIP' },
+  { value: 'missing', label: 'Sumidos' },
+  { value: 'near_reward', label: 'Quase prêmio' },
+];
+
+function clearAudienceParams(params: URLSearchParams) {
+  params.delete('audienceId');
+  for (const k of RULE_KEYS) params.delete(k);
+}
+
+function applyQuickFilterParams(params: URLSearchParams, key: QuickFilter) {
+  clearAudienceParams(params);
+  if (key === 'vip') params.set('isVip', 'true');
+  else if (key === 'missing') params.set('inactiveDaysMin', '30');
+  else if (key === 'near_reward') params.set('nearReward', 'true');
+}
+
+function resolveQuickFilter(
+  filter: Record<string, string> | null,
+): QuickFilter | null {
+  if (!filter) return 'all';
+  if (filter.audienceId) return null;
+  const keys = Object.keys(filter);
+  if (keys.length === 1 && filter.isVip === 'true') return 'vip';
+  if (keys.length === 1 && filter.nearReward === 'true') return 'near_reward';
+  if (keys.length === 1 && filter.inactiveDaysMin) return 'missing';
+  return null;
+}
+
+function filterLabel(
+  filter: Record<string, string> | null,
+  audienceName?: string | null,
+): string | null {
+  if (!filter) return null;
+  if (audienceName) return audienceName;
+  const quick = resolveQuickFilter(filter);
+  if (quick === 'vip') return 'VIP';
+  if (quick === 'missing') return 'Sumidos';
+  if (quick === 'near_reward') return 'Quase prêmio';
+  return 'Filtro de audiência';
+}
+
 function CustomersPageContent() {
   const { loading: authLoading } = useAuth();
   const {
@@ -313,6 +385,7 @@ function CustomersPageContent() {
     business,
     loading: businessLoading,
   } = useBusiness();
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const audienceFilter = useMemo(() => {
@@ -327,6 +400,8 @@ function CustomersPageContent() {
       'visitsMax',
       'nearReward',
       'isVip',
+      'tagIds',
+      'tagMatch',
     ] as const;
     const rules: Record<string, string> = {};
     let any = false;
@@ -340,16 +415,24 @@ function CustomersPageContent() {
     return any ? rules : null;
   }, [searchParams]);
 
+  const activeQuick = resolveQuickFilter(audienceFilter);
+  const selectedAudienceId = searchParams.get('audienceId') ?? '';
+
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
   const [list, setList] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [audiences, setAudiences] = useState<SavedAudience[]>([]);
+  const [catalog, setCatalog] = useState<CatalogTag[]>([]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [vipBusy, setVipBusy] = useState(false);
+  const [vipError, setVipError] = useState<string | null>(null);
+  const [tagBusy, setTagBusy] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q.trim()), 280);
@@ -402,6 +485,100 @@ function CustomersPageContent() {
     loadList,
   ]);
 
+  useEffect(() => {
+    if (authLoading || businessLoading) return;
+    if (
+      !businessId ||
+      business?.status === 'pending' ||
+      business?.status === 'suspended'
+    ) {
+      setAudiences([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const [audRes, tagRes] = await Promise.all([
+          fetch(`${API_URL}/audiences`, { headers }),
+          fetch(`${API_URL}/tags`, { headers }),
+        ]);
+        const audJson = await audRes.json().catch(() => ({}));
+        const tagJson = await tagRes.json().catch(() => ({}));
+        if (cancelled) return;
+        if (audRes.ok) {
+          setAudiences(
+            (audJson.audiences ?? []).map(
+              (a: { id: string; name: string; memberCount: number }) => ({
+                id: a.id,
+                name: a.name,
+                memberCount: a.memberCount,
+              }),
+            ),
+          );
+        }
+        if (tagRes.ok) {
+          setCatalog(tagJson.tags ?? []);
+        }
+      } catch {
+        if (!cancelled) {
+          setAudiences([]);
+          setCatalog([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, authLoading, businessLoading, businessId, business?.status]);
+
+  function replaceCustomersQuery(mutate: (params: URLSearchParams) => void) {
+    const params = new URLSearchParams(searchParams.toString());
+    mutate(params);
+    const qs = params.toString();
+    router.replace(qs ? `/customers?${qs}` : '/customers', { scroll: false });
+  }
+
+  function setQuickFilter(key: QuickFilter) {
+    replaceCustomersQuery((params) => applyQuickFilterParams(params, key));
+  }
+
+  function setAudienceId(id: string) {
+    replaceCustomersQuery((params) => {
+      clearAudienceParams(params);
+      if (id) params.set('audienceId', id);
+    });
+  }
+
+  function toggleTagFilter(tagId: string) {
+    replaceCustomersQuery((params) => {
+      params.delete('audienceId');
+      const current = (params.get('tagIds') ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const next = current.includes(tagId)
+        ? current.filter((id) => id !== tagId)
+        : [...current, tagId];
+      if (next.length === 0) {
+        params.delete('tagIds');
+        params.delete('tagMatch');
+      } else {
+        params.set('tagIds', next.join(','));
+      }
+    });
+  }
+
+  const selectedTagIds = useMemo(() => {
+    const raw = audienceFilter && 'tagIds' in audienceFilter ? audienceFilter.tagIds : '';
+    return new Set(
+      (raw ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+  }, [audienceFilter]);
+
   const loadProfile = useCallback(
     async (customerId: string) => {
       setProfileLoading(true);
@@ -444,10 +621,121 @@ function CustomersPageContent() {
 
   function openCustomer(id: string) {
     setSelectedId(id);
+    setVipError(null);
   }
 
   function closeProfile() {
     setSelectedId(null);
+    setVipError(null);
+  }
+
+  async function toggleVip() {
+    if (!profile || vipBusy) return;
+    const next = !profile.membership.isVip;
+    const customerId = profile.customer.id;
+    setVipBusy(true);
+    setVipError(null);
+    try {
+      const headers = {
+        ...(await authHeaders()),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`${API_URL}/customers/${customerId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ isVip: next }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (json as { error?: string }).error ??
+            'Não foi possível atualizar o VIP.',
+        );
+      }
+      setProfile((p) =>
+        p
+          ? { ...p, membership: { ...p.membership, isVip: next } }
+          : p,
+      );
+      setList((prev) => {
+        if (!prev) return prev;
+        const wasVip = prev.customers.find((c) => c.customerId === customerId)
+          ?.isVip;
+        const vipDelta = next ? (wasVip ? 0 : 1) : wasVip ? -1 : 0;
+        let customers = prev.customers.map((c) =>
+          c.customerId === customerId ? { ...c, isVip: next } : c,
+        );
+        const vipOnly =
+          audienceFilter != null &&
+          !('audienceId' in audienceFilter) &&
+          audienceFilter.isVip === 'true' &&
+          Object.keys(audienceFilter).length === 1;
+        if (!next && vipOnly) {
+          customers = customers.filter((c) => c.customerId !== customerId);
+        }
+        return {
+          ...prev,
+          vipCount: Math.max(0, prev.vipCount + vipDelta),
+          customers,
+        };
+      });
+    } catch (err) {
+      setVipError(
+        err instanceof Error ? err.message : 'Não foi possível atualizar o VIP.',
+      );
+    } finally {
+      setVipBusy(false);
+    }
+  }
+
+  async function toggleCustomerTag(tag: CatalogTag) {
+    if (!profile || tagBusy) return;
+    const current = profile.tags ?? [];
+    const has = current.some((t) => t.id === tag.id);
+    const nextIds = has
+      ? current.filter((t) => t.id !== tag.id).map((t) => t.id)
+      : [...current.map((t) => t.id), tag.id];
+    const customerId = profile.customer.id;
+    setTagBusy(true);
+    setVipError(null);
+    try {
+      const headers = {
+        ...(await authHeaders()),
+        'Content-Type': 'application/json',
+      };
+      const res = await fetch(`${API_URL}/customers/${customerId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ tagIds: nextIds }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (json as { message?: string; error?: string }).message ??
+            (json as { error?: string }).error ??
+            'Não foi possível atualizar as etiquetas.',
+        );
+      }
+      const nextTags = (json.tags as CustomerTag[] | undefined) ?? [];
+      setProfile((p) => (p ? { ...p, tags: nextTags } : p));
+      setList((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          customers: prev.customers.map((c) =>
+            c.customerId === customerId ? { ...c, tags: nextTags } : c,
+          ),
+        };
+      });
+    } catch (err) {
+      setVipError(
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível atualizar as etiquetas.',
+      );
+    } finally {
+      setTagBusy(false);
+    }
   }
 
   function onSearchSubmit(e: FormEvent) {
@@ -455,14 +743,21 @@ function CustomersPageContent() {
     setDebouncedQ(q.trim());
   }
 
+  const countHint = list
+    ? audienceFilter && list.audience?.memberCount != null
+      ? `${list.audience.memberCount.toLocaleString('pt-BR')} neste filtro · ${list.totalCount.toLocaleString('pt-BR')} no total`
+      : `${list.totalCount.toLocaleString('pt-BR')} no total`
+    : null;
+  const activeFilterName = filterLabel(audienceFilter, list?.audience?.name);
+
   const topbar = (
     <header className="flex h-[60px] shrink-0 items-center gap-4 border-b border-[var(--color-hairline)] bg-[var(--color-card)] px-5 md:px-7">
       <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">
         Clientes
       </h1>
-      {list ? (
+      {countHint ? (
         <span className="text-[13px] text-[var(--color-neutral-500)]">
-          {list.totalCount.toLocaleString('pt-BR')} no total
+          {countHint}
         </span>
       ) : null}
       <Link
@@ -483,9 +778,9 @@ function CustomersPageContent() {
             <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)]">
               Clientes
             </h1>
-            {list ? (
+            {countHint ? (
               <p className="mt-0.5 text-[13px] text-[var(--color-neutral-500)]">
-                {list.totalCount.toLocaleString('pt-BR')} no total
+                {countHint}
               </p>
             ) : null}
           </div>
@@ -498,7 +793,93 @@ function CustomersPageContent() {
           </Link>
         </div>
 
-        {list && !loading ? (
+        <form onSubmit={onSearchSubmit} className="mb-3">
+          <label className="relative block">
+            <Search
+              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--color-primary-500)]"
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por nome ou telefone"
+              className="min-h-12 w-full rounded-[13px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] py-3 pl-11 pr-4 text-[16px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
+              autoComplete="off"
+            />
+          </label>
+        </form>
+
+        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SegmentedControl<QuickFilter | 'custom'>
+            value={activeQuick ?? 'custom'}
+            options={QUICK_FILTERS}
+            onChange={(key) => {
+              if (key === 'custom') return;
+              setQuickFilter(key);
+            }}
+            ariaLabel="Filtros rápidos"
+            className="min-w-0 flex-1"
+          />
+          <div className="flex shrink-0 items-center gap-2 sm:w-auto">
+            <label className="block sm:w-[240px]">
+              <span className="sr-only">Audiência</span>
+              <select
+                value={selectedAudienceId}
+                onChange={(e) => setAudienceId(e.target.value)}
+                aria-label="Filtrar por audiência"
+                className="min-h-11 w-full rounded-[14px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3.5 text-[13px] font-semibold text-[var(--color-ink)] outline-none transition-[border,box-shadow] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
+              >
+                <option value="">
+                  {audiences.length === 0
+                    ? 'Sem audiências salvas'
+                    : 'Todas as audiências'}
+                </option>
+                {selectedAudienceId &&
+                !audiences.some((a) => a.id === selectedAudienceId) ? (
+                  <option value={selectedAudienceId}>
+                    {list?.audience?.name ?? 'Audiência selecionada'}
+                  </option>
+                ) : null}
+                {audiences.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.memberCount})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link
+              href="/audiences"
+              className="shrink-0 text-[12px] font-semibold text-[var(--color-primary-500)]"
+            >
+              Gerenciar
+            </Link>
+          </div>
+        </div>
+
+        {catalog.length > 0 ? (
+          <div className="mb-5 flex flex-wrap gap-1.5">
+            {catalog.map((tag) => {
+              const on = selectedTagIds.has(tag.id);
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleTagFilter(tag.id)}
+                  className={`rounded-full px-2.5 py-1 text-[12px] font-semibold transition-opacity ${
+                    on ? 'ring-2 ring-[var(--color-ink)] ring-offset-1' : 'opacity-80'
+                  }`}
+                  style={tagChipStyle(tag.color)}
+                >
+                  {tag.name}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {list && !loading && !audienceFilter ? (
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Card padding="sm" className="!p-4">
               <p className="text-[12px] font-medium text-[var(--color-neutral-500)]">
@@ -530,49 +911,32 @@ function CustomersPageContent() {
         {audienceFilter ? (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-3.5 py-2.5 text-[13px]">
             <span className="font-semibold text-[var(--color-ink)]">
-              Filtro de audiência
-              {list?.audience?.name ? `: ${list.audience.name}` : ''}
+              {activeFilterName}
             </span>
             {list?.audience?.memberCount != null && (
               <span className="text-[var(--color-neutral-600)]">
-                {list.audience.memberCount} clientes
+                {list.audience.memberCount} cliente
+                {list.audience.memberCount === 1 ? '' : 's'}
               </span>
             )}
             <Link
-              href={`/campaigns?${
-                audienceFilter.audienceId
-                  ? `audienceId=${audienceFilter.audienceId}`
-                  : `fromAudience=1&${new URLSearchParams(audienceFilter).toString()}`
-              }`}
+              href={campaignCreateHref(
+                audienceFilter,
+                list?.audience?.name ?? activeFilterName ?? undefined,
+              )}
               className="font-semibold text-[var(--color-primary-600)]"
             >
-              Criar campanha para esta audiência →
+              Criar campanha →
             </Link>
-            <Link
-              href="/customers"
+            <button
+              type="button"
+              onClick={() => setQuickFilter('all')}
               className="ml-auto text-[var(--color-neutral-500)]"
             >
               Limpar
-            </Link>
+            </button>
           </div>
         ) : null}
-
-        <form onSubmit={onSearchSubmit} className="mb-5">
-          <label className="relative block">
-            <Search
-              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--color-primary-500)]"
-              strokeWidth={2}
-            />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por nome ou telefone"
-              className="min-h-12 w-full rounded-[13px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] py-3 pl-11 pr-4 text-[16px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
-              autoComplete="off"
-            />
-          </label>
-        </form>
 
         {error ? (
           <Alert tone="danger" action={
@@ -594,19 +958,36 @@ function CustomersPageContent() {
 
         {!loading && !error && customers.length === 0 ? (
           <EmptyState
-            title={debouncedQ ? 'Nenhum cliente encontrado' : 'Ainda sem clientes'}
+            title={
+              debouncedQ
+                ? 'Nenhum cliente encontrado'
+                : audienceFilter
+                  ? 'Ninguém neste filtro'
+                  : 'Ainda sem clientes'
+            }
             description={
               debouncedQ
                 ? 'Tente outro nome ou telefone, ou cadastre no balcão.'
-                : 'Cadastre o primeiro cliente no balcão. O telefone é o que identifica a pessoa no Frego.'
+                : audienceFilter
+                  ? 'Nenhum cliente combina com este recorte. Troque o filtro ou veja todos.'
+                  : 'Cadastre o primeiro cliente no balcão. O telefone é o que identifica a pessoa no Frego.'
             }
             action={
-              <Link
-                href="/counter"
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)]"
-              >
-                Ir para o balcão
-              </Link>
+              audienceFilter ? (
+                <Button
+                  variant="ghost"
+                  onClick={() => setQuickFilter('all')}
+                >
+                  Ver todos
+                </Button>
+              ) : (
+                <Link
+                  href="/counter"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)]"
+                >
+                  Ir para o balcão
+                </Link>
+              )
             }
           />
         ) : null}
@@ -639,6 +1020,11 @@ function CustomersPageContent() {
                     <span className="mt-0.5 block text-[13px] text-[var(--color-neutral-500)]">
                       {displayPhone(c.phoneE164)} · {c.stats.visits} visitas
                     </span>
+                    {c.tags && c.tags.length > 0 ? (
+                      <span className="mt-1 block">
+                        <TagChipRow tags={c.tags} />
+                      </span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-[12px] text-[var(--color-neutral-400)]">
                     {formatRelativeVisit(c.stats.lastVisitAt)}
@@ -673,6 +1059,11 @@ function CustomersPageContent() {
                           {c.isVip ? (
                             <span className="ml-2 inline-flex rounded-full bg-[var(--color-primary-50)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-primary-500)]">
                               VIP
+                            </span>
+                          ) : null}
+                          {c.tags && c.tags.length > 0 ? (
+                            <span className="mt-1 block">
+                              <TagChipRow tags={c.tags} />
                             </span>
                           ) : null}
                         </span>
@@ -755,12 +1146,89 @@ function CustomersPageContent() {
                           {displayPhone(profile.customer.phoneE164)}
                         </p>
                       </div>
-                      {profile.membership.isVip ? (
-                        <span className="rounded-full bg-[var(--color-primary-50)] px-2.5 py-1 text-[11px] font-semibold text-[var(--color-primary-500)]">
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={vipBusy}
+                      onClick={() => void toggleVip()}
+                      aria-pressed={profile.membership.isVip}
+                      className={`mt-4 flex min-h-11 w-full items-center gap-3 rounded-[12px] border px-3.5 py-2.5 text-left transition-colors disabled:opacity-60 ${
+                        profile.membership.isVip
+                          ? 'border-[var(--color-primary-200)] bg-[var(--color-primary-50)]'
+                          : 'border-[var(--color-hairline)] bg-[var(--color-bg)] hover:border-[var(--color-primary-200)]'
+                      }`}
+                    >
+                      <Crown
+                        className={`h-4 w-4 shrink-0 ${
+                          profile.membership.isVip
+                            ? 'text-[var(--color-primary-500)]'
+                            : 'text-[var(--color-neutral-400)]'
+                        }`}
+                        strokeWidth={2.25}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-semibold text-[var(--color-ink)]">
+                          {profile.membership.isVip
+                            ? 'VIP da casa'
+                            : 'Marcar como VIP'}
+                        </span>
+                        <span className="block text-[12px] text-[var(--color-neutral-500)]">
+                          {profile.membership.isVip
+                            ? 'Toque para remover o selo.'
+                            : 'Aparece na lista, no filtro VIP e nas audiências.'}
+                        </span>
+                      </span>
+                      {vipBusy ? (
+                        <span className="text-[12px] text-[var(--color-neutral-400)]">
+                          Salvando…
+                        </span>
+                      ) : profile.membership.isVip ? (
+                        <span className="rounded-full bg-[var(--color-primary-500)] px-2.5 py-1 text-[11px] font-semibold text-white">
                           VIP
                         </span>
                       ) : null}
-                    </div>
+                    </button>
+                    {vipError ? (
+                      <p className="mt-2 text-[12px] text-[var(--color-danger)]">
+                        {vipError}
+                      </p>
+                    ) : null}
+
+                    {catalog.length > 0 ? (
+                      <div className="mt-4">
+                        <p className="text-[12px] font-semibold text-[var(--color-ink)]">
+                          Etiquetas
+                        </p>
+                        <p className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
+                          Opcional — use para recortar audiências depois.
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {catalog.map((tag) => {
+                            const on = (profile.tags ?? []).some(
+                              (t) => t.id === tag.id,
+                            );
+                            return (
+                              <button
+                                key={tag.id}
+                                type="button"
+                                disabled={tagBusy}
+                                aria-pressed={on}
+                                onClick={() => void toggleCustomerTag(tag)}
+                                className={`rounded-full px-2.5 py-1 text-[12px] font-semibold disabled:opacity-60 ${
+                                  on
+                                    ? 'ring-2 ring-[var(--color-ink)] ring-offset-1'
+                                    : 'opacity-70'
+                                }`}
+                                style={tagChipStyle(tag.color)}
+                              >
+                                {tag.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 grid grid-cols-3 gap-2">
                       <div className="rounded-[11px] bg-[var(--color-bg)] px-2 py-2.5 text-center">

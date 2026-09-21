@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
-import { AudiencePresetCards } from '@/components/audience-preset-cards';
+import { FregoIntelligence, type IntelligencePayload } from '@/components/frego-intelligence';
+import { CampaignPerformanceSection } from '@/components/campaign-performance-section';
+import { TermInfo } from '@/components/term-info';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
+import { TERM } from '@/lib/term-copy';
 import {
   PeriodPicker,
   periodSearchParams,
@@ -46,6 +49,7 @@ type DashboardData = {
     avgVisits?: Kpi;
     revenueCents?: Kpi;
     newCustomers?: Kpi;
+    campaignReturnCents?: Kpi;
   };
   funnel?: {
     base: number;
@@ -55,6 +59,7 @@ type DashboardData = {
     inactive: number;
   };
   insight?: { title: string; body: string; href?: string; cta?: string };
+  intelligence?: IntelligencePayload;
   audienceInsight?: {
     key: string;
     name: string;
@@ -76,6 +81,9 @@ type DashboardData = {
     fulfillPct: number;
     rewardTitle: string | null;
     cashbackPercent?: number | null;
+    redeemRevenueCents?: number;
+    revenueCoverage?: { withAmount: number; used: number };
+    openVouchers?: number;
   } | null;
   weakCampaign?: {
     id: string;
@@ -83,6 +91,9 @@ type DashboardData = {
     type?: string;
     redeems: number;
     fulfillPct: number;
+    redeemRevenueCents?: number;
+    revenueCoverage?: { withAmount: number; used: number };
+    openVouchers?: number;
   } | null;
   topCustomers?: TopCustomer[];
   weekSeries: Array<{
@@ -115,7 +126,13 @@ type DashboardData = {
     stampsNeeded: number | null;
     cashbackPercent?: number | null;
     redeems?: number;
+    redeemers?: number;
     fulfillPct?: number;
+    openVouchers?: number;
+    usedVouchers?: number;
+    expiredVouchers?: number;
+    redeemRevenueCents?: number;
+    revenueCoverage?: { withAmount: number; used: number };
   }>;
 };
 
@@ -190,7 +207,7 @@ function KpiCard({
   suffix = '',
   hint,
 }: {
-  label: string;
+  label: ReactNode;
   value: number | string;
   deltaPct: number | null;
   suffix?: string;
@@ -287,6 +304,32 @@ function WeekChart({ series }: { series: DashboardData['weekSeries'] }) {
         })}
       </div>
     </div>
+  );
+}
+
+function PainelSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="mb-8 last:mb-0">
+      <header className="mb-3">
+        <h2 className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+          {title}
+        </h2>
+        {hint ? (
+          <p className="mt-1 text-[13px] leading-snug text-[var(--color-neutral-500)]">
+            {hint}
+          </p>
+        ) : null}
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -413,8 +456,6 @@ export default function DashboardPage() {
             },
           ]
         : [];
-  const activePreview = activeList.slice(0, 3);
-  const activeExtra = activeList.length - activePreview.length;
   const funnel = data?.funnel;
   const funnelMax = Math.max(funnel?.base ?? 1, funnel?.active ?? 1, 1);
 
@@ -432,7 +473,8 @@ export default function DashboardPage() {
           <div className="mt-3">
             <PeriodPicker presets={RANGES} value={period} onChange={setPeriod} />
           </div>
-        </div>        {error && (
+        </div>
+        {error && (
           <div
             className="mb-4 rounded-[12px] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-[14px] text-[var(--color-danger)]"
             role="alert"
@@ -449,432 +491,289 @@ export default function DashboardPage() {
         )}
 
         {loading && !data ? (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-[110px] animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]"
-              />
-            ))}
+          <div className="grid gap-4">
+            <div className="h-[220px] animate-pulse rounded-[20px] bg-[var(--color-intel-bg)]" />
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="h-[110px] animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]"
+                />
+              ))}
+            </div>
           </div>
         ) : data ? (
           <>
-            {(data.insight ||
-              (data.audiencePresets && data.audiencePresets.length > 0)) && (
-              <div className="mb-[18px] rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                  Ação recomendada
-                </p>
-                {data.insight && (
-                  <>
-                    <p className="mt-2 text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-ink)] md:text-[20px]">
-                      {data.insight.title}
-                    </p>
-                    <p className="mt-2 max-w-3xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
-                      {data.insight.body}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-3">
-                      <Link
-                        href={data.insight.href ?? '/reports#audiencias'}
-                        className="inline-flex min-h-10 items-center text-[14px] font-semibold text-[var(--color-primary-500)]"
-                      >
-                        {data.insight.cta ?? 'Ver detalhes'} →
-                      </Link>
-                    </div>
-                  </>
-                )}
-                {data.audiencePresets && data.audiencePresets.length > 0 && (
-                  <div
-                    className={
-                      data.insight
-                        ? 'mt-5 border-t border-[var(--color-hairline)] pt-4'
-                        : 'mt-4'
-                    }
-                  >
-                    <div className="mb-3 flex items-baseline justify-between gap-3">
-                      <p className="text-[13px] font-semibold text-[var(--color-ink)]">
-                        Oportunidades de campanha
-                      </p>
-                      <Link
-                        href="/reports#audiencias"
-                        className="shrink-0 text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
-                      >
-                        Ver todas
-                      </Link>
-                    </div>
-                    <AudiencePresetCards
-                      presets={data.audiencePresets}
-                      compact
-                    />
-                  </div>
-                )}
-              </div>
+            {data.intelligence && (
+              <FregoIntelligence data={data.intelligence} />
             )}
 
-            {(data.topCampaign || data.weakCampaign) && (
-              <div className="mb-[18px] grid gap-3 sm:grid-cols-2">
-                {data.topCampaign && (
-                  <Link
-                    href={`/campaigns?highlight=${data.topCampaign.id}`}
-                    className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)] transition-colors hover:border-[var(--color-primary-200)]"
-                  >
-                    <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                      Campanha em destaque
-                    </p>
-                    <p className="mt-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                      {data.topCampaign.name}
-                    </p>
-                    <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                      {data.topCampaign.type === 'cashback'
-                        ? `${data.topCampaign.redeems} uso${data.topCampaign.redeems === 1 ? '' : 's'} no caixa${
-                            data.topCampaign.cashbackPercent
-                              ? ` · ${data.topCampaign.cashbackPercent}%`
-                              : ''
-                          }`
-                        : `${data.topCampaign.redeems} resgates · ${data.topCampaign.fulfillPct}% concluíram`}
-                      {data.topCampaign.rewardTitle
-                        ? ` · ${data.topCampaign.rewardTitle}`
-                        : ''}
-                    </p>
-                  </Link>
-                )}
-                {data.weakCampaign &&
-                  data.weakCampaign.id !== data.topCampaign?.id && (
-                    <Link
-                      href={`/campaigns?highlight=${data.weakCampaign.id}`}
-                      className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)] transition-colors hover:border-[var(--color-primary-200)]"
-                    >
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                        Precisa de atenção
-                      </p>
-                      <p className="mt-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                        {data.weakCampaign.name}
-                      </p>
-                      <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                        {data.weakCampaign.redeems} resgates ·{' '}
-                        {data.weakCampaign.fulfillPct}% concluíram
-                      </p>
-                    </Link>
+            <PainelSection
+              title="A casa"
+              hint="Quem veio, quem voltou e como a fidelidade se mexeu neste período."
+            >
+              <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <KpiCard
+                  label="Clientes ativos"
+                  value={data.kpis.customers.value}
+                  deltaPct={data.kpis.customers.deltaPct}
+                  hint="com visita neste período"
+                />
+                <KpiCard
+                  label="Novos clientes"
+                  value={data.kpis.newCustomers?.value ?? 0}
+                  deltaPct={data.kpis.newCustomers?.deltaPct ?? null}
+                />
+                <KpiCard
+                  label={
+                    <TermInfo info={TERM.taxaRetorno}>Taxa de retorno</TermInfo>
+                  }
+                  value={data.kpis.repeatRate.value}
+                  deltaPct={data.kpis.repeatRate.deltaPct}
+                  suffix="%"
+                  hint="vieram duas vezes ou mais"
+                />
+                <KpiCard
+                  label="Visitas / cliente"
+                  value={data.kpis.avgVisits?.value ?? 0}
+                  deltaPct={data.kpis.avgVisits?.deltaPct ?? null}
+                  hint="média no período"
+                />
+              </div>
+
+              <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <KpiCard
+                    label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
+                    value={data.kpis.redeems.value}
+                    deltaPct={data.kpis.redeems.deltaPct}
+                    hint="prêmios no app"
+                  />
+                  {(kinds == null || kinds.includes('stamps')) && (
+                    <KpiCard
+                      label="Carimbos"
+                      value={data.kpis.stamps.value}
+                      deltaPct={data.kpis.stamps.deltaPct}
+                    />
                   )}
-              </div>
-            )}
-
-            <div className="mb-[18px] grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <KpiCard
-                label="Clientes ativos"
-                value={data.kpis.customers.value}
-                deltaPct={data.kpis.customers.deltaPct}
-                hint="com visita neste período"
-              />
-              <KpiCard
-                label="Taxa de retorno"
-                value={data.kpis.repeatRate.value}
-                deltaPct={data.kpis.repeatRate.deltaPct}
-                suffix="%"
-                hint="vieram duas vezes ou mais"
-              />
-              <KpiCard
-                label="Visitas / cliente"
-                value={data.kpis.avgVisits?.value ?? 0}
-                deltaPct={data.kpis.avgVisits?.deltaPct ?? null}
-                hint="média no período"
-              />
-              <KpiCard
-                label="Resgates"
-                value={data.kpis.redeems.value}
-                deltaPct={data.kpis.redeems.deltaPct}
-                hint="prêmios no app"
-              />
-            </div>
-
-            <div className="mb-[18px] grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard
-                label="Novos clientes"
-                value={data.kpis.newCustomers?.value ?? 0}
-                deltaPct={data.kpis.newCustomers?.deltaPct ?? null}
-              />
-              {(kinds == null || kinds.includes('stamps')) && (
-                <KpiCard
-                  label="Carimbos"
-                  value={data.kpis.stamps.value}
-                  deltaPct={data.kpis.stamps.deltaPct}
-                />
-              )}
-              {(kinds == null || kinds.includes('points')) && (
-                <KpiCard
-                  label="Pontos acumulados"
-                  value={data.kpis.points?.value ?? 0}
-                  deltaPct={data.kpis.points?.deltaPct ?? null}
-                />
-              )}
-              {(kinds == null || kinds.includes('points')) && (
-                <KpiCard
-                  label="Gasto registrado"
-                  value={formatMoney(data.kpis.revenueCents?.value ?? 0)}
-                  deltaPct={data.kpis.revenueCents?.deltaPct ?? null}
-                  hint="via pontos no balcão"
-                />
-              )}
-            </div>
-
-            <div className="mb-[18px] grid items-start gap-4 lg:grid-cols-2">
-              <WeekChart series={data.weekSeries} />
-
-              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-                <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                  Funil de fidelidade
+                  {(kinds == null || kinds.includes('points')) && (
+                    <KpiCard
+                      label="Pontos acumulados"
+                      value={data.kpis.points?.value ?? 0}
+                      deltaPct={data.kpis.points?.deltaPct ?? null}
+                    />
+                  )}
+                  {(kinds == null || kinds.includes('points')) && (
+                    <KpiCard
+                      label="Gasto registrado"
+                      value={formatMoney(data.kpis.revenueCents?.value ?? 0)}
+                      deltaPct={data.kpis.revenueCents?.deltaPct ?? null}
+                      hint="via pontos no balcão"
+                    />
+                  )}
                 </div>
-                <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
-                  Do cadastro ao retorno e ao resgate. O prêmio da campanha é o
-                  motivo da próxima visita.
-                </p>
-                {funnel ? (
-                  <div className="flex flex-col gap-3">
-                    <FunnelBar
-                      label="Base de clientes"
-                      value={funnel.base}
-                      max={funnelMax}
-                    />
-                    <FunnelBar
-                      label="Ativos no período"
-                      value={funnel.active}
-                      max={funnelMax}
-                    />
-                    <FunnelBar
-                      label="Voltaram (2+ visitas)"
-                      value={funnel.returning}
-                      max={funnelMax}
-                    />
-                    <FunnelBar
-                      label="Resgataram prêmio"
-                      value={funnel.redeemed}
-                      max={funnelMax}
-                    />
-                    {funnel.inactive > 0 && (
-                      <p className="text-[12px] text-[var(--color-neutral-400)]">
-                        {funnel.inactive} cliente
-                        {funnel.inactive > 1 ? 's' : ''} sem visita neste
-                        período — dá para reativar com uma campanha.
-                      </p>
-                    )}
+
+              <div className="grid items-start gap-4 lg:grid-cols-2">
+                <WeekChart series={data.weekSeries} />
+
+                <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+                  <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
+                    Funil de fidelidade
                   </div>
-                ) : (
-                  <p className="text-[13px] text-[var(--color-neutral-500)]">
-                    Sem dados ainda.
+                  <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
+                    Do cadastro ao retorno e ao resgate.
                   </p>
-                )}
-              </div>
-            </div>
-
-            <div className="mb-[18px] grid items-start gap-4 lg:grid-cols-2">
-              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-                <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                  Clientes mais valiosos
+                  {funnel ? (
+                    <div className="flex flex-col gap-3">
+                      <FunnelBar
+                        label="Base de clientes"
+                        value={funnel.base}
+                        max={funnelMax}
+                      />
+                      <FunnelBar
+                        label="Ativos no período"
+                        value={funnel.active}
+                        max={funnelMax}
+                      />
+                      <FunnelBar
+                        label="Voltaram (2+ visitas)"
+                        value={funnel.returning}
+                        max={funnelMax}
+                      />
+                      <FunnelBar
+                        label="Resgataram prêmio"
+                        value={funnel.redeemed}
+                        max={funnelMax}
+                      />
+                      {funnel.inactive > 0 && (
+                        <p className="text-[12px] text-[var(--color-neutral-400)]">
+                          {funnel.inactive} cliente
+                          {funnel.inactive > 1 ? 's' : ''} sem visita neste
+                          período — dá para reativar com uma campanha.
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-[13px] text-[var(--color-neutral-500)]">
+                      Sem dados ainda.
+                    </p>
+                  )}
                 </div>
-                <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
-                  Quem mais visita, gasta e engaja com a fidelidade neste
-                  período.
-                </p>
-                {!data.topCustomers?.length ? (
-                  <p className="text-[13px] text-[var(--color-neutral-500)]">
-                    Ainda sem atividade.{' '}
-                    <Link
-                      href="/counter"
-                      className="font-semibold text-[var(--color-primary-500)]"
-                    >
-                      Ir para o balcão
-                    </Link>
+              </div>
+            </PainelSection>
+
+            <PainelSection
+              title="Campanhas"
+              hint="Desempenho no recorte: quem resgatou, o que o caixa confirmou e o retorno em vendas."
+            >
+              <CampaignPerformanceSection
+                campaigns={activeList}
+                topCampaign={data.topCampaign ?? null}
+                weakCampaign={data.weakCampaign ?? null}
+                returnCents={data.kpis.campaignReturnCents?.value ?? 0}
+                returnDeltaPct={
+                  data.kpis.campaignReturnCents?.deltaPct ?? null
+                }
+              />
+            </PainelSection>
+
+            <PainelSection
+              title="Pessoas"
+              hint="Quem mais vale a casa e o que acontece agora no balcão."
+            >
+              <div className="grid items-start gap-4 lg:grid-cols-2">
+                <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+                  <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
+                    Mais valiosos
+                  </div>
+                  <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
+                    Quem mais visita, gasta e engaja neste período.
                   </p>
-                ) : (
-                  <ul className="flex flex-col gap-3">
-                    {data.topCustomers.map((c, i) => (
-                      <li
-                        key={c.membershipId}
-                        className="flex items-center gap-3 border-b border-[var(--color-hairline)] pb-3 last:border-0 last:pb-0"
+                  {!data.topCustomers?.length ? (
+                    <p className="text-[13px] text-[var(--color-neutral-500)]">
+                      Ainda sem atividade.{' '}
+                      <Link
+                        href="/counter"
+                        className="font-semibold text-[var(--color-primary-500)]"
                       >
-                        <span className="w-5 text-[12px] font-semibold tabular-nums text-[var(--color-neutral-400)]">
-                          {i + 1}
-                        </span>
-                        <span
-                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-[var(--color-primary-500)]"
-                          style={{ background: 'var(--color-primary-50)' }}
-                          aria-hidden
+                        Ir para o balcão
+                      </Link>
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-3">
+                      {data.topCustomers.map((c, i) => (
+                        <li
+                          key={c.membershipId}
+                          className="flex items-center gap-3 border-b border-[var(--color-hairline)] pb-3 last:border-0 last:pb-0"
                         >
-                          {c.initials}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="truncate text-[14px] font-semibold text-[var(--color-ink)]">
-                              {c.displayName}
-                            </span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                c.tier === 'vip'
-                                  ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-600)]'
-                                  : c.tier === 'new'
-                                    ? 'bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]'
-                                    : 'bg-teal-50 text-teal-800'
-                              }`}
-                            >
-                              {TIER_LABEL[c.tier]}
-                            </span>
+                          <span className="w-5 text-[12px] font-semibold tabular-nums text-[var(--color-neutral-400)]">
+                            {i + 1}
+                          </span>
+                          <span
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-[var(--color-primary-500)]"
+                            style={{ background: 'var(--color-primary-50)' }}
+                            aria-hidden
+                          >
+                            {c.initials}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="truncate text-[14px] font-semibold text-[var(--color-ink)]">
+                                {c.displayName}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                  c.tier === 'vip'
+                                    ? 'bg-[var(--color-primary-50)] text-[var(--color-primary-600)]'
+                                    : c.tier === 'new'
+                                      ? 'bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]'
+                                      : 'bg-teal-50 text-teal-800'
+                                }`}
+                              >
+                                {TIER_LABEL[c.tier]}
+                              </span>
+                            </div>
+                            <div className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
+                              {c.visits} visita{c.visits !== 1 ? 's' : ''}
+                              {c.stamps > 0 ? ` · ${c.stamps} carimbos` : ''}
+                              {c.points > 0 ? ` · ${c.points} pontos` : ''}
+                              {c.spendCents > 0
+                                ? ` · ${formatMoney(c.spendCents)}`
+                                : ''}
+                              {c.redeems > 0
+                                ? ` · ${c.redeems} resgate${c.redeems > 1 ? 's' : ''}`
+                                : ''}
+                            </div>
+                            {c.spendCents >= 20000 && (
+                              <Link
+                                href={`/customers?spendCentsMin=${Math.floor(c.spendCents / 10000) * 10000}&windowDays=90`}
+                                className="mt-1 inline-block text-[11px] font-semibold text-[var(--color-primary-500)]"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Ver clientes parecidos →
+                              </Link>
+                            )}
                           </div>
-                          <div className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
-                            {c.visits} visita{c.visits !== 1 ? 's' : ''}
-                            {c.stamps > 0 ? ` · ${c.stamps} carimbos` : ''}
-                            {c.points > 0 ? ` · ${c.points} pontos` : ''}
-                            {c.spendCents > 0
-                              ? ` · ${formatMoney(c.spendCents)}`
-                              : ''}
-                            {c.redeems > 0
-                              ? ` · ${c.redeems} resgate${c.redeems > 1 ? 's' : ''}`
-                              : ''}
-                          </div>
-                          {c.spendCents >= 20000 && (
-                            <Link
-                              href={`/customers?spendCentsMin=${Math.floor(c.spendCents / 10000) * 10000}&windowDays=90`}
-                              className="mt-1 inline-block text-[11px] font-semibold text-[var(--color-primary-500)]"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              Ver clientes parecidos →
-                            </Link>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-[11px] text-[var(--color-neutral-400)]">
-                          {formatRelative(c.lastVisitAt)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
-                <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <div className="text-[15px] font-semibold text-[var(--color-ink)]">
-                    Ao vivo
-                  </div>
-                  <Link
-                    href="/customers"
-                    className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
-                  >
-                    Ver clientes
-                  </Link>
+                          <span className="shrink-0 text-[11px] text-[var(--color-neutral-400)]">
+                            {formatRelative(c.lastVisitAt)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
-                  Últimas movimentações no balcão.
-                </p>
-                {data.live.length === 0 ? (
-                  <p className="text-[13px] text-[var(--color-neutral-500)]">
-                    Nenhuma atividade ainda.{' '}
-                    <Link
-                      href="/counter"
-                      className="font-semibold text-[var(--color-primary-500)]"
-                    >
-                      Ir para o balcão
-                    </Link>
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-3">
-                    {data.live.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2.5">
-                        <span
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[var(--color-primary-500)]"
-                          style={{ background: 'var(--color-primary-50)' }}
-                          aria-hidden
-                        >
-                          {item.initials}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium text-[var(--color-ink)]">
-                            {item.text}
-                          </div>
-                          <div className="text-[11px] text-[var(--color-neutral-400)]">
-                            {formatRelative(item.createdAt)} ·{' '}
-                            {item.locationName}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
 
-            {activePreview.length === 0 ? (
-              <div className="rounded-[14px] border border-dashed border-[var(--color-hairline)] p-[18px] text-[13px] text-[var(--color-neutral-500)]">
-                Nenhuma campanha ativa.{' '}
-                <Link
-                  href="/campaigns"
-                  className="font-semibold text-[var(--color-primary-500)]"
-                >
-                  Criar campanha
-                </Link>
-              </div>
-            ) : (
-              <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
-                <div className="mb-3.5 flex items-center justify-between gap-2">
-                  <div className="text-[15px] font-semibold text-[var(--color-ink)]">
-                    Campanhas ativas
-                    <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
-                      ({activeList.length})
-                    </span>
-                  </div>
-                  <Link
-                    href="/campaigns?status=active"
-                    className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
-                  >
-                    Ver mais
-                  </Link>
-                </div>
-                <ul className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                  {activePreview.map((c) => (
-                    <li
-                      key={c.id}
-                      className="rounded-[12px] px-3.5 py-3 text-white"
-                      style={{ background: 'var(--color-ink)' }}
-                    >
-                      <div className="text-[14px] font-semibold">{c.name}</div>
-                      <div className="mt-0.5 text-[12px] leading-relaxed text-[var(--color-neutral-400)]">
-                        {c.type === 'spend'
-                          ? 'Pontos'
-                          : c.type === 'cashback'
-                            ? 'Cashback'
-                            : 'Carimbos'}
-                        {c.type === 'cashback' && c.cashbackPercent
-                          ? ` · ${c.cashbackPercent}%`
-                          : ''}
-                        {c.stampsNeeded && c.type !== 'cashback'
-                          ? c.type === 'spend'
-                            ? ` · meta ${c.stampsNeeded} pontos`
-                            : ` · ${c.stampsNeeded} carimbos`
-                          : ''}
-                        {c.rewardTitle ? ` → ${c.rewardTitle}` : ''}
-                        {c.redeems != null && c.redeems > 0
-                          ? c.type === 'cashback'
-                            ? ` · ${c.redeems} uso${c.redeems === 1 ? '' : 's'}`
-                            : ` · ${c.redeems} resgates`
-                          : ''}
-                        {c.type !== 'cashback' && c.fulfillPct != null
-                          ? ` · ${c.fulfillPct}% concluíram`
-                          : ''}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                {activeExtra > 0 && (
-                  <p className="mt-3 text-[12px] text-[var(--color-neutral-500)]">
-                    +{activeExtra} ativa{activeExtra > 1 ? 's' : ''} —{' '}
+                <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
+                  <div className="mb-1 flex items-baseline justify-between gap-2">
+                    <div className="text-[15px] font-semibold text-[var(--color-ink)]">
+                      Ao vivo
+                    </div>
                     <Link
-                      href="/campaigns?status=active"
-                      className="font-semibold text-[var(--color-primary-500)]"
+                      href="/customers"
+                      className="text-[13px] font-semibold text-[var(--color-primary-500)] hover:underline"
                     >
-                      ver todas
+                      Ver clientes
                     </Link>
+                  </div>
+                  <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
+                    Últimas movimentações no balcão.
                   </p>
-                )}
+                  {data.live.length === 0 ? (
+                    <p className="text-[13px] text-[var(--color-neutral-500)]">
+                      Nenhuma atividade ainda.{' '}
+                      <Link
+                        href="/counter"
+                        className="font-semibold text-[var(--color-primary-500)]"
+                      >
+                        Ir para o balcão
+                      </Link>
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-3">
+                      {data.live.map((item) => (
+                        <li key={item.id} className="flex items-center gap-2.5">
+                          <span
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[var(--color-primary-500)]"
+                            style={{ background: 'var(--color-primary-50)' }}
+                            aria-hidden
+                          >
+                            {item.initials}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13px] font-medium text-[var(--color-ink)]">
+                              {item.text}
+                            </div>
+                            <div className="text-[11px] text-[var(--color-neutral-400)]">
+                              {formatRelative(item.createdAt)} ·{' '}
+                              {item.locationName}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            )}
+            </PainelSection>
           </>
         ) : null}
       </div>

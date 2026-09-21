@@ -1,27 +1,28 @@
 'use client';
 
+import { ArrowDown, ArrowRight } from 'lucide-react';
 import { Reveal, RevealGroup, RevealItem } from '@/components/landing/reveal';
 
 const steps = [
   {
-    n: '01',
-    title: 'Cadastre seu negócio',
-    body: 'Em minutos, sua loja está no Frego. Sem instalação complicada, sem equipe de TI.',
+    title: 'Cliente compra',
+    body: 'A visita no caixa já é o dado. Sem planilha, sem cadastro extra.',
   },
   {
-    n: '02',
-    title: 'Monte o motivo de voltar',
-    body: 'Campanha de carimbos, pontos, cashback ou aniversário. Você define o prêmio; o Frego leva até o aplicativo e o caixa.',
+    title: 'Frego entende o comportamento',
+    body: 'Quem volta, quem some, quem está perto de um benefício.',
   },
   {
-    n: '03',
-    title: 'O painel aponta; o app mostra',
-    body: 'Quem sumiu, quem está quase no prêmio. O cliente vê o saldo no bolso. Você atende a loja — a gente lembra.',
+    title: 'Frego encontra oportunidades',
+    body: 'O painel aponta quem merece atenção — hoje, não no relatório de sexta.',
   },
   {
-    n: '04',
-    title: 'Cliente vira freguês',
-    body: 'Segunda visita, terceira, hábito. Cada funcionalidade existe para uma pergunta: isso aumenta a chance de ele voltar?',
+    title: 'Você age',
+    body: 'Uma mensagem, um convite, um motivo para atravessar a porta de novo.',
+  },
+  {
+    title: 'Cliente volta',
+    body: 'Relacionamento vira visita. Visita vira freguês.',
   },
 ];
 
@@ -29,38 +30,56 @@ export function LandingHowItWorks() {
   return (
     <section
       id="como-funciona"
-      className="border-y border-[var(--color-hairline)] bg-[var(--color-primary-800)] text-white"
+      className="border-b border-[var(--color-hairline)] bg-[var(--color-card)]"
       aria-labelledby="como-heading"
     >
       <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
         <Reveal>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-200)]">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
             Como funciona
           </p>
           <h2
             id="como-heading"
-            className="mt-4 max-w-2xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] sm:text-[36px]"
+            className="mt-4 max-w-2xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
           >
-            Do primeiro cliente ao freguês, em quatro passos
+            Você já tem os dados. A Frego transforma esses dados em ação.
           </h2>
-          <p className="mt-4 max-w-lg text-[15px] leading-relaxed text-white/65">
-            As mesmas ferramentas de relacionamento que as grandes marcas usam —
-            agora na mão do negócio local.
+          <p className="mt-4 max-w-xl text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
+            Não é outro sistema para aprender. É o caminho da venda até o
+            cliente de volta.
           </p>
         </Reveal>
 
-        <RevealGroup className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
-          {steps.map((s) => (
-            <RevealItem key={s.n}>
-              <p className="font-mono text-[13px] font-semibold tracking-[0.04em] text-[var(--color-primary-200)]">
-                {s.n}
-              </p>
-              <h3 className="mt-3 text-[18px] font-semibold tracking-[-0.02em]">
-                {s.title}
-              </h3>
-              <p className="mt-2 text-[14px] leading-relaxed text-white/65">
-                {s.body}
-              </p>
+        <RevealGroup className="mt-10 grid gap-0 lg:grid-cols-5 lg:gap-4">
+          {steps.map((s, i) => (
+            <RevealItem key={s.title} className="relative">
+              <article className="h-full rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-bg)] px-4 py-5 sm:px-4 sm:py-6">
+                <p className="font-mono text-[12px] font-semibold tracking-[0.06em] text-[var(--color-primary-500)]">
+                  {String(i + 1).padStart(2, '0')}
+                </p>
+                <h3 className="mt-3 text-[17px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)]">
+                  {s.title}
+                </h3>
+                <p className="mt-2 text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+                  {s.body}
+                </p>
+              </article>
+              {i < steps.length - 1 ? (
+                <>
+                  <span
+                    className="flex justify-center py-2 text-[var(--color-primary-200)] lg:hidden"
+                    aria-hidden
+                  >
+                    <ArrowDown size={18} strokeWidth={2.25} />
+                  </span>
+                  <span
+                    className="pointer-events-none absolute -right-2.5 top-7 hidden text-[var(--color-primary-200)] lg:block"
+                    aria-hidden
+                  >
+                    <ArrowRight size={16} strokeWidth={2.25} />
+                  </span>
+                </>
+              ) : null}
             </RevealItem>
           ))}
         </RevealGroup>

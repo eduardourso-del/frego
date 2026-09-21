@@ -78,12 +78,16 @@ export function foldLedgerTx(
   }
 }
 
+function isLoyaltyProgress(c: CampaignWalletEntry) {
+  return c.type === 'stamps' || c.type === 'spend' || c.type === 'visits';
+}
+
 function primaryCampaign(
   wallet: WalletSnapshot,
 ): CampaignWalletEntry | null {
   return (
-    wallet.campaigns.find((c) => c.type !== 'birthday' && c.type !== 'cashback' && c.canRedeem) ??
-    wallet.campaigns.find((c) => c.type !== 'birthday' && c.type !== 'cashback') ??
+    wallet.campaigns.find((c) => isLoyaltyProgress(c) && c.canRedeem) ??
+    wallet.campaigns.find((c) => isLoyaltyProgress(c)) ??
     wallet.campaigns.find((c) => c.canRedeem) ??
     wallet.campaigns[0] ??
     null
@@ -95,7 +99,21 @@ export function progressFromWallet(
   extras?: { businessId?: string; businessName?: string },
 ): CustomerProgress | null {
   const primary = primaryCampaign(wallet);
-  if (!primary || primary.unitsNeeded <= 0) return null;
+  if (!primary) return null;
+
+  if (!isLoyaltyProgress(primary) || primary.unitsNeeded <= 0) {
+    return {
+      campaignId: primary.campaignId,
+      campaignName: primary.campaignName,
+      type: primary.type,
+      current: primary.canRedeem ? 1 : 0,
+      needed: 1,
+      remaining: primary.canRedeem ? 0 : 1,
+      canRedeem: primary.canRedeem,
+      rewardTitle: primary.rewardTitle,
+      ...extras,
+    };
+  }
 
   const current =
     primary.type === 'spend' ? wallet.pools.points : wallet.pools.stamps;

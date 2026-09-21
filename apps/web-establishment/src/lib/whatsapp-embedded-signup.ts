@@ -96,11 +96,9 @@ function parseWaSession(raw: unknown): WaEmbeddedSession | null {
 /**
  * Launch Meta WhatsApp Embedded Signup and return the OAuth code.
  *
- * - `cloud` (default for pre–App Review): standard Cloud API number setup.
- *   Works with Standard Access when the Facebook user is admin/developer/tester
- *   on the Meta app and uses an eligible Business Portfolio.
  * - `coexistence`: keep WhatsApp Business app + Cloud API on the same number.
- *   Needs Advanced Access (App Review) for partner onboarding.
+ *   This is the production path after the Meta app is Live with Advanced Access.
+ * - `cloud`: Cloud API number only (dedicated / test number, no Business app).
  *
  * Do not pass redirect_uri — the JS SDK popup returns the code to the
  * callback with no redirect, and Meta's token exchange must omit it too.

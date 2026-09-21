@@ -1,47 +1,47 @@
 'use client';
 
 import Image from 'next/image';
-import { Gift, Smartphone, Store } from 'lucide-react';
+import { Gift, Heart, Smartphone } from 'lucide-react';
 import { Reveal, RevealGroup, RevealItem } from '@/components/landing/reveal';
 
 const shots = [
   {
     src: '/landing/app-lojas.png',
-    alt: 'App Frego — lista de lojas, favoritas e prêmios prontos',
-    title: 'Lojas',
+    alt: 'App Frego — lojas que o cliente frequenta e benefícios em andamento',
+    title: 'As lojas da rotina',
     caption:
-      'Todas as casas num só lugar. Favoritas, prêmio pronto ou quase lá: o cliente acha a sua loja sem perguntar no caixa.',
+      'O cliente vê as lojas que já frequenta — não um mural de descontos.',
   },
   {
     src: '/landing/app-loja.png',
     alt: 'App Frego — ficha da loja com carimbos, pontos e cashback',
-    title: 'A sua casa',
+    title: 'Benefícios da loja',
     caption:
-      'Carimbos, pontos e cashback da loja, cada um com a própria validade. O cliente vê o saldo e o que ainda pode ganhar.',
+      'Carimbos, pontos e saldo, cada um no seu ritmo. O cliente vê o que ainda pode ganhar.',
   },
   {
     src: '/landing/app-premios.png',
     alt: 'App Frego — prêmios prontos para resgatar no caixa',
-    title: 'Prêmios',
+    title: 'Resgate no caixa',
     caption:
-      'Quando chega a meta, o resgate é no aplicativo. Ele mostra o voucher no caixa — sem cartão de papel.',
+      'Quando chega a meta, o cliente mostra a tela. A loja confirma. Sem cartão de papel.',
   },
 ] as const;
 
 const points = [
   {
     title: 'O progresso cabe no bolso',
-    body: 'O freguês abre o app e sabe quantos carimbos faltam, quantos pontos tem e se o cashback está esperando. Você não precisa explicar o cartão a cada visita.',
+    body: 'O freguês abre o app e sabe o que falta. Você não precisa explicar o cartão a cada visita.',
     Icon: Smartphone,
   },
   {
-    title: 'O prêmio é da sua casa',
-    body: 'Ele vê a foto, o nome e a loja certa: o pão de queijo, as fritas, a sobremesa — não um desconto genérico de marketplace.',
-    Icon: Store,
+    title: 'Relacionamento com a sua loja',
+    body: 'Ele vê o prêmio da sua loja — o pão de queijo, o café — não um desconto genérico.',
+    Icon: Heart,
   },
   {
-    title: 'Resgate no caixa, na hora',
-    body: 'Quando está pronto para resgatar, vira um botão. O cliente mostra a tela; o balcão confirma. A campanha que você montou fecha o ciclo.',
+    title: 'Fecha no caixa, na hora',
+    body: 'Quando está pronto, vira um botão. A campanha que você montou completa o ciclo.',
     Icon: Gift,
   },
 ];
@@ -53,7 +53,7 @@ function PhoneShot({
   caption,
 }: (typeof shots)[number]) {
   return (
-    <figure className="flex h-full flex-col rounded-[20px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)] sm:p-5">
+    <figure className="flex h-full flex-col rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4 shadow-[var(--shadow-card)] sm:p-5">
       <div className="mx-auto w-full max-w-[240px] overflow-hidden rounded-[24px] border-[6px] border-[var(--color-ink)] bg-[var(--color-ink)]">
         <Image
           src={src}
@@ -80,24 +80,23 @@ export function LandingCustomerApp() {
   return (
     <section
       id="app"
-      className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20"
+      className="border-y border-[var(--color-hairline)] bg-[var(--color-card)]"
       aria-labelledby="app-heading"
     >
-      <Reveal>
+      <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
+        <Reveal>
           <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
-            No bolso
+            No bolso do cliente
           </p>
           <h2
             id="app-heading"
             className="mt-4 max-w-3xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
           >
-            O cartão fica no bolso. O motivo fica na tela.
+            O vínculo com a sua loja, no bolso do cliente.
           </h2>
           <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
-            Você escolheu o motivo e a audiência. O freguês abre o Frego e vê
-            as lojas, o saldo e o prêmio pronto. Sem cartão de papel. Sem
-            perguntar no caixa quantos carimbos faltam. A casa continua sendo
-            sua — o aplicativo só sustenta o relacionamento.
+            O app sustenta o relacionamento. Uma rede de benefícios locais —
+            não um mural de descontos.
           </p>
         </Reveal>
 
@@ -112,11 +111,11 @@ export function LandingCustomerApp() {
         <RevealGroup className="mt-6 grid items-stretch gap-5 sm:grid-cols-3">
           {points.map((p) => (
             <RevealItem key={p.title} className="h-full">
-              <article className="flex h-full flex-col rounded-[20px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5">
+              <article className="flex h-full flex-col rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-5">
                 <span className="inline-flex h-10 w-10 items-center justify-center rounded-[12px] bg-[var(--color-primary-50)] text-[var(--color-primary-600)]">
                   <p.Icon size={20} strokeWidth={2.25} aria-hidden />
                 </span>
-                <h3 className="mt-4 text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
+                <h3 className="mt-4 text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
                   {p.title}
                 </h3>
                 <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
@@ -126,6 +125,7 @@ export function LandingCustomerApp() {
             </RevealItem>
           ))}
         </RevealGroup>
+      </div>
     </section>
   );
 }

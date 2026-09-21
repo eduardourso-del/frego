@@ -8,6 +8,7 @@ import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
+import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/voucher_sheet.dart';
 import 'campaign_detail_page.dart';
@@ -565,6 +566,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                   ? cashbackBalance
                   : stamps;
           final isBirthday = type == 'birthday';
+          final isPromo = type == 'promo';
           final lockedReason = c['lockedReason'] as String?;
           final daysUntil = (c['daysUntilBirthday'] as num?)?.toInt();
           final unlocksAt = c['unlocksAt'] as String?;
@@ -589,6 +591,16 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                     : lockedReason == 'already_redeemed'
                         ? 'Já resgatado este ano'
                         : 'Ainda não liberou';
+          } else if (isPromo) {
+            statusHint = promoStatusLine(
+              lockedReason: lockedReason,
+              canRedeem: canRedeem,
+              unlocksAt: unlocksAt,
+            );
+            buttonLabel = promoButtonLabel(
+              lockedReason: lockedReason,
+              canRedeem: canRedeem,
+            );
           } else if (isCashback) {
             statusHint = audienceLocked
                 ? 'Promo exclusiva para outro perfil de cliente'
@@ -635,6 +647,8 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               cashbackPercent: (c['cashbackPercent'] as num?)?.toInt(),
               cashbackBalanceCents: cashbackBalance,
               busy: _redeeming,
+              promoCalendar:
+                  isPromo ? PromoCalendar.fromCampaign(c) : null,
               audienceUnlocked: audienceEligible && !audienceLocked,
               audienceLabel: unlockMessage ??
                   (audienceEligible ? 'Conquista liberada pra você' : null),

@@ -2,11 +2,10 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import {
-  AUDIENCE_PRESETS,
-  computeSpendTiers,
   countMembershipsByRules,
   parseAudienceRules,
 } from '../lib/audience.js';
+import { foldCampaignReturn, voucherBelongsToPeriod, voucherLookbackStart } from '../lib/campaign-return.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
@@ -167,7 +166,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       totalMembers,
       memberships,
       activeIn30d,
-      savedAudiences,
+      lateVoucherTxs,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -221,15 +220,23 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         select: { membershipId: true },
         distinct: ['membershipId'],
       }),
-      prisma.audienceSegment.findMany({
-        where: { businessId: auth.businessId },
-        orderBy: { createdAt: 'desc' },
-        take: 20,
+      prisma.transaction.findMany({
+        where: {
+          businessId: auth.businessId,
+          type: 'redeem',
+          createdAt: { gte: voucherLookbackStart(from), lt: from },
+        },
+        select: txSelect,
       }),
     ]);
 
     const current = summarize(currentTxs);
     const previous = summarize(previousTxs);
+    const periodRange = { from, to: toExclusive };
+    const campaignPeriodTxs = [
+      ...currentTxs,
+      ...lateVoucherTxs.filter((tx) => voucherBelongsToPeriod(tx, periodRange)),
+    ];
     const active30dCount = activeIn30d.length;
     const inactive30d = Math.max(0, totalMembers - active30dCount);
 
@@ -363,42 +370,47 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       string,
       { open: number; used: number; expired: number }
     >();
-    const memberSpend = new Map<string, number>();
+    const campaignRedeemTxs = new Map<string, TxLite[]>();
 
-    for (const tx of currentTxs) {
+    for (const tx of campaignPeriodTxs) {
       if (shouldOmitFromLedger(tx.metadata)) continue;
-      if (tx.type === 'redeem' && tx.campaignId) {
-        const cashback = isCashbackUnit(tx.unitKind);
-        campaignRedeems.set(
-          tx.campaignId,
-          (campaignRedeems.get(tx.campaignId) ?? 0) + (cashback ? 1 : tx.quantity),
-        );
-        let set = campaignRedeemers.get(tx.campaignId);
-        if (!set) {
-          set = new Set();
-          campaignRedeemers.set(tx.campaignId, set);
-        }
-        set.add(tx.membershipId);
-
-        if (!cashback) {
-          let v = campaignVoucher.get(tx.campaignId);
-          if (!v) {
-            v = { open: 0, used: 0, expired: 0 };
-            campaignVoucher.set(tx.campaignId, v);
-          }
-          const voucher = voucherFromMetadata(tx.metadata, {
-            createdAt: tx.createdAt,
-          });
-          if (voucher?.status === 'used') v.used += 1;
-          else if (voucher?.status === 'expired') v.expired += 1;
-          else if (voucher) v.open += 1;
-        }
+      if (tx.type !== 'redeem' || !tx.campaignId) continue;
+      if (
+        !isCashbackUnit(tx.unitKind) &&
+        !voucherBelongsToPeriod(tx, periodRange)
+      ) {
+        continue;
       }
-      if (isPointsEarn(tx) && tx.amountCents) {
-        memberSpend.set(
-          tx.membershipId,
-          (memberSpend.get(tx.membershipId) ?? 0) + tx.amountCents,
-        );
+      const cashback = isCashbackUnit(tx.unitKind);
+      campaignRedeems.set(
+        tx.campaignId,
+        (campaignRedeems.get(tx.campaignId) ?? 0) + (cashback ? 1 : tx.quantity),
+      );
+      let set = campaignRedeemers.get(tx.campaignId);
+      if (!set) {
+        set = new Set();
+        campaignRedeemers.set(tx.campaignId, set);
+      }
+      set.add(tx.membershipId);
+      let list = campaignRedeemTxs.get(tx.campaignId);
+      if (!list) {
+        list = [];
+        campaignRedeemTxs.set(tx.campaignId, list);
+      }
+      list.push(tx);
+
+      if (!cashback) {
+        let v = campaignVoucher.get(tx.campaignId);
+        if (!v) {
+          v = { open: 0, used: 0, expired: 0 };
+          campaignVoucher.set(tx.campaignId, v);
+        }
+        const voucher = voucherFromMetadata(tx.metadata, {
+          createdAt: tx.createdAt,
+        });
+        if (voucher?.status === 'used') v.used += 1;
+        else if (voucher?.status === 'expired') v.expired += 1;
+        else if (voucher) v.open += 1;
       }
     }
 
@@ -428,10 +440,10 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           const engagePct =
             eligible === 0 ? 0 : Math.round((redeemers / eligible) * 100);
 
-          let revenueFromRedeemersCents = 0;
-          for (const mid of campaignRedeemers.get(c.id) ?? []) {
-            revenueFromRedeemersCents += memberSpend.get(mid) ?? 0;
-          }
+          const ret = foldCampaignReturn(campaignRedeemTxs.get(c.id) ?? [], {
+            isCashback: c.type === 'cashback',
+            range: periodRange,
+          });
 
           return {
             id: c.id,
@@ -449,7 +461,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
             openVouchers: vouchers.open,
             usedVouchers: vouchers.used,
             expiredVouchers: vouchers.expired,
-            revenueFromRedeemersCents,
+            revenueFromRedeemersCents: ret.revenueCents,
+            revenueCoverage: ret.coverage,
           };
         }),
       )
@@ -493,41 +506,6 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         rate,
       };
     });
-
-    const presetAudiences = await Promise.all(
-      AUDIENCE_PRESETS.map(async (p) => {
-        const memberCount = await countMembershipsByRules(
-          auth.businessId,
-          p.rules,
-        );
-        return {
-          key: p.key,
-          name: p.name,
-          description: p.description,
-          rules: p.rules,
-          memberCount,
-        };
-      }),
-    );
-    const spendTiers = await computeSpendTiers(auth.businessId, 90);
-    const atRisk = presetAudiences.find((p) => p.key === 'at_risk');
-
-    const saved = await Promise.all(
-      savedAudiences.map(async (s) => {
-        const rules = parseAudienceRules(s.rules);
-        const memberCount = await countMembershipsByRules(
-          auth.businessId,
-          rules,
-        );
-        return {
-          id: s.id,
-          name: s.name,
-          rules,
-          memberCount,
-          createdAt: s.createdAt,
-        };
-      }),
-    );
 
     return {
       range,
@@ -581,22 +559,6 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       locations: locationsRanking,
       team: teamRanking,
       campaigns: campaignsRanking,
-      audiences: {
-        presets: presetAudiences,
-        spendTiers,
-        saved,
-        insight: atRisk
-          ? {
-              title: `Alto valor em risco: ${atRisk.memberCount}`,
-              body:
-                atRisk.memberCount > 0
-                  ? `${atRisk.memberCount} clientes gastaram bem e estão sem visita há 30 dias ou mais. Crie uma campanha só para eles.`
-                  : 'Nenhum cliente de alto valor inativo no momento — continue acompanhando.',
-              rules: atRisk.rules,
-              memberCount: atRisk.memberCount,
-            }
-          : null,
-      },
     };
   });
 };

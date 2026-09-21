@@ -33,7 +33,7 @@ const types: Array<{
   {
     title: 'Carimbos',
     kicker: 'Frequência',
-    body: 'Cada visita no balcão vira um carimbo. Você escolhe a meta — 8, 10 ou 12 — e o prêmio: o pão de queijo, o café, o combo da casa. É simples de explicar no caixa e fácil de virar hábito.',
+    body: 'Cada visita no balcão vira um carimbo. Você escolhe a meta — 8, 10 ou 12 — e o prêmio: o pão de queijo, o café, o combo da loja. É simples de explicar no caixa e fácil de virar hábito.',
     example:
       'Na padaria, no café ou na lanchonete, o cliente vê o cartão enchendo e já sabe por que voltar.',
     Icon: Stamp,
@@ -57,7 +57,7 @@ const types: Array<{
   {
     title: 'Cashback',
     kicker: 'Saldo',
-    body: 'Uma porcentagem da compra volta em reais para o cliente usar na casa. A taxa fica na campanha — 5%, 10% ou 15% — não numa configuração escondida. É um motivo imediato para atravessar a porta de novo.',
+    body: 'Uma porcentagem da compra volta em reais para o cliente usar na loja. A taxa fica na campanha — 5%, 10% ou 15% — não numa configuração escondida. É um motivo imediato para atravessar a porta de novo.',
     example:
       'No caixa, o saldo aparece na hora. O cliente gasta o que ganhou com você, não no concorrente.',
     Icon: Banknote,
@@ -69,7 +69,7 @@ const types: Array<{
   {
     title: 'Aniversário',
     kicker: 'Data',
-    body: 'No dia do aniversário do cliente — e nos seis dias seguintes — a casa oferece um presente. Não é uma promoção eterna: é um gesto com data, que reforça “você faz parte daqui”.',
+    body: 'No dia do aniversário do cliente — e nos seis dias seguintes — a loja oferece um presente. Não é uma promoção eterna: é um gesto com data, que reforça “você faz parte daqui”.',
     example:
       'Um croissant, um café ou um desconto só naquele período. Relacionamento com data no calendário.',
     Icon: Cake,
@@ -136,7 +136,7 @@ const levers: Array<{
     wrap: 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)]',
   },
   {
-    title: 'O prêmio é da sua casa',
+    title: 'O prêmio é da sua loja',
     body: 'Você define o nome, a descrição e a foto do produto. O cliente vê no app o que vai ganhar — o pão de queijo, não um desconto genérico.',
     Icon: ImageIcon,
     wrap: 'bg-[var(--color-points-bg)] text-[var(--color-points)]',
@@ -225,7 +225,7 @@ function TypeMotif({ kind }: { kind: (typeof types)[number]['motif'] }) {
         + 6 dias
       </span>
       <span className="text-[13px] font-medium text-[var(--color-primary-600)]">
-        nos dias depois do aniversário
+        depois do aniversário
       </span>
     </div>
   );
@@ -240,7 +240,7 @@ export function LandingCampaigns() {
     >
       <Reveal>
         <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
-          O motivo
+          Relacionamento
         </p>
         <h2
           id="campanhas-heading"
@@ -249,17 +249,10 @@ export function LandingCampaigns() {
           O motivo da próxima visita, escolhido por você.
         </h2>
         <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
-          Depois do cadastro, o primeiro passo concreto é o motivo da volta.
           Uma campanha no Frego não é um cupom solto nem um cartão de papel. É
           o prêmio que faz o cliente atravessar a porta de novo. Você escolhe o
-          tipo, a meta, o presente, a foto e para quem ela vale. A loja define
-          o formato; o Frego cuida do cartão no app e do registro no balcão.
-        </p>
-        <p className="mt-3 max-w-2xl text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
-          São quatro jeitos de construir o hábito. Os três primeiros usam as
-          cores do programa — carimbos, pontos e cashback — para o cliente
-          reconhecer na hora o que está ganhando. Aniversário é o gesto com
-          data: um presente, não uma promoção eterna.
+          tipo, a meta, o presente e para quem ela vale. A loja define o
+          formato; o Frego cuida do cartão no app e do registro no caixa.
         </p>
       </Reveal>
 
@@ -296,23 +289,23 @@ export function LandingCampaigns() {
         ))}
       </RevealGroup>
 
-      <Reveal className="mt-10">
+      <Reveal className="mt-14">
         <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
           Como você monta
         </p>
-        <h3 className="mt-4 max-w-2xl text-[22px] font-extrabold leading-[1.25] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[26px]">
+        <h3 className="mt-4 max-w-2xl text-[24px] font-extrabold leading-[1.25] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[28px]">
           Quatro decisões. O Frego cuida do resto.
         </h3>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Não existe um pacote único de “fidelidade”. Você combina as peças do
+          Não existe um pacote único de fidelidade. Você combina as peças do
           jeito que a operação aguenta — e ajusta quando o movimento pede.
         </p>
       </Reveal>
 
-      <RevealGroup className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <RevealGroup className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {assemble.map((s) => (
           <RevealItem key={s.n}>
-            <article className="h-full rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4">
+            <article className="h-full rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5">
               <div className="flex items-center justify-between gap-3">
                 <span
                   className={`inline-flex h-10 w-10 items-center justify-center rounded-[12px] ${s.wrap}`}
@@ -323,10 +316,10 @@ export function LandingCampaigns() {
                   {s.n}
                 </span>
               </div>
-              <h4 className="mt-4 text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
+              <h4 className="mt-4 text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
                 {s.title}
               </h4>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+              <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
                 {s.body}
               </p>
             </article>
@@ -334,11 +327,11 @@ export function LandingCampaigns() {
         ))}
       </RevealGroup>
 
-      <Reveal className="mt-10">
+      <Reveal className="mt-14">
         <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
           Flexibilidade
         </p>
-        <h3 className="mt-4 max-w-2xl text-[22px] font-extrabold leading-[1.25] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[26px]">
+        <h3 className="mt-4 max-w-2xl text-[24px] font-extrabold leading-[1.25] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[28px]">
           Você decide o alcance. O Frego não trava o formato.
         </h3>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
@@ -349,22 +342,24 @@ export function LandingCampaigns() {
         </p>
       </Reveal>
 
-      <RevealGroup className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <RevealGroup className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {levers.map((l) => (
-          <RevealItem key={l.title} className="flex gap-3.5">
-            <span
-              className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] ${l.wrap}`}
-            >
-              <l.Icon size={20} strokeWidth={2.25} aria-hidden />
-            </span>
-            <div className="min-w-0">
-              <h4 className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
-                {l.title}
-              </h4>
-              <p className="mt-1 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
-                {l.body}
-              </p>
-            </div>
+          <RevealItem key={l.title}>
+            <article className="flex h-full gap-3.5 rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5">
+              <span
+                className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] ${l.wrap}`}
+              >
+                <l.Icon size={20} strokeWidth={2.25} aria-hidden />
+              </span>
+              <div className="min-w-0">
+                <h4 className="text-[17px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
+                  {l.title}
+                </h4>
+                <p className="mt-1 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
+                  {l.body}
+                </p>
+              </div>
+            </article>
           </RevealItem>
         ))}
       </RevealGroup>

@@ -277,9 +277,9 @@ export function WhatsAppSettingsCard() {
               WhatsApp
             </h2>
             <p className="mt-1 max-w-md text-[13px] text-[var(--color-neutral-500)]">
-              Antes do App Review da Meta, use “Conectar para testes” com um
-              Facebook que seja admin/developer do app Frego. Depois da
-              aprovação, use coexistência para manter o app Business no celular.
+              Conecte o WhatsApp Business da loja. Coexistência mantém o app no
+              celular e o Frego no mesmo número. Use “Número só na API” apenas
+              para um número dedicado, sem o app Business.
             </p>
           </div>
         </div>
@@ -402,8 +402,8 @@ export function WhatsAppSettingsCard() {
                 Enviar mensagem de teste
               </p>
               <p className="mt-1 text-[12px] text-[var(--color-neutral-500)]">
-                Use para gravar o vídeo do App Review. Informe um celular que
-                possa receber WhatsApp (com DDI).
+                Informe um celular que possa receber WhatsApp (com DDI) para
+                conferir o envio pelo número da loja.
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <input
@@ -475,26 +475,28 @@ export function WhatsAppSettingsCard() {
           )}
           <div className="rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3 text-[13px] text-[var(--color-neutral-500)]">
             <p className="font-semibold text-[var(--color-ink)]">
-              Como testar antes do App Review
+              Como conectar o número da loja
             </p>
             <ol className="mt-2 list-decimal space-y-1 pl-4">
               <li>
-                No Meta App Dashboard, adicione seu Facebook como{' '}
-                <span className="text-[var(--color-ink)]">Admin</span> ou{' '}
-                <span className="text-[var(--color-ink)]">Developer</span>.
+                Use o app{' '}
+                <span className="text-[var(--color-ink)]">WhatsApp Business</span>{' '}
+                (não o WhatsApp pessoal), atualizado, no celular da loja.
               </li>
               <li>
-                Use um Business Portfolio{' '}
-                <span className="text-[var(--color-ink)]">sem restrição</span>{' '}
-                (Bearlabs restrito bloqueia o fluxo).
+                Clique em{' '}
+                <span className="text-[var(--color-ink)]">
+                  Conectar WhatsApp Business
+                </span>{' '}
+                e complete o fluxo da Meta com o Business e o número da loja.
               </li>
               <li>
-                Clique em <span className="text-[var(--color-ink)]">Conectar para testes</span>{' '}
-                (Cloud API). Prefira um número BR dedicado ou o sandbox da Meta.
+                Deixe o app aberto alguns minutos depois de conectar (a Meta
+                sincroniza o número).
               </li>
               <li>
-                Aguarde o template aprovado e use “Enviar mensagem de teste”
-                para o vídeo do review.
+                Aguarde os templates aprovados e envie uma mensagem de teste.
+                Depois, cadastre ou carimbe um cliente no balcão.
               </li>
             </ol>
           </div>
@@ -502,20 +504,20 @@ export function WhatsAppSettingsCard() {
             <button
               type="button"
               disabled={busy || !configured}
-              onClick={() => void connect('cloud')}
+              onClick={() => void connect('coexistence')}
               className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
             >
               {!busy && <WhatsAppGlyph className="h-4 w-4" />}
-              {busy ? 'Conectando…' : 'Conectar para testes'}
+              {busy ? 'Conectando…' : 'Conectar WhatsApp Business'}
             </button>
             <button
               type="button"
               disabled={busy || !configured}
-              onClick={() => void connect('coexistence')}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold disabled:opacity-60"
-              title="Requer Advanced Access (App Review) da Meta"
+              onClick={() => void connect('cloud')}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-[var(--color-hairline)] px-4 text-[13px] font-semibold disabled:opacity-60"
+              title="Número só na Cloud API, sem o app WhatsApp Business no mesmo número"
             >
-              {busy ? 'Conectando…' : 'Coexistência (após App Review)'}
+              {busy ? 'Conectando…' : 'Número só na API'}
             </button>
           </div>
         </div>

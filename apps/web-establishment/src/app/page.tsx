@@ -2,24 +2,24 @@ import type { Metadata } from 'next';
 import { HomeClient } from './home-client';
 
 export const metadata: Metadata = {
-  title: 'Frego — Suba o ticket médio e o faturamento da sua loja',
+  title: 'Frego — Transforme clientes em fregueses',
   description:
-    'O Frego ajuda o seu estabelecimento a subir o ticket médio e melhorar o faturamento: campanhas, WhatsApp e audiências que transformam clientes em fregueses.',
+    'A inteligência comercial que o pequeno negócio sempre deveria ter. A Frego mostra quem merece sua atenção — sem CRM, sem equipe de marketing.',
   keywords: [
-    'aumentar ticket médio',
-    'aumentar faturamento estabelecimento',
     'fazer cliente voltar',
+    'conhecer meus clientes',
     'relacionamento com clientes',
     'negócio local',
+    'inteligência comercial',
     'campanha de fidelidade',
     'carimbos pontos cashback',
     'whatsapp para loja',
-    'aumentar vendas estabelecimento',
+    'pequeno negócio',
   ],
   openGraph: {
-    title: 'Frego — Suba o ticket médio e o faturamento da sua loja',
+    title: 'Frego — Transforme clientes em fregueses',
     description:
-      'Campanhas, WhatsApp e audiências para o estabelecimento que quer fregueses que voltam e gastam mais.',
+      'Você não precisa de um CRM para conhecer seus clientes. A Frego transforma as vendas em ação: quem sumiu, quem está perto de um benefício, quem chamar hoje.',
     locale: 'pt_BR',
     type: 'website',
     images: [

@@ -17,6 +17,7 @@ import { whatsappRoutes } from './routes/whatsapp.js';
 import { metaWebhookRoutes } from './routes/meta-webhook.js';
 import { publicBusinessRoutes } from './routes/public-business.js';
 import { voucherRoutes } from './routes/vouchers.js';
+import { tagRoutes } from './routes/tags.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -48,6 +49,7 @@ async function main() {
   await app.register(dashboardRoutes);
   await app.register(reportsRoutes);
   await app.register(customerRoutes);
+  await app.register(tagRoutes);
   await app.register(transactionRoutes);
   await app.register(voucherRoutes);
   await app.register(campaignRoutes);

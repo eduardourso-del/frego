@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
 import 'adaptive.dart';
+import 'promo_copy.dart';
 
 /// Compact loyalty card — light surface, brand color as accent only.
 class LoyaltyCampaignCard extends StatelessWidget {
@@ -32,6 +33,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.audienceLabel,
     this.onOpenShop,
     this.onOpen,
+    this.promoCalendar,
   });
 
   final String businessName;
@@ -39,7 +41,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
   final int primary;
   final int primaryDark;
   final String campaignName;
-  final String campaignType; // stamps | spend | birthday | cashback
+  final String campaignType; // stamps | spend | birthday | cashback | promo
   final int unitsNeeded;
   final int currentUnits;
   final String rewardTitle;
@@ -62,14 +64,18 @@ class LoyaltyCampaignCard extends StatelessWidget {
   /// Opens the campaign detail. The redeem button still handles its own tap.
   final VoidCallback? onOpen;
 
+  /// Promoção calendar (dates + weekdays) as the customer should see it.
+  final PromoCalendar? promoCalendar;
+
   bool get _isBirthday => campaignType == 'birthday';
+  bool get _isPromo => campaignType == 'promo';
   bool get _isSpend => campaignType == 'spend' || campaignType == 'points';
   bool get _isCashback => campaignType == 'cashback';
 
   @override
   Widget build(BuildContext context) {
     final needed = unitsNeeded <= 0 ? 1 : unitsNeeded;
-    final inCycle = _isBirthday
+    final inCycle = _isBirthday || _isPromo
         ? (canRedeem ? needed : 0)
         : (canRedeem ? needed : currentUnits % needed);
     final remaining = (needed - inCycle).clamp(0, needed);
@@ -172,6 +178,13 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 showReward: !hasImage,
                                 accent: accent,
                               )
+                            else if (_isPromo)
+                              _PromoBody(
+                                reward: reward,
+                                statusHint: statusHint,
+                                showReward: !hasImage,
+                                calendar: promoCalendar,
+                              )
                             else if (_isCashback)
                               _CashbackBody(
                                 balanceCents: cashbackBalanceCents ?? 0,
@@ -205,7 +218,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (!_isBirthday && !_isCashback && !hasImage) ...[
+                  if (!_isBirthday && !_isPromo && !_isCashback && !hasImage) ...[
                     const SizedBox(height: 8),
                     Text(
                       reward,
@@ -393,34 +406,43 @@ class _TypeChip extends StatelessWidget {
     final isSpend = type == 'spend' || type == 'points';
     final isBirthday = type == 'birthday';
     final isCashback = type == 'cashback';
+    final isPromo = type == 'promo';
     final label = isBirthday
         ? 'Aniversário'
         : isSpend
             ? 'Pontos'
             : isCashback
                 ? 'Cashback'
-                : 'Carimbos';
+                : isPromo
+                    ? 'Promoção'
+                    : 'Carimbos';
     final bg = isSpend
         ? const Color(0xFFFFF8E8)
         : isBirthday
             ? const Color(0xFFFDF2F8)
             : isCashback
                 ? FregoColors.cashbackBg
-                : accent.withValues(alpha: 0.1);
+                : isPromo
+                    ? FregoColors.promoBg
+                    : accent.withValues(alpha: 0.1);
     final fg = isSpend
         ? const Color(0xFF92400E)
         : isBirthday
             ? const Color(0xFF9D174D)
             : isCashback
                 ? FregoColors.cashback
-                : accent;
+                : isPromo
+                    ? FregoColors.promo
+                    : accent;
     final icon = isBirthday
         ? FregoIcons.birthday(size: 11, color: fg)
         : isSpend
             ? FregoIcons.points(size: 11, color: fg)
             : isCashback
                 ? FregoIcons.cashback(size: 11, color: fg)
-                : FregoIcons.stamp(size: 11, color: fg);
+                : isPromo
+                    ? FregoIcons.promo(size: 11, color: fg)
+                    : FregoIcons.stamp(size: 11, color: fg);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -770,6 +792,124 @@ class _BirthdayBody extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromoBody extends StatelessWidget {
+  const _PromoBody({
+    required this.reward,
+    this.statusHint,
+    this.showReward = true,
+    this.calendar,
+  });
+
+  final String reward;
+  final String? statusHint;
+  final bool showReward;
+  final PromoCalendar? calendar;
+
+  @override
+  Widget build(BuildContext context) {
+    final ends = calendar != null ? promoEndsLine(calendar!) : null;
+    final days = calendar?.weekdays ?? const <int>[];
+    final restricted = calendar?.restrictsWeekdays == true;
+    final weekdaysText =
+        calendar != null ? promoWeekdaysLine(calendar!) : null;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: FregoColors.promoBg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              FregoIcons.promo(size: 14, color: FregoColors.promo),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  showReward
+                      ? '$reward · ${statusHint ?? 'Resgate na loja'}'
+                      : (statusHint ?? 'Promoção · resgate na loja'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: FregoColors.promo,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (ends != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(
+                  FregoIcons.calendar,
+                  size: 12,
+                  color: FregoColors.promo,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    ends,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: FregoColors.promo,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 6),
+          if (restricted)
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final d in days)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: FregoColors.promoRing),
+                    ),
+                    child: Text(
+                      kPromoWeekdayLabels[d],
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: FregoColors.promo,
+                      ),
+                    ),
+                  ),
+              ],
+            )
+          else
+            Text(
+              weekdaysText ?? 'Todos os dias',
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: FregoColors.promo,
+              ),
+            ),
         ],
       ),
     );

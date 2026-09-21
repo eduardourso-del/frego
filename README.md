@@ -188,6 +188,7 @@ flutter run
 
 - **Privacy policy URL** (App Store Connect e no app): https://frego.app.br/privacidade
 - **Termos:** https://frego.app.br/termos
+- **Support URL:** https://frego.app.br/suporte
 - Login do cliente é **somente telefone + OTP**. Não adicionar Google/Facebook sem Sign in with Apple (guideline 4.8).
 - Nome e aniversário são opcionais. Exclusão da conta: Perfil → Excluir conta.
 - Notas para o reviewer (copiar e colar): `apps/mobile/store/app-review-notes.txt`

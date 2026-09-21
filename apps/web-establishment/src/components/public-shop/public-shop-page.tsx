@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FregoWordmark } from '@/components/brand';
 import { RemoteImg, BusinessLogo } from '@/components/remote-img';
-import { Banknote, Cake, Coins, MapPin, Stamp } from 'lucide-react';
+import { Banknote, Cake, Coins, MapPin, Percent, Stamp } from 'lucide-react';
 import { businessTypeLabel } from '@frego/tokens';
+import { promoHint } from '@/lib/promo-label';
 import type {
   PublicShopCampaign,
   PublicShopPayload,
@@ -19,6 +20,9 @@ function campaignHint(
 ): string {
   if (c.type === 'birthday') {
     return 'Presente especial no aniversário — e nos 6 dias seguintes';
+  }
+  if (c.type === 'promo') {
+    return promoHint(c);
   }
   if (c.type === 'cashback') {
     const pct = c.cashbackPercent ?? 0;
@@ -63,6 +67,14 @@ function CampaignTypeBadge({
       <span className="inline-flex items-center gap-1 rounded-full bg-[#FDF2F8] px-2 py-0.5 text-[11px] font-semibold text-[#9D174D]">
         <Cake size={12} strokeWidth={2.5} aria-hidden />
         Aniversário
+      </span>
+    );
+  }
+  if (type === 'promo') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-promo-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-promo)]">
+        <Percent size={12} strokeWidth={2.5} aria-hidden />
+        Promoção
       </span>
     );
   }
@@ -273,6 +285,8 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
                           <Cake size={22} className="text-[#9D174D]" />
                         ) : c.type === 'cashback' ? (
                           <Banknote size={22} className="text-[var(--color-cashback)]" />
+                        ) : c.type === 'promo' ? (
+                          <Percent size={22} className="text-[var(--color-promo)]" />
                         ) : (
                           <Stamp size={22} style={{ color: primary }} />
                         )}

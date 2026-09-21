@@ -114,17 +114,21 @@ export function SegmentedControl<T extends string>({
   onChange,
   ariaLabel,
   className,
+  size = 'md',
 }: {
   value: T;
   options: Array<{ value: T; label: string; icon?: ReactNode }>;
   onChange: (value: T) => void;
   ariaLabel: string;
   className?: string;
+  size?: 'sm' | 'md';
 }) {
+  const compact = size === 'sm';
   return (
     <div
       className={cx(
-        'flex gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1',
+        'flex gap-1 overflow-x-auto bg-[var(--color-neutral-100)]',
+        compact ? 'rounded-[10px] p-0.5' : 'rounded-[14px] p-1',
         className,
       )}
       role="group"
@@ -138,7 +142,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             onClick={() => onChange(opt.value)}
             className={cx(
-              'inline-flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all',
+              'inline-flex shrink-0 items-center justify-center font-semibold transition-all',
+              compact
+                ? 'min-h-7 gap-1 rounded-[8px] px-2.5 text-[12px]'
+                : 'min-h-9 gap-1.5 rounded-[11px] px-3.5 text-[13px]',
               active
                 ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
                 : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]',

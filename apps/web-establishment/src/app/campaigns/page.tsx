@@ -1,17 +1,31 @@
 'use client';
 
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Stamp, Coins, Cake, ImageIcon, Banknote } from 'lucide-react';
+import { Stamp, Coins, Cake, ImageIcon, Banknote, Percent } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
-import { CampaignCardPreview } from '@/components/campaign-card-preview';
+import {
+  CampaignCreateForm,
+  emptyCampaignForm,
+  type AudienceOption,
+  type CampaignFormState,
+  type CampaignType,
+  type PromoPeriod,
+} from '@/components/campaign-create-form';
+import { SegmentedControl } from '@/components/ui';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
-import { uploadCampaignRewardImage } from '@/lib/firebase';
+import { formatCoverage } from '@/lib/campaign-return';
+import { promoHint } from '@/lib/promo-label';
+import { CampaignCompareChart } from '@/components/campaign-compare-chart';
+import { TermInfo } from '@/components/term-info';
+import { formatBrl } from '@/lib/money';
+import { TERM } from '@/lib/term-copy';
 
-type CampaignType = 'stamps' | 'spend' | 'birthday' | 'cashback';
 type CampaignStatus = 'draft' | 'active' | 'paused' | 'archived';
 type StatusFilter = 'all' | 'active' | 'inactive';
+type TypeFilter = 'all' | CampaignType;
 
 type Campaign = {
   id: string;
@@ -27,12 +41,11 @@ type Campaign = {
   audienceSegmentId?: string | null;
   audienceSegment?: { id: string; name: string; memberCount?: number | null } | null;
   audienceMemberCount?: number | null;
-};
-
-type AudienceOption = {
-  id: string;
-  name: string;
-  memberCount: number;
+  startsOn?: string | null;
+  endsOn?: string | null;
+  weekdays?: number[];
+  redeemMax?: number | null;
+  redeemPeriod?: string | null;
 };
 
 type CampaignPerformance = {
@@ -42,23 +55,16 @@ type CampaignPerformance = {
   fulfillPct: number;
   engagePct: number;
   revenueFromRedeemersCents: number;
+  revenueCoverage?: { withAmount: number; used: number };
   cashbackSpentCents?: number;
   cashbackEarnedCents?: number;
+  openVouchers?: number;
+  usedVouchers?: number;
+  expiredVouchers?: number;
   series: Array<{ date: string; redeems: number }>;
 };
 
-const emptyForm = {
-  name: '',
-  type: 'stamps' as CampaignType,
-  stampsNeeded: 10,
-  pointsPerReal: 1,
-  cashbackPercent: 5,
-  rewardTitle: '',
-  rewardDescription: '',
-  rewardImageUrl: '',
-  activate: true,
-  audienceSegmentId: '' as string,
-};
+const emptyForm: CampaignFormState = emptyCampaignForm;
 
 const STATUS_LABEL: Record<string, string> = {
   draft: 'Rascunho',
@@ -73,22 +79,127 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'inactive', label: 'Inativas' },
 ];
 
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'stamps', label: 'Carimbos' },
+  { value: 'spend', label: 'Pontos' },
+  { value: 'birthday', label: 'Aniversário' },
+  { value: 'cashback', label: 'Cashback' },
+  { value: 'promo', label: 'Promoção' },
+];
+
 function parseStatusFilter(raw: string | null): StatusFilter {
   if (raw === 'active' || raw === 'inactive' || raw === 'all') return raw;
   return 'all';
 }
 
-function matchesFilter(c: Campaign, filter: StatusFilter) {
-  if (filter === 'all') return true;
-  if (filter === 'active') return c.status === 'active';
-  return c.status !== 'active';
+function parseTypeFilter(raw: string | null): TypeFilter {
+  if (
+    raw === 'stamps' ||
+    raw === 'spend' ||
+    raw === 'birthday' ||
+    raw === 'cashback' ||
+    raw === 'promo'
+  ) {
+    return raw;
+  }
+  return 'all';
+}
+
+const RULE_KEYS = [
+  'spendCentsMin',
+  'spendCentsMax',
+  'windowDays',
+  'inactiveDaysMin',
+  'visitsMin',
+  'visitsMax',
+  'nearReward',
+  'isVip',
+  'tagIds',
+  'tagMatch',
+] as const;
+
+function composeQueryKeys() {
+  return [
+    'compose',
+    'fromAudience',
+    'audienceId',
+    'audienceName',
+    'campaignName',
+    'rewardTitle',
+    ...RULE_KEYS,
+  ];
+}
+
+function parseRulesFromSearch(searchParams: URLSearchParams) {
+  const rules: Record<string, unknown> = { version: 1 };
+  for (const key of RULE_KEYS) {
+    const v = searchParams.get(key);
+    if (v == null || v === '') continue;
+    if (key === 'nearReward' || key === 'isVip') {
+      rules[key] = v === 'true' || v === '1';
+    } else if (key === 'tagIds') {
+      rules[key] = v.split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (key === 'tagMatch') {
+      rules[key] = v === 'all' ? 'all' : 'any';
+    } else {
+      rules[key] = Number.parseInt(v, 10);
+    }
+  }
+  return rules;
+}
+
+function ruleValue(v: unknown) {
+  if (v == null) return '';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (Array.isArray(v)) return v.join(',');
+  return String(v);
+}
+
+function rulesMatch(
+  a: Record<string, unknown> | null | undefined,
+  b: Record<string, unknown>,
+) {
+  if (!a) return false;
+  return RULE_KEYS.every((k) => ruleValue(a[k]) === ruleValue(b[k]));
+}
+
+function badgeTitleForAudience(name: string, rules: Record<string, unknown>) {
+  const n = name.trim().toLowerCase();
+  if (
+    n === 'alto valor' ||
+    n === 'quem mais gastou' ||
+    n === 'quem voltou'
+  ) {
+    return 'Cliente da casa';
+  }
+  if (n === 'em risco' || n === 'quem sumiu') return 'De volta à casa';
+  if (n === 'quase prêmio' || n === 'quase premio') return 'Quase lá';
+  if (n === 'vip' || n === 'vips quietos') return 'VIP da casa';
+  if (name.trim()) return name.trim();
+  return typeof rules.spendCentsMin === 'number' ? 'Cliente da casa' : name;
+}
+
+function matchesFilter(
+  c: Campaign,
+  status: StatusFilter,
+  type: TypeFilter,
+  audience: string,
+) {
+  if (status === 'active' && c.status !== 'active') return false;
+  if (status === 'inactive' && c.status === 'active') return false;
+  if (type !== 'all' && c.type !== type) return false;
+  if (audience === 'none') {
+    if (c.audienceSegmentId || c.audienceSegment?.id) return false;
+  } else if (audience) {
+    const id = c.audienceSegmentId || c.audienceSegment?.id;
+    if (id !== audience) return false;
+  }
+  return true;
 }
 
 function formatMoney(cents: number) {
-  return (cents / 100).toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  });
+  return formatBrl(cents);
 }
 
 export default function CampaignsPage() {
@@ -114,46 +225,130 @@ function CampaignsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusFilter = parseStatusFilter(searchParams.get('status'));
+  const typeFilter = parseTypeFilter(searchParams.get('type'));
+  const audienceFilter = searchParams.get('audience') ?? '';
   const highlightId = searchParams.get('highlight');
   const urlAudienceId = searchParams.get('audienceId');
   const urlAudienceName = searchParams.get('audienceName');
+  const fromAudience = searchParams.get('fromAudience');
+  const compose = searchParams.get('compose') === '1';
+  const urlCampaignName = searchParams.get('campaignName');
+  const urlRewardTitle = searchParams.get('rewardTitle');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [audiences, setAudiences] = useState<AudienceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(() =>
+    Boolean(urlAudienceId || fromAudience || compose),
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(() => ({
+    ...emptyForm,
+    audienceSegmentId: urlAudienceId ?? '',
+    name:
+      urlCampaignName?.trim() ||
+      (urlAudienceName ? `Campanha · ${urlAudienceName}` : emptyForm.name),
+    rewardTitle:
+      urlRewardTitle?.trim() ||
+      (urlAudienceName
+        ? `Prêmio para ${urlAudienceName}`
+        : emptyForm.rewardTitle),
+  }));
   const [uploading, setUploading] = useState(false);
   const [perfById, setPerfById] = useState<Record<string, CampaignPerformance>>(
     {},
   );
   const [perfOpenId, setPerfOpenId] = useState<string | null>(null);
-  const audienceBootstrapKey = `${urlAudienceId ?? ''}|${searchParams.get('fromAudience') ?? ''}|${urlAudienceName ?? ''}`;
+  const formSectionRef = useRef<HTMLDivElement | null>(null);
+  const audienceBootstrapKey = `${urlAudienceId ?? ''}|${fromAudience ?? ''}|${urlAudienceName ?? ''}|${compose ? '1' : ''}|${urlCampaignName ?? ''}|${urlRewardTitle ?? ''}`;
   const audienceBootstrapped = useRef<string | null>(null);
 
   const filteredCampaigns = useMemo(
-    () => campaigns.filter((c) => matchesFilter(c, statusFilter)),
-    [campaigns, statusFilter],
+    () =>
+      campaigns.filter((c) =>
+        matchesFilter(c, statusFilter, typeFilter, audienceFilter),
+      ),
+    [campaigns, statusFilter, typeFilter, audienceFilter],
+  );
+
+  const compareRows = useMemo(
+    () =>
+      filteredCampaigns
+        .map((c) => {
+          const perf = perfById[c.id];
+          if (!perf) return null;
+          return {
+            id: c.id,
+            name: c.name,
+            type: c.type,
+            redeems: perf.redeems,
+            redeemers: perf.redeemers,
+            revenueCents: perf.revenueFromRedeemersCents,
+          };
+        })
+        .filter(
+          (
+            row,
+          ): row is {
+            id: string;
+            name: string;
+            type: string;
+            redeems: number;
+            redeemers: number;
+            revenueCents: number;
+          } => row != null,
+        ),
+    [filteredCampaigns, perfById],
   );
 
   const filterCounts = useMemo(() => {
+    const inTypeAudience = campaigns.filter((c) =>
+      matchesFilter(c, 'all', typeFilter, audienceFilter),
+    );
     let active = 0;
     let inactive = 0;
-    for (const c of campaigns) {
+    for (const c of inTypeAudience) {
       if (c.status === 'active') active += 1;
       else inactive += 1;
     }
-    return { all: campaigns.length, active, inactive };
-  }, [campaigns]);
+    return { all: inTypeAudience.length, active, inactive };
+  }, [campaigns, typeFilter, audienceFilter]);
 
-  function setStatusFilter(next: StatusFilter) {
+  function replaceCampaignsQuery(mutate: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === 'all') params.delete('status');
-    else params.set('status', next);
+    mutate(params);
     const qs = params.toString();
     router.replace(qs ? `/campaigns?${qs}` : '/campaigns', { scroll: false });
+  }
+
+  function setStatusFilter(next: StatusFilter) {
+    replaceCampaignsQuery((params) => {
+      if (next === 'all') params.delete('status');
+      else params.set('status', next);
+    });
+  }
+
+  function setTypeFilter(next: TypeFilter) {
+    replaceCampaignsQuery((params) => {
+      if (next === 'all') params.delete('type');
+      else params.set('type', next);
+    });
+  }
+
+  function setAudienceFilter(id: string) {
+    replaceCampaignsQuery((params) => {
+      if (!id) params.delete('audience');
+      else params.set('audience', id);
+    });
+  }
+
+  function clearFilters() {
+    replaceCampaignsQuery((params) => {
+      params.delete('status');
+      params.delete('type');
+      params.delete('audience');
+    });
   }
 
   const load = useCallback(async () => {
@@ -184,11 +379,11 @@ function CampaignsPageContent() {
         ),
       );
 
-      const active = (campJson.campaigns ?? []).filter(
-        (c: Campaign) => c.status === 'active',
+      const withHistory = (campJson.campaigns ?? []).filter(
+        (c: Campaign) => c.status === 'active' || c.status === 'paused',
       ) as Campaign[];
       const perfEntries = await Promise.all(
-        active.slice(0, 8).map(async (c) => {
+        withHistory.slice(0, 12).map(async (c) => {
           try {
             const res = await fetch(
               `${API_URL}/campaigns/${c.id}/performance?range=30d`,
@@ -226,45 +421,83 @@ function CampaignsPageContent() {
     void load();
   }, [load]);
 
-  // Open create form when arriving from Relatórios/Clientes with audience params
   useEffect(() => {
-    const fromAudience = searchParams.get('fromAudience');
-    if (!urlAudienceId && !fromAudience) return;
+    if (highlightId) setPerfOpenId(highlightId);
+  }, [highlightId]);
+
+  // Open create form immediately when arriving from Painel/Relatórios/Clientes.
+  // Audience create can finish after the form is already on screen.
+  useEffect(() => {
+    if (!urlAudienceId && !fromAudience && !compose) return;
     if (audienceBootstrapped.current === audienceBootstrapKey) return;
-    audienceBootstrapped.current = audienceBootstrapKey;
 
     let cancelled = false;
 
-    async function bootstrap() {
-      let segmentId = urlAudienceId ?? '';
-      if (!segmentId && fromAudience) {
-        try {
-          const headers = {
-            ...(await authHeaders()),
-            'Content-Type': 'application/json',
-          };
-          const rules: Record<string, unknown> = { version: 1 };
-          for (const key of [
-            'spendCentsMin',
-            'spendCentsMax',
-            'windowDays',
-            'inactiveDaysMin',
-            'visitsMin',
-            'visitsMax',
-            'nearReward',
-            'isVip',
-          ]) {
-            const v = searchParams.get(key);
-            if (v == null || v === '') continue;
-            if (key === 'nearReward' || key === 'isVip') {
-              rules[key] = v === 'true' || v === '1';
-            } else {
-              rules[key] = Number.parseInt(v, 10);
-            }
+    const seededName =
+      urlCampaignName?.trim() ||
+      (urlAudienceName ? `Campanha · ${urlAudienceName}` : emptyForm.name);
+    const seededReward =
+      urlRewardTitle?.trim() ||
+      (urlAudienceName
+        ? `Prêmio para ${urlAudienceName}`
+        : emptyForm.rewardTitle);
+
+    setEditingId(null);
+    setForm({
+      ...emptyForm,
+      audienceSegmentId: urlAudienceId ?? '',
+      name: seededName,
+      rewardTitle: seededReward,
+    });
+    setShowForm(true);
+
+    async function attachAudience() {
+      if (!fromAudience || urlAudienceId) {
+        if (!cancelled) audienceBootstrapped.current = audienceBootstrapKey;
+        return;
+      }
+      let segmentId = '';
+      try {
+        const headers = {
+          ...(await authHeaders()),
+          'Content-Type': 'application/json',
+        };
+        const rules = parseRulesFromSearch(searchParams);
+        const name =
+          urlAudienceName?.trim() ||
+          `Audiência ${new Date().toLocaleDateString('pt-BR')}`;
+
+        const listRes = await fetch(`${API_URL}/audiences`, { headers });
+        const listJson = await listRes.json().catch(() => ({}));
+        const existing = (
+          (listJson.audiences ?? []) as Array<{
+            id: string;
+            name: string;
+            memberCount?: number;
+            rules?: Record<string, unknown>;
+          }>
+        ).find(
+          (a) =>
+            a.name.trim().toLowerCase() === name.toLowerCase() &&
+            rulesMatch(a.rules, rules),
+        );
+
+        if (existing) {
+          segmentId = existing.id;
+          if (!cancelled) {
+            setAudiences((prev) => {
+              if (prev.some((a) => a.id === segmentId)) return prev;
+              return [
+                {
+                  id: existing.id,
+                  name: existing.name,
+                  memberCount: existing.memberCount ?? 0,
+                },
+                ...prev,
+              ];
+            });
           }
-          const name =
-            urlAudienceName?.trim() ||
-            `Audiência ${new Date().toLocaleDateString('pt-BR')}`;
+        } else {
           const res = await fetch(`${API_URL}/audiences`, {
             method: 'POST',
             headers,
@@ -272,22 +505,7 @@ function CampaignsPageContent() {
               name,
               rules,
               showBadge: true,
-              badgeTitle: (() => {
-                const n = (urlAudienceName ?? '').trim().toLowerCase();
-                if (n === 'alto valor') return 'Cliente da casa';
-                if (n === 'em risco') return 'De volta à casa';
-                if (n === 'quase prêmio' || n === 'quase premio') return 'Quase lá';
-                if (n === 'vip') return 'VIP da casa';
-                if (urlAudienceName?.trim()) {
-                  // Prefer friendly title over raw ops segment name
-                  const ops = ['alto valor', 'em risco', 'quase prêmio', 'quase premio', 'vip'];
-                  if (ops.includes(n)) return 'Cliente da casa';
-                  return urlAudienceName.trim();
-                }
-                return typeof rules.spendCentsMin === 'number'
-                  ? 'Cliente da casa'
-                  : name;
-              })(),
+              badgeTitle: badgeTitleForAudience(name, rules),
               badgeMessage:
                 'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
             }),
@@ -295,38 +513,32 @@ function CampaignsPageContent() {
           const json = await res.json();
           if (res.ok && json.audience?.id) {
             segmentId = json.audience.id as string;
-            setAudiences((prev) => {
-              if (prev.some((a) => a.id === segmentId)) return prev;
-              return [
-                {
-                  id: segmentId,
-                  name: json.audience.name as string,
-                  memberCount: json.audience.memberCount as number,
-                },
-                ...prev,
-              ];
-            });
+            if (!cancelled) {
+              setAudiences((prev) => {
+                if (prev.some((a) => a.id === segmentId)) return prev;
+                return [
+                  {
+                    id: segmentId,
+                    name: json.audience.name as string,
+                    memberCount: json.audience.memberCount as number,
+                  },
+                  ...prev,
+                ];
+              });
+            }
           }
-        } catch {
-          // fall through — form still opens without audience
         }
+      } catch {
+        // Form stays open even if the audience could not be saved yet.
       }
       if (cancelled) return;
-      setEditingId(null);
-      setForm({
-        ...emptyForm,
-        audienceSegmentId: segmentId,
-        name: urlAudienceName
-          ? `Campanha · ${urlAudienceName}`
-          : emptyForm.name,
-        rewardTitle: urlAudienceName
-          ? `Prêmio para ${urlAudienceName}`
-          : emptyForm.rewardTitle,
-      });
-      setShowForm(true);
+      if (segmentId) {
+        setForm((prev) => ({ ...prev, audienceSegmentId: segmentId }));
+      }
+      audienceBootstrapped.current = audienceBootstrapKey;
     }
 
-    void bootstrap();
+    void attachAudience();
     return () => {
       cancelled = true;
     };
@@ -334,14 +546,33 @@ function CampaignsPageContent() {
     audienceBootstrapKey,
     urlAudienceId,
     urlAudienceName,
+    fromAudience,
+    compose,
+    urlCampaignName,
+    urlRewardTitle,
     searchParams,
     authHeaders,
   ]);
+
+  useEffect(() => {
+    if (!showForm) return;
+    formSectionRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  }, [showForm]);
 
   function closeForm() {
     setShowForm(false);
     setEditingId(null);
     setForm(emptyForm);
+    audienceBootstrapped.current = null;
+    if (urlAudienceId || fromAudience || compose) {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const key of composeQueryKeys()) params.delete(key);
+      const qs = params.toString();
+      router.replace(qs ? `/campaigns?${qs}` : '/campaigns', { scroll: false });
+    }
   }
 
   function openCreate() {
@@ -360,13 +591,23 @@ function CampaignsPageContent() {
           ? 'birthday'
           : c.type === 'cashback'
             ? 'cashback'
-            : 'stamps';
+            : c.type === 'promo'
+              ? 'promo'
+              : 'stamps';
+    const period: PromoPeriod =
+      c.redeemPeriod === 'day' ||
+      c.redeemPeriod === 'week' ||
+      c.redeemPeriod === 'month' ||
+      c.redeemPeriod === 'year' ||
+      c.redeemPeriod === 'campaign'
+        ? c.redeemPeriod
+        : 'campaign';
     setForm({
       name: c.name,
       type,
       stampsNeeded:
         c.stampsNeeded ??
-        (type === 'spend' ? 100 : type === 'birthday' ? 1 : 10),
+        (type === 'spend' ? 100 : type === 'birthday' || type === 'promo' ? 1 : 10),
       pointsPerReal: c.pointsPerReal ?? 1,
       cashbackPercent: c.cashbackPercent ?? 5,
       rewardTitle: c.rewardTitle ?? '',
@@ -375,6 +616,13 @@ function CampaignsPageContent() {
       activate: c.status === 'active',
       audienceSegmentId:
         c.audienceSegmentId ?? c.audienceSegment?.id ?? '',
+      startsOn: c.startsOn ? String(c.startsOn).slice(0, 10) : '',
+      endsOn: c.endsOn ? String(c.endsOn).slice(0, 10) : '',
+      weekdays:
+        (c.weekdays ?? []).length === 7 ? [] : (c.weekdays ?? []),
+      unlimited: type === 'promo' && c.redeemMax == null,
+      redeemMax: c.redeemMax ?? 1,
+      redeemPeriod: period,
     });
     setShowForm(true);
     setError(null);
@@ -409,7 +657,9 @@ function CampaignsPageContent() {
         name: form.name,
         type: form.type,
         stampsNeeded:
-          form.type === 'birthday' || form.type === 'cashback'
+          form.type === 'birthday' ||
+          form.type === 'cashback' ||
+          form.type === 'promo'
             ? 1
             : form.stampsNeeded,
         pointsPerReal:
@@ -422,6 +672,21 @@ function CampaignsPageContent() {
         rewardDescription: form.rewardDescription || undefined,
         rewardImageUrl: form.rewardImageUrl || null,
         audienceSegmentId: form.audienceSegmentId || null,
+        ...(form.type === 'promo'
+          ? {
+              startsOn: form.startsOn || null,
+              endsOn: form.endsOn || null,
+              weekdays: form.weekdays,
+              redeemMax: form.unlimited ? null : form.redeemMax,
+              redeemPeriod: form.unlimited ? null : form.redeemPeriod,
+            }
+          : {
+              startsOn: null,
+              endsOn: null,
+              weekdays: [],
+              redeemMax: null,
+              redeemPeriod: null,
+            }),
         ...(status ? { status } : {}),
       };
 
@@ -444,7 +709,14 @@ function CampaignsPageContent() {
           );
         }
         if (json.error === 'REWARD_TITLE_REQUIRED') {
-          throw new Error('Informe o prêmio do aniversário.');
+          throw new Error(
+            form.type === 'promo'
+              ? 'Informe o prêmio da promoção.'
+              : 'Informe o prêmio do aniversário.',
+          );
+        }
+        if (json.error === 'INVALID_PROMO_DATES') {
+          throw new Error('A data de início não pode ser depois da data de fim.');
         }
         throw new Error(
           json.error ?? (editingId ? 'Não foi possível salvar.' : 'Não foi possível criar.'),
@@ -510,7 +782,6 @@ function CampaignsPageContent() {
     }
   }
 
-  const primary = business?.primaryColor ?? 'var(--color-primary-500)';
   const isEditing = Boolean(editingId);
 
   return (
@@ -522,8 +793,8 @@ function CampaignsPageContent() {
               Campanhas
             </h1>
             <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
-              Crie campanhas de carimbos, pontos, cashback ou um presente de
-              aniversário. O cliente vê e resgata no aplicativo.
+              O cliente vê e resgata no aplicativo. Cada campanha tem um
+              prêmio e, se quiser, uma audiência.
             </p>
           </div>
           <button
@@ -541,455 +812,108 @@ function CampaignsPageContent() {
           </p>
         )}
 
-        <div
-          className="mb-5 flex gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1"
-          role="tablist"
-          aria-label="Filtrar campanhas"
-        >
-          {FILTERS.map((f) => {
-            const selected = statusFilter === f.key;
-            const count = filterCounts[f.key];
-            return (
-              <button
-                key={f.key}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => setStatusFilter(f.key)}
-                className={`min-h-9 shrink-0 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
-                  selected
-                    ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
-                    : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
-                }`}
-              >
-                {f.label}
-                {!loading && (
-                  <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {showForm && (
-          <form
-            onSubmit={onSave}
-            className="mb-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
-          >
-            <h2 className="text-[17px] font-semibold">
-              {isEditing ? 'Editar campanha' : 'Nova campanha'}
-            </h2>
-
-            <fieldset className="mt-4">
-              <legend className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                Como fidelizar
-              </legend>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {(
-                  [
-                    {
-                      value: 'stamps' as const,
-                      title: 'Carimbos',
-                      desc: 'Ideal para café e visitas repetidas. Cada visita vale 1 carimbo.',
-                      Icon: Stamp,
-                      selectedClass:
-                        'border-[var(--color-stamps)] bg-[var(--color-stamps-bg)] ring-1 ring-[var(--color-stamps)]/25',
-                      iconWrap: 'bg-[var(--color-stamps)] text-white',
-                      titleClass: 'text-[var(--color-stamps)]',
-                    },
-                    {
-                      value: 'spend' as const,
-                      title: 'Pontos por gasto',
-                      desc: 'O cliente acumula pontos pela compra (taxa da loja) e escolhe este prêmio no aplicativo.',
-                      Icon: Coins,
-                      selectedClass:
-                        'border-[var(--color-points)] bg-[var(--color-points-bg)] ring-1 ring-[var(--color-points)]/25',
-                      iconWrap: 'bg-[var(--color-points)] text-white',
-                      titleClass: 'text-[var(--color-points)]',
-                    },
-                    {
-                      value: 'birthday' as const,
-                      title: 'Aniversário',
-                      desc: 'Presente opcional no aniversário do cliente — uma vez por ano.',
-                      Icon: Cake,
-                      selectedClass:
-                        'border-[var(--color-primary-500)] bg-[var(--color-primary-50)] ring-1 ring-[var(--color-primary-500)]/25',
-                      iconWrap: 'bg-[var(--color-primary-500)] text-white',
-                      titleClass: 'text-[var(--color-primary-600)]',
-                    },
-                    {
-                      value: 'cashback' as const,
-                      title: 'Cashback',
-                      desc: 'Um percentual da compra volta em reais para a próxima visita. A taxa fica nesta campanha.',
-                      Icon: Banknote,
-                      selectedClass:
-                        'border-[var(--color-cashback)] bg-[var(--color-cashback-bg)] ring-1 ring-[var(--color-cashback)]/25',
-                      iconWrap: 'bg-[var(--color-cashback)] text-white',
-                      titleClass: 'text-[var(--color-cashback)]',
-                    },
-                  ] as const
-                ).map((opt) => {
-                  const selected = form.type === opt.value;
-                  const Icon = opt.Icon;
-                  return (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() =>
-                        setForm((f) => ({
-                          ...f,
-                          type: opt.value,
-                          stampsNeeded:
-                            opt.value === 'spend'
-                              ? 100
-                              : opt.value === 'birthday' ||
-                                  opt.value === 'cashback'
-                                ? 1
-                                : 10,
-                          name:
-                            f.name ||
-                            (opt.value === 'spend'
-                              ? 'Pontos por compra'
-                              : opt.value === 'birthday'
-                                ? 'Presente de aniversário'
-                                : opt.value === 'cashback'
-                                  ? 'Cashback'
-                                  : 'Carimbo fidelidade'),
-                          rewardTitle:
-                            f.rewardTitle ||
-                            (opt.value === 'spend'
-                              ? 'Prêmio da casa'
-                              : opt.value === 'birthday'
-                                ? 'Sobremesa grátis'
-                                : opt.value === 'cashback'
-                                  ? 'Volta em R$'
-                                  : 'Item grátis'),
-                        }))
-                      }
-                      className={`rounded-[14px] border p-4 text-left transition ${
-                        selected
-                          ? opt.selectedClass
-                          : 'border-[var(--color-hairline)] hover:border-[var(--color-neutral-300)]'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <span
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] ${
-                            selected
-                              ? opt.iconWrap
-                              : 'bg-[var(--color-bg)] text-[var(--color-neutral-500)]'
-                          }`}
-                          aria-hidden
-                        >
-                          <Icon size={20} strokeWidth={2.25} />
-                        </span>
-                        <div className="min-w-0">
-                          <div
-                            className={`text-[15px] font-semibold ${
-                              selected
-                                ? opt.titleClass
-                                : 'text-[var(--color-ink)]'
-                            }`}
-                          >
-                            {opt.title}
-                          </div>
-                          <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                            {opt.desc}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="text-[13px] font-semibold">
-                Nome
-                <input
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, name: e.target.value }))
-                  }
-                  required
-                  className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-                />
-              </label>
-              <label className="text-[13px] font-semibold">
-                Recompensa
-                {form.type === 'birthday' ? (
-                  <span className="ml-1 font-normal text-[var(--color-neutral-400)]">
-                    · obrigatório
-                  </span>
-                ) : null}
-                <input
-                  value={form.rewardTitle}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, rewardTitle: e.target.value }))
-                  }
-                  required={form.type === 'birthday'}
-                  className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-                  placeholder={
-                    form.type === 'birthday'
-                      ? 'Sobremesa grátis'
-                      : 'Café grátis'
-                  }
-                />
-              </label>
-            </div>
-
-            {form.type === 'birthday' ? (
-              <div className="mt-3 rounded-[14px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-primary-800)]">
-                O cliente vê este presente na loja. Pode resgatar no dia do
-                aniversário e nos 6 dias seguintes, uma vez por ano. Quem não
-                informou a data no perfil vê o prêmio bloqueado.
-              </div>
-            ) : form.type === 'cashback' ? (
-              <div className="mt-3 space-y-3">
-                <label className="text-[13px] font-semibold">
-                  Porcentagem de volta
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={form.cashbackPercent}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        cashbackPercent: Math.max(
-                          1,
-                          Math.min(100, Number(e.target.value) || 1),
-                        ),
-                      }))
-                    }
-                    className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-                  />
-                </label>
-                <div className="rounded-[14px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-cashback)]">
-                  Pode haver várias campanhas ativas, cada uma com a própria
-                  porcentagem e audiência. Se o cliente entrar em mais de uma,
-                  vale a maior taxa. O saldo é único da loja e é usado no caixa
-                  — não gera voucher no aplicativo.
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {form.type === 'stamps' ? (
-                  <label className="text-[13px] font-semibold">
-                    Carimbos para ganhar
-                    <input
-                      type="number"
-                      min={2}
-                      max={50}
-                      value={form.stampsNeeded}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          stampsNeeded: Number(e.target.value),
-                        }))
-                      }
-                      className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-                    />
-                  </label>
-                ) : (
-                  <>
-                    <div className="rounded-[14px] border border-[var(--color-points-ring)] bg-[var(--color-points-bg)] px-3 py-3 text-[13px] text-[var(--color-points)]">
-                      A taxa de acúmulo (quantos reais geram 1 ponto) é a da
-                      loja, em{' '}
-                      <a
-                        href="/settings"
-                        className="font-semibold underline"
-                      >
-                        Configurações
-                      </a>
-                      . Aqui você define só a meta e o prêmio.
-                    </div>
-                    <label className="text-[13px] font-semibold">
-                      Pontos para resgatar
-                      <input
-                        type="number"
-                        min={10}
-                        max={10000}
-                        value={form.stampsNeeded}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            stampsNeeded: Number(e.target.value),
-                          }))
-                        }
-                        className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-                      />
-                    </label>
-                  </>
-                )}
-              </div>
-            )}
-
-            <label className="mt-3 block text-[13px] font-semibold">
-              Descrição (opcional)
-              <input
-                value={form.rewardDescription}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, rewardDescription: e.target.value }))
-                }
-                className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-              />
-            </label>
-
-            <div className="mt-4">
-              <p className="text-[13px] font-semibold">Foto do prêmio</p>
-              <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                Envie uma foto do prêmio — o cliente vê no cartão da campanha.
-              </p>
-              <div className="mt-3 flex flex-wrap items-start gap-4">
-                <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-[12px] border border-dashed border-[var(--color-neutral-200)] bg-[var(--color-neutral-200)]">
-                  {form.rewardImageUrl ? (
-                    <CampaignImageThumb
-                      src={form.rewardImageUrl}
-                      className="h-full w-full"
-                    />
-                  ) : (
-                    <span className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center text-[11px] text-[var(--color-neutral-500)]">
-                      <ImageIcon size={20} strokeWidth={1.75} aria-hidden />
-                      Sem foto
-                    </span>
-                  )}
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-[10px] border border-[var(--color-hairline)] bg-[var(--color-card)] px-3 text-[13px] font-semibold">
-                    {uploading ? 'Enviando…' : 'Escolher foto'}
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="sr-only"
-                      disabled={uploading || !business?.id}
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (!file || !business?.id) return;
-                        setUploading(true);
-                        setError(null);
-                        try {
-                          const url = await uploadCampaignRewardImage(
-                            business.id,
-                            file,
-                          );
-                          setForm((f) => ({ ...f, rewardImageUrl: url }));
-                        } catch (err) {
-          setError(
-                            err instanceof Error
-                              ? err.message
-                              : 'Não foi possível enviar a foto.',
-                          );
-                        } finally {
-                          setUploading(false);
-                        }
-                      }}
-                    />
-                  </label>
-                  {form.rewardImageUrl && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm((f) => ({ ...f, rewardImageUrl: '' }))
-                      }
-                      className="text-left text-[13px] text-[var(--color-neutral-500)]"
-                    >
-                      Remover foto
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <label className="mt-4 flex items-center gap-2 text-[14px]">
-              <input
-                type="checkbox"
-                checked={form.activate}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, activate: e.target.checked }))
-                }
-              />
-              {isEditing
-                ? 'Campanha ativa'
-                : 'Ativar agora'}
-            </label>
-
-            <label className="mt-4 block text-[13px] font-semibold">
-              Somente para audiência
-              <span className="ml-1 font-normal text-[var(--color-neutral-400)]">
-                · opcional
-              </span>
-              <select
-                value={form.audienceSegmentId}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    audienceSegmentId: e.target.value,
-                  }))
-                }
-                className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[15px]"
-              >
-                <option value="">Todos os clientes</option>
-                {audiences.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} ({a.memberCount})
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
-                Se escolhida, só os clientes dessa audiência{' '}
-                {form.type === 'cashback'
-                  ? 'ganham cashback.'
-                  : 'podem resgatar.'}
-                {form.audienceSegmentId
-                  ? ` Estimativa: ${
-                      audiences.find((a) => a.id === form.audienceSegmentId)
-                        ?.memberCount ?? '—'
-                    } clientes.`
-                  : ' Crie audiências em Relatórios.'}
-              </p>
-            </label>
-
-            {/* Preview */}
-            <div className="mt-5 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4">
-              <CampaignCardPreview
-                businessName={business?.name ?? 'Sua loja'}
-                businessLogoUrl={business?.logoUrl}
-                primaryColor={primary}
-                primaryColorDark={
-                  business?.primaryColorDark ?? primary
-                }
-                campaignName={form.name}
-                campaignType={form.type}
-                unitsNeeded={form.stampsNeeded}
-                pointsPerReal={business?.pointsPerReal ?? form.pointsPerReal}
-                cashbackPercent={
-                  form.type === 'cashback' ? form.cashbackPercent : 0
-                }
-                rewardTitle={form.rewardTitle}
-                rewardDescription={form.rewardDescription}
-                rewardImageUrl={form.rewardImageUrl || null}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={busy || uploading}
-              className="mt-4 min-h-11 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-primary-200)] disabled:shadow-none"
+        {!showForm && (
+          <div className="mb-5 flex flex-col gap-2">
+            <div
+              className="flex gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1"
+              role="tablist"
+              aria-label="Filtrar por status"
             >
-              {busy
-                ? 'Salvando…'
-                : isEditing
-                  ? 'Salvar alterações'
-                  : 'Criar campanha'}
-            </button>
-          </form>
+              {FILTERS.map((f) => {
+                const selected = statusFilter === f.key;
+                const count = filterCounts[f.key];
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setStatusFilter(f.key)}
+                    className={`min-h-9 shrink-0 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
+                      selected
+                        ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
+                        : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {f.label}
+                    {!loading && (
+                      <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <SegmentedControl
+                value={typeFilter}
+                options={TYPE_FILTERS.map((f) => ({
+                  value: f.value,
+                  label: f.label,
+                  icon:
+                    f.value === 'stamps' ? (
+                      <Stamp size={14} strokeWidth={2.25} aria-hidden />
+                    ) : f.value === 'spend' ? (
+                      <Coins size={14} strokeWidth={2.25} aria-hidden />
+                    ) : f.value === 'birthday' ? (
+                      <Cake size={14} strokeWidth={2.25} aria-hidden />
+                    ) : f.value === 'cashback' ? (
+                      <Banknote size={14} strokeWidth={2.25} aria-hidden />
+                    ) : f.value === 'promo' ? (
+                      <Percent size={14} strokeWidth={2.25} aria-hidden />
+                    ) : undefined,
+                }))}
+                onChange={setTypeFilter}
+                ariaLabel="Filtrar por tipo"
+                className="min-w-0 flex-1"
+              />
+              <div className="flex shrink-0 items-center gap-2 sm:w-auto">
+                <label className="block sm:w-[220px]">
+                  <span className="sr-only">Audiência</span>
+                  <select
+                    value={audienceFilter}
+                    onChange={(e) => setAudienceFilter(e.target.value)}
+                    aria-label="Filtrar por audiência"
+                    className="min-h-11 w-full rounded-[14px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3.5 text-[13px] font-semibold text-[var(--color-ink)] outline-none transition-[border,box-shadow] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
+                  >
+                    <option value="">Todas as audiências</option>
+                    <option value="none">Toda a casa</option>
+                    {audiences.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.memberCount})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <Link
+                  href="/audiences"
+                  className="shrink-0 text-[12px] font-semibold text-[var(--color-primary-500)]"
+                >
+                  Gerenciar
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+        {showForm && (
+          <div ref={formSectionRef}>
+            <CampaignCreateForm
+              form={form}
+              setForm={setForm}
+              audiences={audiences}
+              business={business}
+              isEditing={isEditing}
+              busy={busy}
+              uploading={uploading}
+              setUploading={setUploading}
+              setError={setError}
+              onSubmit={onSave}
+            />
+          </div>
         )}
 
-        {loading ? (
+        {!showForm && (loading ? (
           <p className="text-[15px] text-[var(--color-neutral-500)]">
             Carregando…
           </p>
@@ -1003,12 +927,10 @@ function CampaignsPageContent() {
         ) : filteredCampaigns.length === 0 ? (
           <div className="rounded-[16px] border border-dashed border-[var(--color-neutral-200)] p-8 text-center">
             <p className="text-[15px] text-[var(--color-neutral-500)]">
-              {statusFilter === 'active'
-                ? 'Nenhuma campanha ativa no momento.'
-                : 'Nenhuma campanha inativa.'}{' '}
+              Nenhuma campanha neste filtro.{' '}
               <button
                 type="button"
-                onClick={() => setStatusFilter('all')}
+                onClick={clearFilters}
                 className="font-semibold text-[var(--color-primary-500)]"
               >
                 Ver todas
@@ -1016,6 +938,19 @@ function CampaignsPageContent() {
             </p>
           </div>
         ) : (
+          <div className="flex flex-col gap-4">
+            {compareRows.length > 1 && (
+              <CampaignCompareChart
+                compact
+                campaigns={compareRows}
+                hrefFor={(id) => {
+                  const params = new URLSearchParams(searchParams.toString());
+                  params.set('highlight', id);
+                  return `/campaigns?${params.toString()}`;
+                }}
+                periodHint="Últimos 30 dias, nas campanhas deste filtro."
+              />
+            )}
           <ul className="flex flex-col gap-3">
             {filteredCampaigns.map((c) => (
               <li
@@ -1046,6 +981,11 @@ function CampaignsPageContent() {
                           <Banknote size={13} strokeWidth={2.25} aria-hidden />
                           Cashback
                         </span>
+                      ) : c.type === 'promo' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-promo-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-promo)] ring-1 ring-inset ring-[var(--color-promo-ring)]">
+                          <Percent size={13} strokeWidth={2.25} aria-hidden />
+                          Promoção
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-stamps-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]">
                           <Stamp size={13} strokeWidth={2.25} aria-hidden />
@@ -1074,124 +1014,20 @@ function CampaignsPageContent() {
                           ? 'Presente no aniversário · uma vez ao ano'
                           : c.type === 'cashback'
                             ? `Cashback ${c.cashbackPercent ?? 0}% · válido no caixa`
-                            : `${c.stampsNeeded} carimbos`}
+                            : c.type === 'promo'
+                              ? promoHint(c)
+                              : `${c.stampsNeeded} carimbos`}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
                     {perfById[c.id] && (
-                      <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-[var(--color-neutral-500)]">
-                        {c.type === 'cashback' ? (
-                          <>
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {perfById[c.id].redeems}
-                              </strong>{' '}
-                              {perfById[c.id].redeems === 1
-                                ? 'uso no caixa (30d)'
-                                : 'usos no caixa (30d)'}
-                            </span>
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {formatMoney(
-                                  perfById[c.id].cashbackSpentCents ?? 0,
-                                )}
-                              </strong>{' '}
-                              usados
-                            </span>
-                            {(perfById[c.id].cashbackEarnedCents ?? 0) > 0 && (
-                              <span>
-                                {formatMoney(
-                                  perfById[c.id].cashbackEarnedCents ?? 0,
-                                )}{' '}
-                                creditados
-                              </span>
-                            )}
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {perfById[c.id].engagePct}%
-                              </strong>{' '}
-                              ganharam
-                            </span>
-                            <span>
-                              {formatMoney(
-                                perfById[c.id].revenueFromRedeemersCents,
-                              )}{' '}
-                              em vendas no caixa
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {perfById[c.id].redeems}
-                              </strong>{' '}
-                              resgates (30d)
-                            </span>
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {perfById[c.id].fulfillPct}%
-                              </strong>{' '}
-                              entrega
-                            </span>
-                            <span>
-                              <strong className="text-[var(--color-ink)]">
-                                {perfById[c.id].engagePct}%
-                              </strong>{' '}
-                              engaj.
-                            </span>
-                            <span>
-                              {formatMoney(
-                                perfById[c.id].revenueFromRedeemersCents,
-                              )}{' '}
-                              dos resgatadores
-                            </span>
-                          </>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setPerfOpenId(
-                              perfOpenId === c.id ? null : c.id,
-                            )
-                          }
-                          className="font-semibold text-[var(--color-primary-500)]"
-                        >
-                          {perfOpenId === c.id ? 'Ocultar' : 'Detalhe'}
-                        </button>
-                      </div>
-                    )}
-                    {perfOpenId === c.id && perfById[c.id] && (
-                      <div className="mt-3 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
-                        <p className="text-[12px] text-[var(--color-neutral-500)]">
-                          Elegíveis {perfById[c.id].eligible} ·{' '}
-                          {c.type === 'cashback'
-                            ? `Ganharam ${perfById[c.id].redeemers}`
-                            : `Resgatadores ${perfById[c.id].redeemers}`}
-                        </p>
-                        <div className="mt-2 flex h-16 items-end gap-0.5">
-                          {perfById[c.id].series
-                            .filter((_, i, arr) =>
-                              arr.length > 40 ? i % 3 === 0 : true,
-                            )
-                            .map((d) => {
-                              const max = Math.max(
-                                1,
-                                ...perfById[c.id].series.map((x) => x.redeems),
-                              );
-                              const h = Math.max(
-                                2,
-                                Math.round((d.redeems / max) * 100),
-                              );
-                              return (
-                                <div
-                                  key={d.date}
-                                  className="min-w-0 flex-1 rounded-[2px] bg-[var(--color-primary-500)]"
-                                  style={{ height: `${h}%` }}
-                                  title={`${d.date}: ${d.redeems}`}
-                                />
-                              );
-                            })}
-                        </div>
-                      </div>
+                      <CampaignPerfStrip
+                        type={c.type}
+                        perf={perfById[c.id]}
+                        open={perfOpenId === c.id}
+                        onToggle={() =>
+                          setPerfOpenId(perfOpenId === c.id ? null : c.id)
+                        }
+                      />
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -1256,9 +1092,135 @@ function CampaignsPageContent() {
               </li>
             ))}
           </ul>
-        )}
+          </div>
+        ))}
       </div>
     </AppShell>
+  );
+}
+
+function PerfMetric({
+  label,
+  value,
+  hint,
+  info,
+}: {
+  label: string;
+  value: string;
+  hint?: string | null;
+  info?: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] font-medium text-[var(--color-neutral-400)]">
+        {info ? <TermInfo info={info}>{label}</TermInfo> : label}
+      </div>
+      <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+        {value}
+      </div>
+      {hint ? (
+        <div className="text-[11px] text-[var(--color-neutral-400)]">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function CampaignPerfStrip({
+  type,
+  perf,
+  open,
+  onToggle,
+}: {
+  type: string;
+  perf: CampaignPerformance;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const isCashback = type === 'cashback';
+  const voucherTotal =
+    (perf.openVouchers ?? 0) +
+    (perf.usedVouchers ?? 0) +
+    (perf.expiredVouchers ?? 0);
+  const series = perf.series.filter((_, i, arr) =>
+    arr.length > 40 ? i % 3 === 0 : true,
+  );
+  const max = Math.max(1, ...perf.series.map((x) => x.redeems));
+
+  return (
+    <div className="mt-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <PerfMetric
+          label={isCashback ? 'Usos no caixa (30d)' : 'Resgates (30d)'}
+          info={TERM.resgates}
+          value={perf.redeems.toLocaleString('pt-BR')}
+          hint={
+            isCashback
+              ? `${perf.redeemers} ganharam`
+              : `${perf.redeemers} de ${perf.eligible} pessoas`
+          }
+        />
+        {isCashback ? (
+          <PerfMetric
+            label="Cashback usado"
+            value={formatMoney(perf.cashbackSpentCents ?? 0)}
+            hint={
+              (perf.cashbackEarnedCents ?? 0) > 0
+                ? `${formatMoney(perf.cashbackEarnedCents ?? 0)} creditados`
+                : null
+            }
+          />
+        ) : (
+          <PerfMetric
+            label="Confirmados"
+            info={TERM.confirmados}
+            value={voucherTotal === 0 ? '—' : `${perf.fulfillPct}%`}
+            hint={
+              (perf.openVouchers ?? 0) > 0
+                ? `${perf.openVouchers} à espera no caixa`
+                : voucherTotal === 0
+                  ? 'sem vouchers'
+                  : `${perf.usedVouchers ?? 0} no caixa`
+            }
+          />
+        )}
+        <PerfMetric
+          label="Engajamento"
+          info={TERM.engajamento}
+          value={`${perf.engagePct}%`}
+          hint={`${perf.eligible.toLocaleString('pt-BR')} elegíveis`}
+        />
+        <PerfMetric
+          label={isCashback ? 'Vendas no caixa' : 'Retorno no resgate'}
+          info={TERM.retorno}
+          value={formatMoney(perf.revenueFromRedeemersCents)}
+          hint={formatCoverage(perf.revenueCoverage)}
+        />
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="mt-2 text-[12px] font-semibold text-[var(--color-primary-500)]"
+      >
+        {open ? 'Ocultar série' : 'Ver série diária'}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
+          <div className="flex h-16 items-end gap-0.5">
+            {series.map((d) => {
+              const h = Math.max(2, Math.round((d.redeems / max) * 100));
+              return (
+                <div
+                  key={d.date}
+                  className="min-w-0 flex-1 rounded-[2px] bg-[var(--color-primary-500)]"
+                  style={{ height: `${h}%` }}
+                  title={`${d.date}: ${d.redeems}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

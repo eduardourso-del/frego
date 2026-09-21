@@ -5,12 +5,12 @@ import { useEffect, useState } from 'react';
 import { FregoMark } from '@/components/brand';
 
 const links = [
-  { href: '#problema', label: 'O problema' },
-  { href: '#fregueses', label: 'A promessa' },
   { href: '#como-funciona', label: 'Como funciona' },
-  { href: '#campanhas', label: 'Campanhas' },
+  { href: '#problema', label: 'O problema' },
+  { href: '#hoje', label: 'Inteligência' },
+  { href: '#resultado', label: 'Resultado' },
+  { href: '#campanhas', label: 'Relacionamento' },
   { href: '#app', label: 'App' },
-  { href: '#resultado', label: 'No caixa' },
 ];
 
 export function LandingNav() {

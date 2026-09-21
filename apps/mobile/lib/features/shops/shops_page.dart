@@ -739,7 +739,9 @@ class _ShopsPageState extends State<ShopsPage> {
                                           ),
                                           tone: progressType == 'spend'
                                               ? _PillTone.points
-                                              : _PillTone.stamps,
+                                              : progressType == 'promo'
+                                                  ? _PillTone.badge
+                                                  : _PillTone.stamps,
                                           onTap: progress['campaignId'] == null
                                               ? null
                                               : () => _openCampaign(
@@ -809,10 +811,12 @@ class _ShopsPageState extends State<ShopsPage> {
     required String? type,
     required String? rewardTitle,
   }) {
-    final unit = type == 'spend' ? 'pts' : 'carimbos';
     final reward = (rewardTitle != null && rewardTitle.trim().isNotEmpty)
         ? rewardTitle.trim()
         : 'prêmio';
+    if (type == 'promo') return reward;
+    if (type == 'birthday') return reward;
+    final unit = type == 'spend' ? 'pts' : 'carimbos';
     return 'Faltam $remaining $unit · $reward';
   }
 }
@@ -1242,10 +1246,28 @@ class _InsightStrip extends StatelessWidget {
     if (next != null && next['canRedeem'] != true) {
       final remaining = (next['remaining'] as num?)?.toInt() ?? 0;
       final type = next['type'] as String?;
-      final unit = type == 'spend' ? 'pontos' : 'carimbos';
       final shopId = next['businessId'] as String?;
       final shopName = next['businessName'] as String?;
       final reward = next['rewardTitle'] as String?;
+      if (type == 'promo') {
+        return _InsightCard(
+          icon: FregoIcons.promo(size: 22, color: FregoColors.promo),
+          tint: FregoColors.promo,
+          soft: FregoColors.promoBg,
+          title: reward != null && reward.isNotEmpty
+              ? reward
+              : 'Promoção da casa',
+          subtitle: [
+            'Promoção',
+            if (shopName != null) shopName,
+          ].join(' · '),
+          onTap: _tap(
+            shopId: shopId,
+            campaignId: next['campaignId'] as String?,
+          ),
+        );
+      }
+      final unit = type == 'spend' ? 'pontos' : 'carimbos';
       return _InsightCard(
         icon: const Icon(
           FregoIcons.trending,
