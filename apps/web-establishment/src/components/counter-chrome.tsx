@@ -1,7 +1,19 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Undo2, X } from 'lucide-react';
+
+const STICKY_TONE_CLASS = {
+  primary: 'bg-[var(--color-primary-500)] shadow-[var(--shadow-cta)]',
+  stamps:
+    'bg-[var(--color-stamps)] shadow-[0_8px_18px_-10px_rgba(109,40,217,0.55)]',
+  points:
+    'bg-[var(--color-points)] shadow-[0_8px_18px_-10px_rgba(180,83,9,0.55)]',
+  cashback:
+    'bg-[var(--color-cashback)] shadow-[0_8px_18px_-10px_rgba(15,118,110,0.55)]',
+} as const;
+
+export type StickyTone = keyof typeof STICKY_TONE_CLASS;
 
 export function StickyActionBar({
   label,
@@ -10,6 +22,9 @@ export function StickyActionBar({
   undoLabel,
   onUndo,
   undoBusy,
+  tone = 'primary',
+  secondaryLabel,
+  onSecondary,
 }: {
   label: string;
   disabled?: boolean;
@@ -17,9 +32,16 @@ export function StickyActionBar({
   undoLabel?: string | null;
   onUndo?: () => void;
   undoBusy?: boolean;
+  tone?: StickyTone;
+  secondaryLabel?: string;
+  onSecondary?: () => void;
 }) {
+  const keyboardInset = useKeyboardInset();
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 px-4 md:bottom-6 md:left-[var(--app-sidebar-w)]">
+    <div
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-40 px-4 md:bottom-6 md:left-[var(--app-sidebar-w)]"
+      style={keyboardInset > 0 ? { bottom: keyboardInset } : undefined}
+    >
       <div className="pointer-events-auto mx-auto w-full max-w-lg rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-3 shadow-[var(--shadow-raised)]">
         {undoLabel ? (
           <div className="mb-2 flex items-center gap-2">
@@ -37,17 +59,56 @@ export function StickyActionBar({
             </button>
           </div>
         ) : null}
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onClick}
-          className="min-h-[52px] w-full rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[16px] font-extrabold text-white shadow-[var(--shadow-cta)] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)] disabled:shadow-none"
-        >
-          {label}
-        </button>
+        <div className="flex items-stretch gap-2">
+          {secondaryLabel && onSecondary ? (
+            <button
+              type="button"
+              onClick={onSecondary}
+              className="inline-flex min-h-[52px] w-[38%] shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-300)] bg-[var(--color-bg)] px-2 text-center text-[14px] font-semibold leading-tight text-[var(--color-ink)]"
+            >
+              {secondaryLabel}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className={`min-h-[52px] min-w-0 flex-1 rounded-[12px] px-3 text-[16px] font-extrabold text-white disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)] disabled:shadow-none ${STICKY_TONE_CLASS[tone]}`}
+          >
+            {label}
+          </button>
+        </div>
       </div>
     </div>
   );
+}
+
+/** Distance from the layout bottom to the top of the on-screen keyboard. */
+function useKeyboardInset() {
+  const [inset, setInset] = useState(0);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+
+    const update = () => {
+      const overlap = Math.max(
+        0,
+        window.innerHeight - viewport.height - viewport.offsetTop,
+      );
+      setInset(overlap > 80 ? overlap : 0);
+    };
+
+    update();
+    viewport.addEventListener('resize', update);
+    viewport.addEventListener('scroll', update);
+    return () => {
+      viewport.removeEventListener('resize', update);
+      viewport.removeEventListener('scroll', update);
+    };
+  }, []);
+
+  return inset;
 }
 
 export function CounterSheet({

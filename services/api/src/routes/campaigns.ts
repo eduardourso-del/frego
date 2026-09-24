@@ -94,15 +94,69 @@ function promoError(
     rewardTitle?: string;
   },
 ): string | null {
-  if (body.type !== 'promo') return null;
-  if (!(body.rewardTitle?.trim())) return 'REWARD_TITLE_REQUIRED';
-  const start = body.startsOn ?? null;
-  const end = body.endsOn ?? null;
-  if (start && end && start > end) return 'INVALID_PROMO_DATES';
+  if (body.type !== 'promo' && body.type !== 'stamps') return null;
+  if (body.type === 'promo' && !(body.rewardTitle?.trim())) {
+    return 'REWARD_TITLE_REQUIRED';
+  }
+  if (body.type === 'promo') {
+    const start = body.startsOn ?? null;
+    const end = body.endsOn ?? null;
+    if (start && end && start > end) return 'INVALID_PROMO_DATES';
+  }
   if (body.redeemMax != null && !body.redeemPeriod) {
     return 'REDEEM_PERIOD_REQUIRED';
   }
   return null;
+}
+
+type RedeemPeriod = 'day' | 'week' | 'month' | 'year' | 'campaign';
+
+function asRedeemPeriod(value: string | null | undefined): RedeemPeriod | null {
+  if (
+    value === 'day' ||
+    value === 'week' ||
+    value === 'month' ||
+    value === 'year' ||
+    value === 'campaign'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function stampQuotaWrite(
+  body: {
+    redeemMax?: number | null;
+    redeemPeriod?: RedeemPeriod | null;
+  },
+  existing?: {
+    type: string;
+    redeemMax: number | null;
+    redeemPeriod: string | null;
+  },
+) {
+  const treatAsCreate = !existing || existing.type !== 'stamps';
+  if (body.redeemMax === null) {
+    return { redeemMax: null as number | null, redeemPeriod: null as RedeemPeriod | null };
+  }
+  if (body.redeemMax === undefined && body.redeemPeriod === undefined) {
+    if (treatAsCreate) {
+      return { redeemMax: null as number | null, redeemPeriod: null as RedeemPeriod | null };
+    }
+    return {
+      redeemMax: existing.redeemMax,
+      redeemPeriod: asRedeemPeriod(existing.redeemPeriod),
+    };
+  }
+  const redeemMax =
+    body.redeemMax !== undefined ? body.redeemMax : (existing?.redeemMax ?? null);
+  const redeemPeriod =
+    redeemMax == null
+      ? null
+      : body.redeemPeriod !== undefined
+        ? body.redeemPeriod
+        : asRedeemPeriod(existing?.redeemPeriod);
+  return { redeemMax, redeemPeriod };
 }
 
 function promoWriteData(
@@ -124,6 +178,16 @@ function promoWriteData(
   },
 ) {
   const type = body.type ?? existing?.type ?? 'stamps';
+  if (type === 'stamps') {
+    const quota = stampQuotaWrite(body, existing);
+    return {
+      startsOn: null as Date | null,
+      endsOn: null as Date | null,
+      weekdays: [] as number[],
+      redeemMax: quota.redeemMax,
+      redeemPeriod: quota.redeemPeriod,
+    };
+  }
   if (type !== 'promo') {
     return {
       startsOn: null as Date | null,

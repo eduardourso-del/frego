@@ -17,7 +17,7 @@ import { SegmentedControl } from '@/components/ui';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { formatCoverage } from '@/lib/campaign-return';
-import { promoHint } from '@/lib/promo-label';
+import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
 import { CampaignCompareChart } from '@/components/campaign-compare-chart';
 import { TermInfo } from '@/components/term-info';
 import { formatBrl } from '@/lib/money';
@@ -601,7 +601,9 @@ function CampaignsPageContent() {
       c.redeemPeriod === 'year' ||
       c.redeemPeriod === 'campaign'
         ? c.redeemPeriod
-        : 'campaign';
+        : type === 'stamps'
+          ? 'day'
+          : 'campaign';
     setForm({
       name: c.name,
       type,
@@ -620,7 +622,7 @@ function CampaignsPageContent() {
       endsOn: c.endsOn ? String(c.endsOn).slice(0, 10) : '',
       weekdays:
         (c.weekdays ?? []).length === 7 ? [] : (c.weekdays ?? []),
-      unlimited: type === 'promo' && c.redeemMax == null,
+      unlimited: c.redeemMax == null,
       redeemMax: c.redeemMax ?? 1,
       redeemPeriod: period,
     });
@@ -680,13 +682,21 @@ function CampaignsPageContent() {
               redeemMax: form.unlimited ? null : form.redeemMax,
               redeemPeriod: form.unlimited ? null : form.redeemPeriod,
             }
-          : {
-              startsOn: null,
-              endsOn: null,
-              weekdays: [],
-              redeemMax: null,
-              redeemPeriod: null,
-            }),
+          : form.type === 'stamps'
+            ? {
+                startsOn: null,
+                endsOn: null,
+                weekdays: [],
+                redeemMax: form.unlimited ? null : form.redeemMax,
+                redeemPeriod: form.unlimited ? null : form.redeemPeriod,
+              }
+            : {
+                startsOn: null,
+                endsOn: null,
+                weekdays: [],
+                redeemMax: null,
+                redeemPeriod: null,
+              }),
         ...(status ? { status } : {}),
       };
 
@@ -1016,7 +1026,9 @@ function CampaignsPageContent() {
                             ? `Cashback ${c.cashbackPercent ?? 0}% · válido no caixa`
                             : c.type === 'promo'
                               ? promoHint(c)
-                              : `${c.stampsNeeded} carimbos`}
+                              : c.redeemMax != null
+                                ? `${c.stampsNeeded} carimbos · ${promoFrequencyHint(c)}`
+                                : `${c.stampsNeeded} carimbos`}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
                     {perfById[c.id] && (

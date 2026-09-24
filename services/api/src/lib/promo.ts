@@ -146,6 +146,53 @@ function asPeriod(raw: string | null | undefined): PromoPeriod | null {
     : null;
 }
 
+export type RedeemQuota = {
+  limited: boolean;
+  redeemedInPeriod: number;
+  /** Null when the Campanha does not cap Resgatar. */
+  remaining: number | null;
+  exhausted: boolean;
+  unlocksAt: string | null;
+};
+
+/** How many Resgates fit in the current period. Counts quantity, skips nothing itself. */
+export function evaluateRedeemQuota(
+  campaign: {
+    redeemMax: number | null | undefined;
+    redeemPeriod: PromoPeriod | string | null | undefined;
+  },
+  redemptions: { createdAt: Date; quantity?: number }[],
+  now = new Date(),
+): RedeemQuota {
+  const redeemMax =
+    campaign.redeemMax == null || campaign.redeemMax < 1
+      ? null
+      : campaign.redeemMax;
+  const period = asPeriod(campaign.redeemPeriod ?? null);
+  if (redeemMax == null || period == null) {
+    return {
+      limited: false,
+      redeemedInPeriod: 0,
+      remaining: null,
+      exhausted: false,
+      unlocksAt: null,
+    };
+  }
+
+  const redeemedInPeriod = redemptions
+    .filter((tx) => redemptionInPeriod(tx.createdAt, period, now))
+    .reduce((sum, tx) => sum + Math.max(1, tx.quantity ?? 1), 0);
+  const remaining = Math.max(0, redeemMax - redeemedInPeriod);
+  const exhausted = remaining <= 0;
+  return {
+    limited: true,
+    redeemedInPeriod,
+    remaining,
+    exhausted,
+    unlocksAt: exhausted ? nextPeriodStart(period, ymdInSaoPaulo(now)) : null,
+  };
+}
+
 export function hasOpenPromoVoucher(
   redemptions: PromoRedemption[],
   now: Date,

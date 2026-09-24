@@ -107,6 +107,24 @@ String promoStatusLine({
   }
 }
 
+String? stampFrequencyLine(Map<String, dynamic> campaign) {
+  final n = (campaign['redeemMax'] as num?)?.toInt();
+  if (n == null) return null;
+  return promoFrequencyLine(PromoCalendar.fromCampaign(campaign));
+}
+
+/// Shown when a carimbo Campanha blocks Resgatar even though the pool is full.
+String? stampQuotaStatusLine({
+  required String? lockedReason,
+  String? unlocksAt,
+}) {
+  if (lockedReason != 'quota_exhausted') return null;
+  final when = _formatUnlockDate(unlocksAt);
+  return when != null
+      ? 'Já resgatado neste período · libera $when'
+      : 'Você já resgatou nesta campanha';
+}
+
 String promoButtonLabel({
   required String? lockedReason,
   required bool canRedeem,

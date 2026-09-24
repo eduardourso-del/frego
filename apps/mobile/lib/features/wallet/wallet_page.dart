@@ -477,11 +477,26 @@ class _WalletPageState extends State<WalletPage> {
                                     canRedeem: canRedeem,
                                   );
                                 } else {
-                                  subtitle =
+                                  final quotaHint = type == 'stamps'
+                                      ? stampQuotaStatusLine(
+                                          lockedReason: lockedReason,
+                                          unlocksAt: unlocksAt,
+                                        )
+                                      : null;
+                                  final frequency = type == 'stamps'
+                                      ? stampFrequencyLine(c)
+                                      : null;
+                                  subtitle = quotaHint ??
                                       'Meta $needed · você tem $pool'
-                                      '${c['rewardTitle'] != null ? ' · ${c['rewardTitle']}' : ''}';
-                                  buttonLabel =
-                                      canRedeem ? 'Resgatar' : 'Ainda falta';
+                                          '${c['rewardTitle'] != null ? ' · ${c['rewardTitle']}' : ''}';
+                                  if (quotaHint == null && frequency != null) {
+                                    subtitle = '$subtitle · $frequency';
+                                  }
+                                  buttonLabel = lockedReason == 'quota_exhausted'
+                                      ? 'Já resgatado'
+                                      : canRedeem
+                                          ? 'Resgatar'
+                                          : 'Ainda falta';
                                 }
 
                                 if (isPromo) {

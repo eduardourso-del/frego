@@ -18,11 +18,17 @@ enum _TillTask { earn, voucher }
 enum _TillFocus { none, voucher, phone, fullPhone, amount, apply }
 
 class _TillCta {
-  const _TillCta({required this.label, this.onPressed, this.enabled = true});
+  const _TillCta({
+    required this.label,
+    this.onPressed,
+    this.enabled = true,
+    this.background,
+  });
 
   final String label;
   final VoidCallback? onPressed;
   final bool enabled;
+  final Color? background;
 }
 
 class RecentCustomer {
@@ -376,17 +382,17 @@ class _TillPageState extends State<TillPage> {
           _fullPhone.clear();
         }
       });
+      if (mounted && !result.multiple) {
+        _queryFocus.unfocus();
+        if (!result.found && digits.length < 10) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _fullPhoneFocus.requestFocus();
+          });
+        }
+      }
       if (result.multiple) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _openMatchesSheet();
-        });
-      }
-      if (!result.found &&
-          !result.multiple &&
-          digits.length < 10 &&
-          mounted) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _fullPhoneFocus.requestFocus();
         });
       }
     } catch (e) {
@@ -412,10 +418,65 @@ class _TillPageState extends State<TillPage> {
 
   bool get _voucherExpired => _voucherResult?.kind == FulfillKind.expired;
 
-  void _submitVoucher() {
+  Future<void> _submitVoucher() async {
     final code = normalizeVoucherCode(_voucher.text);
-    if (code.length < 4) return;
-    _fulfill(voucherCode: code);
+    if (code.length < 4 || _fulfillingId != null) return;
+    setState(() {
+      _fulfillingId = code;
+      _error = null;
+      _voucherResult = null;
+    });
+    try {
+      final json = await _api.lookupVoucher(code);
+      if (!mounted) return;
+      final voucher = json['voucher'] as Map<String, dynamic>?;
+      final status = voucher?['status'] as String?;
+      if (json['error'] != null || status != 'open') {
+        setState(() => _fulfillingId = null);
+        await _fulfill(voucherCode: code);
+        return;
+      }
+      final customer = json['customer'] as Map<String, dynamic>?;
+      final display =
+          voucher?['voucherDisplay'] as String? ?? formatVoucherInput(code);
+      final reward = voucher?['rewardTitle'] as String? ?? 'Prêmio';
+      final name = (customer?['displayName'] as String?)?.trim();
+      final phone = (customer?['phoneE164'] as String?) ?? '';
+      final digits = phone.replaceAll(RegExp(r'\D'), '');
+      final tail = digits.length >= 4 ? digits.substring(digits.length - 4) : null;
+      setState(() => _fulfillingId = null);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Confirmar este voucher?'),
+          content: Text(
+            '$display\n$reward · ${name == null || name.isEmpty ? 'Cliente sem nome' : name}'
+            '${tail != null ? ' · final $tail' : ''}\n\n'
+            'Confira se é o cliente na sua frente. Confirmar entrega o prêmio.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      if (ok == true && mounted) {
+        await _fulfill(voucherCode: code);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = humanizeError(e);
+          _fulfillingId = null;
+        });
+      }
+    }
   }
 
   Future<void> _openVoucherScan() async {
@@ -541,25 +602,32 @@ class _TillPageState extends State<TillPage> {
             normalizeVoucherCode(_voucher.text).length >= 4,
       );
     }
+    final lookup = _lookup;
+    final customerResolved =
+        lookup != null && lookup.found && !lookup.multiple;
+    final awaitingCreate =
+        lookup != null && !lookup.found && !lookup.multiple;
     final focus = _focus;
-    // Phone field focused → Buscar pinned above the keyboard, even with a
-    // customer already on screen.
-    if (focus == _TillFocus.phone) return _buscarCta;
-    if (focus == _TillFocus.fullPhone) {
+    // Keep Buscar above the keyboard only while the search is still open.
+    if (focus == _TillFocus.phone && !customerResolved && !awaitingCreate) {
+      return _buscarCta;
+    }
+    if (focus == _TillFocus.fullPhone || awaitingCreate) {
       return _TillCta(
         label: _loading ? '…' : _notFoundCtaLabel,
         onPressed: _loading ? null : _confirmCreateNotFound,
         enabled: !_loading,
+        background: _createActionColor(),
       );
     }
 
-    final lookup = _lookup;
     if (lookup == null || lookup.multiple) return _buscarCta;
     if (!lookup.found) {
       return _TillCta(
         label: _loading ? '…' : _notFoundCtaLabel,
         onPressed: _loading ? null : _confirmCreateNotFound,
         enabled: !_loading,
+        background: _createActionColor(),
       );
     }
     final earnDisabled =
@@ -569,7 +637,28 @@ class _TillPageState extends State<TillPage> {
       label: _earnCtaLabel(lookup),
       onPressed: earnDisabled ? null : _onPrimaryEarn,
       enabled: !earnDisabled,
+      background: _earnActionColor(lookup),
     );
+  }
+
+  Color? _createActionColor() {
+    if (!_canEarn) return null;
+    return switch (_mode) {
+      EarnMode.points => FregoColors.points,
+      EarnMode.cashback => FregoColors.cashback,
+      EarnMode.stamps => FregoColors.stamps,
+    };
+  }
+
+  Color? _earnActionColor(LookupResult lookup) {
+    if (!_canEarn) {
+      return lookup.cashbackCents > 0 ? FregoColors.cashback : null;
+    }
+    return switch (_mode) {
+      EarnMode.points => FregoColors.points,
+      EarnMode.cashback => FregoColors.cashback,
+      EarnMode.stamps => FregoColors.stamps,
+    };
   }
 
   Future<void> _openMatchesSheet() async {
@@ -697,6 +786,9 @@ class _TillPageState extends State<TillPage> {
         }
         if (result.found) _remember(result);
       });
+      if (result.found && !result.multiple && mounted) {
+        _queryFocus.unfocus();
+      }
     } catch (e) {
       setState(() => _error = humanizeError(e));
     } finally {
@@ -1018,18 +1110,36 @@ class _TillPageState extends State<TillPage> {
                 : _mode == EarnMode.cashback
                     ? 'Cashback'
                     : 'Carimbos';
+    final searchSettled = _lookup != null && !voucherTask;
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      // Lift the action ourselves so it floats on the keyboard. Scaffold
+      // resize leaves the bar under the IME on some Android devices.
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: Text(
-          'Balcão · ${business?.name ?? 'funcionário'}',
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-            color: FregoColors.neutral400,
-          ),
+        title: Row(
+          children: [
+            _BusinessMark(
+              name: business?.name ?? '',
+              logoUrl: business?.logoUrl,
+              color:
+                  _parseTagColor(business?.primaryColor) ??
+                  FregoColors.primary500,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Balcão · ${business?.name ?? 'funcionário'}',
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                  color: FregoColors.neutral400,
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           PopupMenuButton<String>(
@@ -1074,7 +1184,7 @@ class _TillPageState extends State<TillPage> {
                 color: FregoColors.neutral500,
               ),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: searchSettled ? 12 : 16),
             _TaskToggle(
               task: _task,
               onChanged: _setTask,
@@ -1122,41 +1232,17 @@ class _TillPageState extends State<TillPage> {
                 ),
               ),
             ],
-            _PhoneField(
-              controller: _query,
-              focusNode: _queryFocus,
-              onSubmitted: _lookupByQuery,
-            ),
+            if (_lookup == null)
+              _PhoneField(
+                controller: _query,
+                focusNode: _queryFocus,
+                onSubmitted: _lookupByQuery,
+              ),
             if (_error != null) ...[
               const SizedBox(height: 8),
               Text(
                 _error!,
                 style: const TextStyle(color: FregoColors.danger, fontSize: 13),
-              ),
-            ],
-            if (_lookup != null) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    FocusScope.of(context).unfocus();
-                    _resetLookup();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) _queryFocus.requestFocus();
-                    });
-                  },
-                  icon: const Icon(FregoIcons.search, size: 18),
-                  label: const Text('Nova busca'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    foregroundColor: FregoColors.neutral700,
-                    side: const BorderSide(color: FregoColors.hairline),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
               ),
             ],
             if (_recents.isNotEmpty && _lookup == null) ...[
@@ -1262,6 +1348,13 @@ class _TillPageState extends State<TillPage> {
                         focusNode: _fullPhoneFocus,
                         keyboardType: TextInputType.phone,
                         textInputAction: TextInputAction.next,
+                        style: TextStyle(
+                          fontSize:
+                              MediaQuery.sizeOf(context).shortestSide >= 600
+                              ? 31
+                              : 23,
+                          fontWeight: FontWeight.w600,
+                        ),
                         onSubmitted: (_) =>
                             _displayNameFocus.requestFocus(),
                         onChanged: (v) {
@@ -1359,15 +1452,26 @@ class _TillPageState extends State<TillPage> {
           ],
         ),
       ),
-      bottomNavigationBar: _StickyActionBar(
-        cta: _primaryCta,
-        sale: _lastSale,
-        undoBusy: _lastSale != null && _reversingId == _lastSale!.anchorId,
-        onUndo: _lastSale == null ? null : () => _askReverse(_lastSale!),
-        // Keep only Buscar above the soft keyboard while typing a phone.
-        compact: _focus == _TillFocus.phone ||
-            _focus == _TillFocus.fullPhone ||
-            _focus == _TillFocus.voucher,
+      bottomNavigationBar: AnimatedPadding(
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(bottom: keyboardInset),
+        child: _StickyActionBar(
+          cta: _primaryCta,
+          sale: _lastSale,
+          undoBusy: _lastSale != null && _reversingId == _lastSale!.anchorId,
+          onUndo: _lastSale == null ? null : () => _askReverse(_lastSale!),
+          onNewSearch: searchSettled
+              ? () {
+                  FocusScope.of(context).unfocus();
+                  _resetLookup();
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) _queryFocus.requestFocus();
+                  });
+                }
+              : null,
+          compact: keyboardInset > 0,
+        ),
       ),
     );
   }
@@ -1590,6 +1694,7 @@ class _PhoneField extends StatelessWidget {
       builder: (context, value, _) {
         final d = digitsOnly(value.text);
         final isLast4 = d.length <= 4;
+        final wide = MediaQuery.sizeOf(context).shortestSide >= 600;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1610,9 +1715,9 @@ class _PhoneField extends StatelessWidget {
               textInputAction: TextInputAction.search,
               textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize: 28,
+                fontSize: wide ? 39 : 27,
                 fontWeight: FontWeight.w600,
-                letterSpacing: isLast4 ? 4 : 0,
+                letterSpacing: isLast4 ? 6 : 0,
               ),
               onChanged: (raw) {
                 final digits = digitsOnly(raw);
@@ -1629,7 +1734,9 @@ class _PhoneField extends StatelessWidget {
                 hintText: isLast4 ? '4321' : '(11) 98765-4321',
                 filled: true,
                 fillColor: FregoColors.card,
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                contentPadding: EdgeInsets.symmetric(
+                  vertical: wide ? 22 : 16,
+                ),
               ),
             ),
           ],
@@ -1675,7 +1782,7 @@ class _AmountField extends StatelessWidget {
             focusNode: focusNode,
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600),
+            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w600),
             onChanged: (raw) {
               final next = maskMoneyInput(raw);
               if (next != raw) {
@@ -2051,6 +2158,19 @@ class _CustomerCard extends StatelessWidget {
               ),
             ),
           ),
+          if (showAmount &&
+              (mode == EarnMode.points || mode == EarnMode.cashback))
+            _AmountField(
+              controller: amount,
+              focusNode: amountFocus,
+              previewPoints: previewPoints,
+              pointsPerReal: pointsPerReal,
+              previewCashback: previewCashback,
+              cashbackPercent: cashbackPercent,
+              applyCents: applyCents,
+              paidCents: paidCents,
+              showPointsRate: mode == EarnMode.points,
+            ),
           if (lookup.openVouchers.isNotEmpty) ...[
             const SizedBox(height: 12),
             _OpenVouchers(
@@ -2066,7 +2186,9 @@ class _CustomerCard extends StatelessWidget {
                 ),
               ),
           ],
-          if (showAmount)
+          if (showAmount &&
+              mode != EarnMode.points &&
+              mode != EarnMode.cashback)
             _AmountField(
               controller: amount,
               focusNode: amountFocus,
@@ -2309,54 +2431,55 @@ class _VoucherSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  textCapitalization: TextCapitalization.characters,
-                  inputFormatters: [
-                    TextInputFormatter.withFunction((old, next) {
-                      final formatted = formatVoucherInput(next.text);
-                      return TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(
-                          offset: formatted.length,
-                        ),
-                      );
-                    }),
-                  ],
-                  decoration: const InputDecoration(hintText: 'K7M-2PQ'),
-                  onSubmitted: (_) => onSubmit(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: fulfilling ? null : onSubmit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: FregoColors.ink,
-                  minimumSize: const Size(72, 44),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+          TextField(
+            controller: controller,
+            focusNode: focusNode,
+            textCapitalization: TextCapitalization.characters,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: MediaQuery.sizeOf(context).shortestSide >= 600
+                  ? 39
+                  : 31,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 2,
+            ),
+            inputFormatters: [
+              TextInputFormatter.withFunction((old, next) {
+                final formatted = formatVoucherInput(next.text);
+                return TextEditingValue(
+                  text: formatted,
+                  selection: TextSelection.collapsed(
+                    offset: formatted.length,
                   ),
-                ),
-                child: Text(
-                  fulfilling ? '…' : 'Usar',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              ),
+                );
+              }),
             ],
+            decoration: InputDecoration(
+              hintText: 'K7M-2PQ',
+              contentPadding: EdgeInsets.symmetric(
+                vertical: MediaQuery.sizeOf(context).shortestSide >= 600
+                    ? 22
+                    : 18,
+              ),
+            ),
+            onSubmitted: (_) => onSubmit(),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: fulfilling ? null : onScan,
-            icon: const Icon(Icons.qr_code_scanner, size: 18),
+            icon: const Icon(Icons.qr_code_scanner, size: 22),
             label: const Text('Escanear QR'),
             style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
+              minimumSize: const Size.fromHeight(56),
               foregroundColor: FregoColors.ink,
-              side: const BorderSide(color: FregoColors.hairline),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+              side: const BorderSide(color: FregoColors.neutral200),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -2364,6 +2487,11 @@ class _VoucherSection extends StatelessWidget {
             controller: amount,
             focusNode: amountFocus,
             keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: MediaQuery.sizeOf(context).shortestSide >= 600 ? 31 : 23,
+              fontWeight: FontWeight.w600,
+            ),
             onChanged: (raw) {
               final next = maskMoneyInput(raw);
               if (next != raw) {
@@ -2725,6 +2853,7 @@ class _StickyActionBar extends StatelessWidget {
     this.sale,
     this.undoBusy = false,
     this.onUndo,
+    this.onNewSearch,
     this.compact = false,
   });
 
@@ -2732,6 +2861,7 @@ class _StickyActionBar extends StatelessWidget {
   final CounterSale? sale;
   final bool undoBusy;
   final VoidCallback? onUndo;
+  final VoidCallback? onNewSearch;
   final bool compact;
 
   @override
@@ -2782,18 +2912,55 @@ class _StickyActionBar extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: cta.enabled ? cta.onPressed : null,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+              Row(
+                children: [
+                  if (onNewSearch != null) ...[
+                    Expanded(
+                      flex: 38,
+                      child: OutlinedButton(
+                        onPressed: onNewSearch,
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(52),
+                          foregroundColor: FregoColors.ink,
+                          backgroundColor: FregoColors.neutralBg,
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          side: const BorderSide(color: FregoColors.neutral200),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text(
+                          'Nova busca',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    flex: onNewSearch == null ? 1 : 62,
+                    child: FilledButton(
+                      onPressed: cta.enabled ? cta.onPressed : null,
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                        backgroundColor: cta.background,
+                        foregroundColor:
+                            cta.background == null ? null : Colors.white,
+                        disabledBackgroundColor: FregoColors.neutral100,
+                        disabledForegroundColor: FregoColors.neutral400,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                      child: Text(cta.label, textAlign: TextAlign.center),
                     ),
                   ),
-                  child: Text(cta.label, textAlign: TextAlign.center),
-                ),
+                ],
               ),
             ],
           ),
@@ -2955,6 +3122,53 @@ class _SalesList extends StatelessWidget {
           );
         }),
       ],
+    );
+  }
+}
+
+class _BusinessMark extends StatelessWidget {
+  const _BusinessMark({
+    required this.name,
+    required this.logoUrl,
+    required this.color,
+  });
+
+  final String name;
+  final String? logoUrl;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = name.trim();
+    final letter = trimmed.isEmpty ? '?' : trimmed[0].toUpperCase();
+    final url = logoUrl?.trim();
+    final fallback = Container(
+      width: 28,
+      height: 28,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        letter,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+    if (url == null || url.isEmpty) return fallback;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        url,
+        width: 28,
+        height: 28,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      ),
     );
   }
 }

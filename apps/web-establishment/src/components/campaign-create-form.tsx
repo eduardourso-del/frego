@@ -71,9 +71,9 @@ export const emptyCampaignForm: CampaignFormState = {
   startsOn: '',
   endsOn: '',
   weekdays: [],
-  unlimited: false,
+  unlimited: true,
   redeemMax: 1,
-  redeemPeriod: 'campaign',
+  redeemPeriod: 'day',
 };
 
 type TypeOption = {
@@ -187,7 +187,9 @@ function applyType(form: CampaignFormState, type: CampaignType): CampaignFormSta
           redeemPeriod: 'campaign' as const,
           weekdays: [] as number[],
         }
-      : {}),
+      : type === 'stamps'
+        ? { unlimited: true, redeemMax: 1, redeemPeriod: 'day' as const }
+        : {}),
   };
 }
 
@@ -378,66 +380,87 @@ function PromoRules({
         </p>
       </div>
 
-      <div>
-        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-ink)]">
-          <CalendarRange size={14} strokeWidth={2.25} aria-hidden />
-          Quantas vezes
-        </span>
-        <label className="mt-1.5 flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--color-hairline)] px-3 py-2.5">
-          <span>
-            <span className="block text-[13px] font-semibold text-[var(--color-ink)]">
-              Sem limite
-            </span>
-            <span className="text-[12px] text-[var(--color-neutral-500)]">
-              Resgate a cada visita, um código aberto por vez.
-            </span>
+      <RedeemLimitFields
+        form={form}
+        setForm={setForm}
+        unlimitedHint="Resgate a cada visita, um código aberto por vez."
+        cappedHint="O cliente resgata no app na hora da visita. O código vale 24h."
+      />
+    </div>
+  );
+}
+
+function RedeemLimitFields({
+  form,
+  setForm,
+  unlimitedHint,
+  cappedHint,
+}: {
+  form: CampaignFormState;
+  setForm: Dispatch<SetStateAction<CampaignFormState>>;
+  unlimitedHint: string;
+  cappedHint: string;
+}) {
+  return (
+    <div>
+      <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--color-ink)]">
+        <CalendarRange size={14} strokeWidth={2.25} aria-hidden />
+        Quantas vezes
+      </span>
+      <label className="mt-1.5 flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--color-hairline)] px-3 py-2.5">
+        <span>
+          <span className="block text-[13px] font-semibold text-[var(--color-ink)]">
+            Sem limite
           </span>
-          <input
-            type="checkbox"
-            checked={form.unlimited}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, unlimited: e.target.checked }))
-            }
-            className="h-5 w-5 accent-[var(--color-primary-500)]"
-          />
-        </label>
-        {!form.unlimited ? (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
-              Limite
-              <Stepper
-                value={form.redeemMax}
-                min={1}
-                max={99}
-                suffix={form.redeemMax === 1 ? 'vez' : 'vezes'}
-                onChange={(n) => setForm((f) => ({ ...f, redeemMax: n }))}
-              />
-            </label>
-            <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
-              Período
-              <select
-                value={form.redeemPeriod}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    redeemPeriod: e.target.value as PromoPeriod,
-                  }))
-                }
-                className={inputClass}
-              >
-                <option value="campaign">Nesta campanha</option>
-                <option value="day">Por dia</option>
-                <option value="week">Por semana</option>
-                <option value="month">Por mês</option>
-                <option value="year">Por ano</option>
-              </select>
-            </label>
-          </div>
-        ) : null}
-        <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
-          O cliente resgata no app na hora da visita. O código vale 24h.
-        </p>
-      </div>
+          <span className="text-[12px] text-[var(--color-neutral-500)]">
+            {unlimitedHint}
+          </span>
+        </span>
+        <input
+          type="checkbox"
+          checked={form.unlimited}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, unlimited: e.target.checked }))
+          }
+          className="h-5 w-5 accent-[var(--color-primary-500)]"
+        />
+      </label>
+      {!form.unlimited ? (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
+            Limite
+            <Stepper
+              value={form.redeemMax}
+              min={1}
+              max={99}
+              suffix={form.redeemMax === 1 ? 'vez' : 'vezes'}
+              onChange={(n) => setForm((f) => ({ ...f, redeemMax: n }))}
+            />
+          </label>
+          <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
+            Período
+            <select
+              value={form.redeemPeriod}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  redeemPeriod: e.target.value as PromoPeriod,
+                }))
+              }
+              className={inputClass}
+            >
+              <option value="campaign">Nesta campanha</option>
+              <option value="day">Por dia</option>
+              <option value="week">Por semana</option>
+              <option value="month">Por mês</option>
+              <option value="year">Por ano</option>
+            </select>
+          </label>
+        </div>
+      ) : null}
+      <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
+        {cappedHint}
+      </p>
     </div>
   );
 }
@@ -602,18 +625,28 @@ export function CampaignCreateForm({
             </label>
 
             {form.type === 'stamps' ? (
-              <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
-                Carimbos para ganhar
-                <Stepper
-                  value={form.stampsNeeded}
-                  min={2}
-                  max={50}
-                  suffix="carimbos"
-                  onChange={(n) =>
-                    setForm((f) => ({ ...f, stampsNeeded: n }))
-                  }
-                />
-              </label>
+              <>
+                <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+                  Carimbos para ganhar
+                  <Stepper
+                    value={form.stampsNeeded}
+                    min={2}
+                    max={50}
+                    suffix="carimbos"
+                    onChange={(n) =>
+                      setForm((f) => ({ ...f, stampsNeeded: n }))
+                    }
+                  />
+                </label>
+                <div className="mt-3">
+                  <RedeemLimitFields
+                    form={form}
+                    setForm={setForm}
+                    unlimitedHint="Pode resgatar cada vez que completar os carimbos."
+                    cappedHint="Os carimbos continuam no saldo. O limite só segura o próximo resgate."
+                  />
+                </div>
+              </>
             ) : form.type === 'spend' ? (
               <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
                 Pontos para resgatar
@@ -833,7 +866,12 @@ export function CampaignCreateForm({
                         redeemMax: form.redeemMax,
                         redeemPeriod: form.redeemPeriod,
                       })} · resgate na loja`
-                  : undefined
+                  : form.type === 'stamps' && !form.unlimited
+                    ? promoFrequencyHint({
+                        redeemMax: form.redeemMax,
+                        redeemPeriod: form.redeemPeriod,
+                      })
+                    : undefined
               }
               startsOn={form.startsOn || null}
               endsOn={form.endsOn || null}

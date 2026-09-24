@@ -12,6 +12,7 @@ export type CustomerProgress = {
   /** Unidades até o próximo prêmio (0 se já pode resgatar). */
   remaining: number;
   canRedeem: boolean;
+  lockedReason?: CampaignWalletEntry['lockedReason'];
   rewardTitle: string | null;
   businessId?: string;
   businessName?: string;
@@ -119,11 +120,14 @@ export function progressFromWallet(
     primary.type === 'spend' ? wallet.pools.points : wallet.pools.stamps;
   const needed = primary.unitsNeeded;
   const inCycle = current % needed;
+  const quotaBlocked = primary.lockedReason === 'quota_exhausted';
   const remaining = primary.canRedeem
     ? 0
-    : inCycle === 0
-      ? needed
-      : needed - inCycle;
+    : quotaBlocked
+      ? 0
+      : inCycle === 0
+        ? needed
+        : needed - inCycle;
 
   return {
     campaignId: primary.campaignId,
@@ -133,6 +137,7 @@ export function progressFromWallet(
     needed,
     remaining,
     canRedeem: primary.canRedeem,
+    lockedReason: primary.lockedReason ?? null,
     rewardTitle: primary.rewardTitle,
     ...extras,
   };

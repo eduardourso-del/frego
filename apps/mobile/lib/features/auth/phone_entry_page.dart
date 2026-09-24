@@ -19,15 +19,50 @@ class PhoneEntryPage extends StatefulWidget {
   State<PhoneEntryPage> createState() => _PhoneEntryPageState();
 }
 
-class _PhoneEntryPageState extends State<PhoneEntryPage> {
+class _PhoneEntryPageState extends State<PhoneEntryPage>
+    with WidgetsBindingObserver {
   final _controller = TextEditingController();
+  final _phoneFocus = FocusNode();
+  final _phoneFieldKey = GlobalKey();
   String? _error;
   bool _loading = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _phoneFocus.addListener(_handlePhoneFocus);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _phoneFocus.removeListener(_handlePhoneFocus);
+    _phoneFocus.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (_phoneFocus.hasFocus) _revealPhoneField();
+  }
+
+  void _handlePhoneFocus() {
+    if (_phoneFocus.hasFocus) _revealPhoneField();
+  }
+
+  void _revealPhoneField() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = _phoneFieldKey.currentContext;
+      if (!mounted || target == null) return;
+      Scrollable.ensureVisible(
+        target,
+        alignment: 0.2,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   String _formatBr(String raw) {
@@ -113,6 +148,85 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
     return 'Falha na verificação';
   }
 
+  Widget _phoneForm() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (widget.isRoot) ...[
+          const SizedBox(height: 24),
+          const FregoWordmark(height: 28),
+          const SizedBox(height: 24),
+        ],
+        const Text(
+          'Seu número',
+          style: TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.56,
+            color: FregoColors.ink,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Enviaremos um código por SMS. Carimbos e pontos do balcão neste telefone entram automaticamente na sua conta.',
+          style: TextStyle(
+            fontSize: 15,
+            color: FregoColors.neutral500,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: FregoColors.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: FregoColors.neutral200),
+              ),
+              child: const Text(
+                '+55',
+                style: TextStyle(
+                  fontSize: 17,
+                  color: FregoColors.ink,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FregoTextField(
+                key: _phoneFieldKey,
+                controller: _controller,
+                focusNode: _phoneFocus,
+                placeholder: '(11) 98765-4321',
+                errorText: _error,
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[\d()\s-]')),
+                  LengthLimitingTextInputFormatter(16),
+                ],
+                onChanged: (value) {
+                  final formatted = _formatBr(value);
+                  if (formatted != value) {
+                    _controller.value = TextEditingValue(
+                      text: formatted,
+                      selection: TextSelection.collapsed(
+                        offset: formatted.length,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cupertino = FregoAdaptive.useCupertino(context);
@@ -131,92 +245,34 @@ class _PhoneEntryPageState extends State<PhoneEntryPage> {
                   icon: const Icon(FregoIcons.back),
                   onPressed: () => Navigator.of(context).pop(),
                 )),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.isRoot) ...[
-              const SizedBox(height: 24),
-              const FregoWordmark(height: 28),
-              const SizedBox(height: 24),
-            ],
-            const Text(
-              'Seu número',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.56,
-                color: FregoColors.ink,
+      child: CustomScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            sliver: SliverToBoxAdapter(child: _phoneForm()),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Spacer(),
+                  FregoPrimaryButton(
+                    label: _loading ? 'Enviando…' : 'Continuar',
+                    onPressed: _loading ? null : _continue,
+                  ),
+                  const SizedBox(height: 16),
+                  const LegalLinks(
+                    prefix: 'Ao continuar, você concorda com a ',
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'Enviaremos um código por SMS. Carimbos e pontos do balcão neste telefone entram automaticamente na sua conta.',
-              style: TextStyle(
-                fontSize: 15,
-                color: FregoColors.neutral500,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 32),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: FregoColors.card,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: FregoColors.neutral200),
-                  ),
-                  child: const Text(
-                    '+55',
-                    style: TextStyle(
-                      fontSize: 17,
-                      color: FregoColors.ink,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FregoTextField(
-                    controller: _controller,
-                    placeholder: '(11) 98765-4321',
-                    errorText: _error,
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[\d()\s-]')),
-                      LengthLimitingTextInputFormatter(16),
-                    ],
-                    onChanged: (value) {
-                      final formatted = _formatBr(value);
-                      if (formatted != value) {
-                        _controller.value = TextEditingValue(
-                          text: formatted,
-                          selection: TextSelection.collapsed(
-                            offset: formatted.length,
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const Spacer(),
-            FregoPrimaryButton(
-              label: _loading ? 'Enviando…' : 'Continuar',
-              onPressed: _loading ? null : _continue,
-            ),
-            const SizedBox(height: 16),
-            const LegalLinks(
-              prefix: 'Ao continuar, você concorda com a ',
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

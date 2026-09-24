@@ -1,10 +1,21 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Banknote, Coins, ScanQrCode, Stamp, Undo2 } from 'lucide-react';
 import { useBusiness } from '@/lib/business-context';
 import { AppShell } from '@/components/app-shell';
-import { CounterSheet, StickyActionBar } from '@/components/counter-chrome';
+import {
+  CounterSheet,
+  StickyActionBar,
+  type StickyTone,
+} from '@/components/counter-chrome';
 import { VoucherScanSheet } from '@/components/voucher-scan-sheet';
 import { TagChipRow } from '@/components/tag-chips';
 import { API_URL } from '@/lib/api';
@@ -131,6 +142,8 @@ function poolsFrom(lookup: LookupResult | null) {
 
 export default function CounterPage() {
   const { authHeaders: bizAuthHeaders, business } = useBusiness();
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+  const fullPhoneRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [fullPhone, setFullPhone] = useState('');
   const [createName, setCreateName] = useState('');
@@ -157,6 +170,13 @@ export default function CounterPage() {
   const [catalog, setCatalog] = useState<CatalogTag[]>([]);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagBusy, setTagBusy] = useState(false);
+  const [pendingVoucher, setPendingVoucher] = useState<{
+    voucherCode: string;
+    voucherDisplay: string;
+    rewardTitle: string;
+    customerName: string;
+    phoneTail: string | null;
+  } | null>(null);
   const [voucherResult, setVoucherResult] = useState<{
     kind: 'used' | 'already_used' | 'expired' | 'not_found' | 'error';
     message: string;
@@ -257,9 +277,14 @@ export default function CounterPage() {
   }, [applyCashback, applyAmount, maxApplyCents]);
 
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)');
+    const mq = window.matchMedia('(max-width: 1400px)');
     const update = () => {
-      setCanScan(mq.matches && !!navigator.mediaDevices?.getUserMedia);
+      const touch =
+        window.matchMedia('(pointer: coarse)').matches ||
+        navigator.maxTouchPoints > 0;
+      setCanScan(
+        touch && mq.matches && !!navigator.mediaDevices?.getUserMedia,
+      );
     };
     update();
     mq.addEventListener('change', update);
@@ -431,8 +456,13 @@ export default function CounterPage() {
           phoneE164: data.phoneE164,
           matches: [],
         });
+        setFocus('none');
+        phoneInputRef.current?.blur();
         if (qDigits.length >= 10) setFullPhone(formatPhoneBr(qDigits));
-        else setFullPhone('');
+        else {
+          setFullPhone('');
+          window.setTimeout(() => fullPhoneRef.current?.focus(), 60);
+        }
         return;
       }
       if (!res.ok) {
@@ -440,9 +470,18 @@ export default function CounterPage() {
       }
       setLookup(data);
       if (data.multiple) setOverlay('matches');
+      if (data.found && data.customer && !data.multiple) {
+        setFocus((current) => (current === 'phone' ? 'none' : current));
+        phoneInputRef.current?.blur();
+      }
       if (!data.found && !data.multiple) {
+        setFocus('none');
+        phoneInputRef.current?.blur();
         if (qDigits.length >= 10) setFullPhone(formatPhoneBr(qDigits));
-        else setFullPhone('');
+        else {
+          setFullPhone('');
+          window.setTimeout(() => fullPhoneRef.current?.focus(), 60);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
@@ -463,6 +502,10 @@ export default function CounterPage() {
       const data = (await res.json()) as LookupResult;
       if (!res.ok) throw new Error(data.error ?? 'Não foi possível buscar.');
       setLookup(data);
+      if (data.found && data.customer && !data.multiple) {
+        setFocus((current) => (current === 'phone' ? 'none' : current));
+        phoneInputRef.current?.blur();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
     } finally {
@@ -674,6 +717,58 @@ export default function CounterPage() {
     }
   }
 
+  function phoneTail(phone?: string | null): string | null {
+    const digits = (phone ?? '').replace(/\D/g, '');
+    if (digits.length < 4) return null;
+    return digits.slice(-4);
+  }
+
+  async function requestVoucherConfirm(code: string) {
+    setFulfillingId(code);
+    setError(null);
+    setVoucherResult(null);
+    setPendingVoucher(null);
+    let handedOff = false;
+    try {
+      const res = await fetch(
+        `${API_URL}/vouchers/lookup?code=${encodeURIComponent(code)}`,
+        { headers: await authHeaders() },
+      );
+      const data = await res.json();
+      const voucher = data.voucher as
+        | {
+            status?: string;
+            voucherCode?: string;
+            voucherDisplay?: string;
+            rewardTitle?: string;
+          }
+        | undefined;
+      const customer = data.customer as
+        | { displayName?: string | null; phoneE164?: string | null }
+        | undefined;
+      if (!res.ok || voucher?.status !== 'open') {
+        handedOff = true;
+        setFulfillingId(null);
+        await fulfillVoucher({ voucherCode: code });
+        return;
+      }
+      setPendingVoucher({
+        voucherCode: voucher.voucherCode ?? code,
+        voucherDisplay: voucher.voucherDisplay ?? code,
+        rewardTitle: voucher.rewardTitle ?? 'Prêmio',
+        customerName: customer?.displayName?.trim() || 'Cliente sem nome',
+        phoneTail: phoneTail(customer?.phoneE164),
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Não foi possível buscar o voucher.';
+      setVoucherResult({ kind: 'error', message });
+      setError(message);
+    } finally {
+      if (!handedOff) setFulfillingId(null);
+    }
+  }
+
   async function fulfillVoucher(opts: {
     transactionId?: string;
     voucherCode?: string;
@@ -785,6 +880,10 @@ export default function CounterPage() {
   const canApplyLeftover = cashbackBalance > 0;
   const showStampsPool = earnKinds.includes('stamps') || pools.stamps > 0;
   const showPointsPool = earnKinds.includes('points') || pools.points > 0;
+  const showCashbackPool = cashbackBalance > 0 || canEarnCashback;
+  const balanceCount = [showStampsPool, showPointsPool, showCashbackPool].filter(
+    Boolean,
+  ).length;
   const title =
     tillTask === 'voucher'
       ? 'Confirmar voucher'
@@ -847,6 +946,22 @@ export default function CounterPage() {
           : 'Adicionar à loja e carimbar';
   const voucherTask = tillTask === 'voucher';
   const voucherExpired = voucherResult?.kind === 'expired';
+  const customerResolved = Boolean(
+    lookup?.found && lookup.customer && !lookup.multiple,
+  );
+  const awaitingCreate = Boolean(
+    lookup && !lookup.found && !lookup.multiple,
+  );
+  const searchSettled = Boolean(lookup) && tillTask === 'earn';
+  const actionTone: StickyTone = !canEarn
+    ? canApplyLeftover
+      ? 'cashback'
+      : 'primary'
+    : earnMode === 'points'
+      ? 'points'
+      : earnMode === 'cashback'
+        ? 'cashback'
+        : 'stamps';
   const stickyLabel =
     voucherTask && voucherExpired
       ? fulfillingId
@@ -856,32 +971,42 @@ export default function CounterPage() {
         ? fulfillingId
           ? '…'
           : 'Usar'
-        : focus === 'phone'
-          ? loading
-            ? 'Buscando…'
-            : 'Buscar'
-          : focus === 'fullPhone'
-            ? loading
-              ? 'Buscando…'
-              : notFoundAction
-            : !lookup || lookup.multiple
+        : customerResolved
+          ? foundAction
+          : awaitingCreate
+            ? notFoundAction
+            : focus === 'phone'
               ? loading
                 ? 'Buscando…'
                 : 'Buscar'
-              : !lookup.found
+              : focus === 'fullPhone'
                 ? loading
                   ? 'Buscando…'
                   : notFoundAction
-                : foundAction;
+                : !lookup || lookup.multiple
+                  ? loading
+                    ? 'Buscando…'
+                    : 'Buscar'
+                  : !lookup.found
+                    ? loading
+                      ? 'Buscando…'
+                      : notFoundAction
+                    : foundAction;
+  const stickyTone: StickyTone =
+    customerResolved || awaitingCreate ? actionTone : 'primary';
   const phoneDigits = digitsOnly(query);
   const phoneReady = phoneDigits.length === 4 || phoneDigits.length >= 10;
   const stickyDisabled =
     (voucherTask &&
       (fulfillingId != null ||
         (!voucherExpired && normalizeVoucherCode(voucherCode).length < 4))) ||
-    (!voucherTask && focus === 'phone' && (loading || !phoneReady)) ||
     (!voucherTask &&
-      focus !== 'phone' &&
+      !customerResolved &&
+      !awaitingCreate &&
+      focus === 'phone' &&
+      (loading || !phoneReady)) ||
+    (!voucherTask &&
+      (customerResolved || focus !== 'phone') &&
       (loading ||
         Boolean(
           lookup?.found &&
@@ -889,6 +1014,27 @@ export default function CounterPage() {
             !canEarn &&
             !canApplyLeftover,
         )));
+
+  function startNewSearch() {
+    setLookup(null);
+    setError(null);
+    setVoucherResult(null);
+    setApplyCashback(false);
+    setLastSale(null);
+    setQuery('');
+    setCreateName('');
+    setFullPhone('');
+    setFocus('none');
+  }
+
+  const resultScrollKey =
+    !lookup || lookup.multiple
+      ? ''
+      : `${lookup.found}:${lookup.customer?.id ?? lookup.phoneE164 ?? lookup.last4 ?? 'new'}`;
+  useEffect(() => {
+    if (!resultScrollKey) return;
+    window.scrollTo(0, 0);
+  }, [resultScrollKey]);
 
   function runStickyAction() {
     if (voucherTask) {
@@ -902,7 +1048,16 @@ export default function CounterPage() {
       }
       const code = normalizeVoucherCode(voucherCode);
       if (code.length < 4) return;
-      void fulfillVoucher({ voucherCode: code });
+      void requestVoucherConfirm(code);
+      return;
+    }
+    if (customerResolved && lookup) {
+      if (lookup.associatedHere && lookup.membership) void earn();
+      else void createCustomer(canEarn);
+      return;
+    }
+    if (awaitingCreate) {
+      askCreateNotFound();
       return;
     }
     if (focus === 'phone' || !lookup || lookup.multiple) {
@@ -920,7 +1075,7 @@ export default function CounterPage() {
   return (
     <AppShell title="Balcão">
       <main className="mx-auto max-w-lg px-4 py-6 pb-40 md:py-10 md:pb-36">
-        <header className="mb-5">
+        <header className={searchSettled ? 'mb-3' : 'mb-5'}>
           <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
             Balcão · {business?.name ?? 'funcionário'}
           </p>
@@ -934,7 +1089,7 @@ export default function CounterPage() {
           </p>
         </header>
 
-        <div className="mb-5 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
+        <div className={`flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1 ${searchSettled ? 'mb-3' : 'mb-5'}`}>
           {(
             [
               { value: 'earn' as const, label: 'Registrar' },
@@ -974,12 +1129,12 @@ export default function CounterPage() {
             Código do prêmio
           </p>
           <form
-            className="mt-3 flex gap-2"
+            className="mt-3"
             onSubmit={(e) => {
               e.preventDefault();
               const code = normalizeVoucherCode(voucherCode);
               if (code.length < 4) return;
-              void fulfillVoucher({ voucherCode: code });
+              void requestVoucherConfirm(code);
             }}
           >
             <input
@@ -992,34 +1147,20 @@ export default function CounterPage() {
               placeholder="K7M-2PQ"
               maxLength={7}
               inputMode="text"
-              className="min-h-11 flex-1 rounded-[10px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 font-mono text-[16px] tracking-[0.12em]"
+              className="min-h-20 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 text-center font-mono text-[31px] font-semibold leading-none tracking-[0.08em] md:text-[39px]"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
             />
-            <button
-              type="submit"
-              disabled={
-                loading ||
-                normalizeVoucherCode(voucherCode).length < 4 ||
-                fulfillingId != null
-              }
-              className="min-h-11 shrink-0 rounded-[10px] bg-[var(--color-ink)] px-4 text-[14px] font-semibold text-white disabled:opacity-50"
-            >
-              {fulfillingId === normalizeVoucherCode(voucherCode) ||
-              fulfillingId === 'code'
-                ? '…'
-                : 'Usar'}
-            </button>
           </form>
           {canScan ? (
             <button
               type="button"
               onClick={() => setOverlay('scan')}
               disabled={fulfillingId != null}
-              className="mt-2 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[10px] border border-[var(--color-hairline)] text-[14px] font-semibold text-[var(--color-ink)] disabled:opacity-50 md:hidden"
+              className="mt-3 inline-flex min-h-14 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] text-[16px] font-semibold text-[var(--color-ink)] disabled:opacity-50"
             >
-              <ScanQrCode size={16} strokeWidth={2.25} aria-hidden />
+              <ScanQrCode size={22} strokeWidth={2.25} aria-hidden />
               Escanear QR
             </button>
           ) : null}
@@ -1036,7 +1177,7 @@ export default function CounterPage() {
               }}
               placeholder="Opcional"
               inputMode="numeric"
-              className="mt-1 min-h-11 w-full rounded-[10px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 text-[16px]"
+              className="mt-1 min-h-16 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-bg)] px-3 text-center text-[27px] font-semibold leading-none md:min-h-20 md:text-[35px]"
             />
             <span className="mt-1 block text-[12px] text-[var(--color-neutral-400)]">
               Opcional · retorno da campanha
@@ -1197,7 +1338,7 @@ export default function CounterPage() {
         ) : (
         <>
         {earnKinds.length > 1 ? (
-          <div className="mb-6 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
+          <div className={`flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1 ${searchSettled ? 'mb-3' : 'mb-6'}`}>
             {EARN_MODE_OPTIONS.filter((opt) => earnKinds.includes(opt.key)).map(
               ({ key, label, Icon }) => {
                 const selected = earnMode === key;
@@ -1232,10 +1373,12 @@ export default function CounterPage() {
           </p>
         ) : null}
 
+        {lookup ? null : (
         <form onSubmit={doLookup} className="flex flex-col gap-3">
           <label className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-700)]">
             {isLast4 ? 'Últimos 4 dígitos' : 'Telefone'}
             <input
+              ref={phoneInputRef}
               value={query}
               onChange={(e) => {
                 const raw = e.target.value;
@@ -1248,7 +1391,7 @@ export default function CounterPage() {
               inputMode="numeric"
               autoComplete="off"
               autoFocus
-              className={`mt-2 min-h-14 w-full rounded-[8px] border bg-[var(--color-card)] px-3 text-center text-[28px] font-semibold ${
+              className={`mt-2 min-h-20 w-full rounded-[12px] border bg-[var(--color-card)] px-3 text-center text-[35px] font-semibold leading-none md:min-h-24 md:text-[43px] ${
                 isLast4 ? 'tracking-[0.2em]' : 'tracking-normal'
               } ${
                 error
@@ -1263,28 +1406,17 @@ export default function CounterPage() {
               {error}
             </p>
           )}
-          {lookup ? (
-            <button
-              type="button"
-              onClick={() => {
-                setLookup(null);
-                setError(null);
-                setVoucherResult(null);
-                setApplyCashback(false);
-                setLastSale(null);
-                setQuery('');
-                setCreateName('');
-                setFullPhone('');
-              }}
-              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-card)] text-[14px] font-semibold text-[var(--color-neutral-700)]"
-            >
-              Nova busca
-            </button>
-          ) : null}
         </form>
+        )}
+
+        {lookup && error ? (
+          <p className="mt-3 text-[13px] text-[var(--color-danger)]" role="alert">
+            {error}
+          </p>
+        ) : null}
 
         {lookup?.multiple && lookup.matches && (
-          <section className="mt-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+          <section className="mt-4 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
             <h2 className="text-[20px] font-semibold">Vários clientes</h2>
             <p className="mt-1 text-[15px] text-[var(--color-neutral-500)]">
               Estes clientes terminam em {lookup.last4}. Qual deles?
@@ -1300,15 +1432,15 @@ export default function CounterPage() {
         )}
 
         {lookup && !lookup.found && !lookup.multiple && (
-          <section className="mt-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-            <h2 className="text-[20px] font-semibold">Cliente não encontrado</h2>
-            <p className="mt-1 text-[15px] text-[var(--color-neutral-500)]">
+          <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]">
+            <h2 className="text-[22px] font-semibold">Cliente não encontrado</h2>
+            <p className="mt-2 text-[15px] text-[var(--color-neutral-500)]">
               {queryIsFullPhone || hasFullPhoneForCreate
                 ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
                 : 'Busca pelos 4 dígitos não achou. Informe o telefone completo com DDD para cadastrar.'}
             </p>
             {queryIsFullPhone || digitsOnly(fullPhone).length >= 10 ? (
-              <p className="mt-4 font-mono text-[20px] font-semibold tracking-wide text-[var(--color-ink)]">
+              <p className="mt-4 font-mono text-[28px] font-semibold tracking-wide text-[var(--color-ink)] md:text-[36px]">
                 {formatPhoneBr(
                   digitsOnly(
                     digitsOnly(fullPhone).length >= 10 ? fullPhone : query,
@@ -1319,13 +1451,14 @@ export default function CounterPage() {
               <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
                 Telefone completo
                 <input
+                  ref={fullPhoneRef}
                   value={fullPhone}
                   onChange={(e) => setFullPhone(formatPhoneBr(e.target.value))}
                   onFocus={() => setFocus('fullPhone')}
                   onBlur={() => setFocus((f) => (f === 'fullPhone' ? 'none' : f))}
                   inputMode="tel"
                   autoComplete="tel"
-                  className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[17px] tracking-wide"
+                  className="mt-2 min-h-20 w-full rounded-[12px] border border-[var(--color-neutral-200)] px-3 text-[31px] font-semibold leading-none tracking-wide md:text-[35px]"
                   placeholder="(19) 99488-5914"
                 />
               </label>
@@ -1338,7 +1471,7 @@ export default function CounterPage() {
                 maxLength={80}
                 autoComplete="name"
                 autoCapitalize="words"
-                className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-[17px]"
+                className="mt-2 min-h-14 w-full rounded-[12px] border border-[var(--color-neutral-200)] px-3 text-[20px] md:min-h-16 md:text-[24px]"
                 placeholder="Como o cliente se chama"
               />
             </label>
@@ -1361,11 +1494,11 @@ export default function CounterPage() {
         )}
 
         {lookup?.found && lookup.customer && !lookup.multiple && (
-          <section className="mt-8 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-            <h2 className="text-[20px] font-semibold">
+          <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]">
+            <h2 className="truncate text-[20px] font-semibold">
               {lookup.customer.displayName ?? 'Cliente'}
             </h2>
-            <p className="font-mono text-[15px] text-[var(--color-neutral-500)]">
+            <p className="truncate font-mono text-[15px] text-[var(--color-neutral-500)]">
               {lookup.customer.phoneE164}
             </p>
             {catalog.length > 0 && lookup.associatedHere ? (
@@ -1393,49 +1526,56 @@ export default function CounterPage() {
               </p>
             )}
 
-            {(showStampsPool || showPointsPool) && (
+            {balanceCount > 0 && (
             <div
-              className={`mt-4 grid gap-2 ${
-                showStampsPool && showPointsPool ? 'grid-cols-2' : 'grid-cols-1'
+              className={`mt-3 grid gap-2 ${
+                balanceCount > 2
+                  ? 'grid-cols-3'
+                  : balanceCount > 1
+                    ? 'grid-cols-2'
+                    : 'grid-cols-1'
               }`}
             >
               {showStampsPool && (
-                <div className="rounded-[14px] bg-[var(--color-stamps-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-stamps-ring)]">
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-stamps)]">
+                <div className="rounded-[14px] bg-[var(--color-stamps-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-stamps-ring)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-stamps)]">
                     Carimbos
                   </p>
-                  <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
+                  <p className="mt-0.5 text-[22px] font-semibold leading-none text-[var(--color-ink)]">
                     {pools.stamps}
                   </p>
                 </div>
               )}
               {showPointsPool && (
-                <div className="rounded-[14px] bg-[var(--color-points-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-points-ring)]">
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-points)]">
+                <div className="rounded-[14px] bg-[var(--color-points-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-points-ring)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-points)]">
                     Pontos
                   </p>
-                  <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
+                  <p className="mt-0.5 text-[22px] font-semibold leading-none text-[var(--color-ink)]">
                     {pools.points}
+                  </p>
+                </div>
+              )}
+              {showCashbackPool && (
+                <div className="rounded-[14px] bg-[var(--color-cashback-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+                    Cashback
+                  </p>
+                  <p className="mt-0.5 text-[18px] font-semibold leading-tight text-[var(--color-ink)]">
+                    {formatBrl(cashbackBalance)}
                   </p>
                 </div>
               )}
             </div>
             )}
-            {cashbackBalance > 0 || canEarnCashback ? (
+            {cashbackBalance > 0 && saleMode ? (
               <div className="mt-2 rounded-[14px] bg-[var(--color-cashback-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
-                  Cashback
-                </p>
-                <p className="mt-1 text-[24px] font-semibold text-[var(--color-ink)]">
-                  {formatBrl(cashbackBalance)}
-                </p>
                 {cashbackPercent > 0 && earnMode === 'cashback' && (
-                  <p className="mt-1 text-[12px] text-[var(--color-cashback)]">
+                  <p className="mb-2 text-[12px] text-[var(--color-cashback)]">
                     {cashbackPercent}% do valor pago
                   </p>
                 )}
-                {cashbackBalance > 0 && saleMode && (
-                  <div className="mt-3">
+                <div>
                     <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
                       <input
                         type="checkbox"
@@ -1473,15 +1613,24 @@ export default function CounterPage() {
                         : `Saldo disponível: ${formatBrl(cashbackBalance)}. Informe quanto o outro sistema descontou.`}
                     </p>
                   </div>
-                )}
               </div>
             ) : null}
 
-            <p className="mt-3 text-[13px] text-[var(--color-neutral-500)]">
-              {earnMode === 'cashback'
-                ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
-                : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher abaixo ao entregar o prêmio.'}
-            </p>
+            {(earnMode === 'points' || earnMode === 'cashback') && showAmount && (
+              <AmountField
+                amount={amount}
+                setAmount={setAmount}
+                previewPoints={previewPoints}
+                pointsPerReal={pointsPerReal}
+                previewCashback={previewCashback}
+                cashbackPercent={cashbackPercent}
+                applyCents={applyCents}
+                paidCents={paidCents}
+                showPointsRate={earnMode === 'points'}
+                onFocus={() => setFocus('amount')}
+                onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
+              />
+            )}
 
             {openVouchers.length > 0 && (
               <div className="mt-4 rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-3">
@@ -1543,7 +1692,7 @@ export default function CounterPage() {
               </div>
             )}
 
-            {showAmount && (
+            {showAmount && earnMode !== 'points' && earnMode !== 'cashback' && (
               <AmountField
                 amount={amount}
                 setAmount={setAmount}
@@ -1558,6 +1707,12 @@ export default function CounterPage() {
                 onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
               />
             )}
+
+            <p className="mt-3 text-[13px] text-[var(--color-neutral-500)]">
+              {earnMode === 'cashback'
+                ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
+                : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher ao entregar o prêmio.'}
+            </p>
 
             {(lookup.recentSales?.length ?? 0) > 0 && (
               <div className="mt-5 border-t border-[var(--color-hairline)] pt-4">
@@ -1625,11 +1780,14 @@ export default function CounterPage() {
 
         <StickyActionBar
           label={stickyLabel}
+          tone={stickyTone}
           disabled={stickyDisabled}
           onClick={runStickyAction}
           undoLabel={lastSale?.summary}
           undoBusy={reversingId != null}
           onUndo={lastSale ? () => setPendingUndo(lastSale) : undefined}
+          secondaryLabel={searchSettled ? 'Nova busca' : undefined}
+          onSecondary={searchSettled ? startNewSearch : undefined}
         />
 
         {overlay === 'scan' ? (
@@ -1859,6 +2017,62 @@ export default function CounterPage() {
           </div>
         ) : null}
 
+        {pendingVoucher ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 md:left-[var(--app-sidebar-w)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="voucher-confirm-title"
+            onClick={() => fulfillingId == null && setPendingVoucher(null)}
+          >
+            <div
+              className="w-full max-w-sm rounded-[16px] bg-[var(--color-card)] p-5 shadow-[var(--shadow-raised)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p
+                id="voucher-confirm-title"
+                className="text-[16px] font-semibold text-[var(--color-ink)]"
+              >
+                Confirmar este voucher?
+              </p>
+              <p className="mt-2 font-mono text-[20px] font-semibold tracking-[0.08em] text-[var(--color-ink)]">
+                {pendingVoucher.voucherDisplay}
+              </p>
+              <p className="mt-2 text-[14px] leading-relaxed text-[var(--color-neutral-600)]">
+                {pendingVoucher.rewardTitle} · {pendingVoucher.customerName}
+                {pendingVoucher.phoneTail
+                  ? ` · final ${pendingVoucher.phoneTail}`
+                  : ''}
+              </p>
+              <p className="mt-2 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                Confira se é o cliente na sua frente. Confirmar entrega o prêmio.
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={fulfillingId != null}
+                  onClick={() => setPendingVoucher(null)}
+                  className="min-h-10 rounded-[10px] px-3 text-[14px] font-semibold text-[var(--color-neutral-600)]"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={fulfillingId != null}
+                  onClick={() => {
+                    const code = pendingVoucher.voucherCode;
+                    setPendingVoucher(null);
+                    void fulfillVoucher({ voucherCode: code });
+                  }}
+                  className="min-h-10 rounded-[10px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+                >
+                  {fulfillingId != null ? '…' : 'Confirmar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {pendingUndo ? (
           <div
             className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4 md:left-[var(--app-sidebar-w)]"
@@ -1945,7 +2159,7 @@ function AmountField({
           onFocus={onFocus}
           onBlur={onBlur}
           inputMode="numeric"
-          className="mt-2 min-h-14 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-center text-[28px] font-semibold"
+          className="mt-2 min-h-14 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-center text-[23px] font-semibold"
           placeholder="0,00"
         />
       </label>

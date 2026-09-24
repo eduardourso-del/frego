@@ -866,9 +866,11 @@ export async function resolveMembershipRecognition(
             ? c.canRedeem
               ? `Conquista liberada · ${title}`
               : `${title} — disponível nas regras da promoção`
-            : c.canRedeem
-              ? `Conquista liberada · ${title}`
-              : `${title} — continue acumulando para o prêmio exclusivo`,
+            : c.lockedReason === 'quota_exhausted'
+              ? `${title} — resgate liberado no próximo período`
+              : c.canRedeem
+                ? `Conquista liberada · ${title}`
+                : `${title} — continue acumulando para o prêmio exclusivo`,
     };
   });
 

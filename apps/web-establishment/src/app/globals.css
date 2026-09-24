@@ -79,11 +79,15 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-@media (max-width: 767px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px;
+/* Baseline so iOS does not zoom on focus. Lives in base so a larger
+   utility (the till phone field) can still win. */
+@layer base {
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }
 

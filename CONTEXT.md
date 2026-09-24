@@ -25,7 +25,7 @@ The identifier of a Voucher (`XXX-XXX`). A scannable image is the same Código, 
 _Avoid_: QR (as the name of the token), barcode, voucher ID, PIN, QR voucher
 
 **Resgatar**:
-The customer action that creates a Voucher and consumes the wallet entitlement.
+The customer action that creates a Voucher and consumes the wallet entitlement. A carimbo Campanha may cap how often one customer can Resgatar.
 _Avoid_: generate, issue, claim, unlock
 
 **Confirmar**:

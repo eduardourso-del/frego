@@ -212,6 +212,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 actualNeeded: needed,
                                 actualCurrent: currentUnits,
                                 showRewardInline: !hasImage,
+                                statusHint: statusHint,
                               ),
                           ],
                         ),
@@ -581,6 +582,7 @@ class _StampsBody extends StatelessWidget {
     required this.actualNeeded,
     required this.actualCurrent,
     required this.showRewardInline,
+    this.statusHint,
   });
 
   final int filled;
@@ -592,13 +594,16 @@ class _StampsBody extends StatelessWidget {
   final int actualNeeded;
   final int actualCurrent;
   final bool showRewardInline;
+  final String? statusHint;
 
   @override
   Widget build(BuildContext context) {
     // Progress circles match real stamp goal. Last slot is the gift and only
     // fills when the reward is ready.
     final stampCount = needed.clamp(1, 24);
-    final showFilled = canRedeem
+    final hasFullSet = actualCurrent >= actualNeeded && actualNeeded > 0;
+    final showComplete = canRedeem || hasFullSet;
+    final showFilled = showComplete
         ? stampCount
         : filled.clamp(0, stampCount - 1);
 
@@ -610,9 +615,7 @@ class _StampsBody extends StatelessWidget {
           runSpacing: 5,
           children: List.generate(stampCount, (i) {
             final isGift = i == stampCount - 1;
-            final isFilled = canRedeem
-                ? true
-                : i < showFilled;
+            final isFilled = showComplete ? true : i < showFilled;
             return Container(
               width: 24,
               height: 24,
@@ -647,8 +650,10 @@ class _StampsBody extends StatelessWidget {
         Text(
           canRedeem
               ? (showRewardInline ? 'Pronto · $reward' : 'Pronto para resgatar')
-              : '${actualCurrent.clamp(0, actualNeeded)}/$actualNeeded'
-                  '${remaining > 0 ? ' · faltam $remaining' : ''}',
+              : hasFullSet
+                  ? '$actualNeeded/$actualNeeded'
+                  : '${actualCurrent.clamp(0, actualNeeded)}/$actualNeeded'
+                      '${remaining > 0 ? ' · faltam $remaining' : ''}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -657,6 +662,19 @@ class _StampsBody extends StatelessWidget {
             color: canRedeem ? accent : FregoColors.neutral500,
           ),
         ),
+        if (statusHint != null && statusHint!.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            statusHint!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: FregoColors.neutral500,
+            ),
+          ),
+        ],
       ],
     );
   }

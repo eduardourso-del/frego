@@ -10,8 +10,8 @@ BUILD="${BUILD:-$(date +%Y%m%d%H%M%S)}"
 
 cd "$MOBILE"
 
-# bump build number
-perl -pi -e "s/^version: .*/version: 1.0.0+${BUILD}/" pubspec.yaml
+NAME="${VERSION:-$(perl -ne 'if (/^version:\s*([^+]+)/) { print $1; exit }' pubspec.yaml)}"
+perl -pi -e "s/^version: .*/version: ${NAME}+${BUILD}/" pubspec.yaml
 
 flutter pub get
 flutter build ipa --release --no-tree-shake-icons \

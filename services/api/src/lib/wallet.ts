@@ -3,6 +3,7 @@ import { shouldOmitFromLedger } from './ledger-meta.js';
 import {
   civilYmd,
   evaluatePromoEntitlement,
+  evaluateRedeemQuota,
   normalizeWeekdays,
 } from './promo.js';
 
@@ -461,7 +462,24 @@ export async function deriveWallet(
       campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
     const kind = campaignUnitKind(campaign.type) ?? 'stamps';
     const pool = kind === 'points' ? pools.points : pools.stamps;
-    const rewardsAvailable = Math.floor(pool / needed);
+    const poolRewards = Math.floor(pool / needed);
+    const quota =
+      campaign.type === 'stamps'
+        ? evaluateRedeemQuota(
+            campaign,
+            transactions.filter(
+              (tx) =>
+                tx.type === 'redeem' &&
+                tx.campaignId === campaign.id &&
+                !shouldOmitFromLedger(tx.metadata),
+            ),
+          )
+        : null;
+    const rewardsAvailable =
+      quota?.limited === true
+        ? Math.min(poolRewards, quota.remaining ?? 0)
+        : poolRewards;
+    const quotaBlocked = quota?.exhausted === true && poolRewards >= 1;
     return {
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -469,11 +487,15 @@ export async function deriveWallet(
       unitsNeeded: needed,
       stampsNeeded: needed,
       pointsPerReal: campaign.pointsPerReal,
-      canRedeem: rewardsAvailable >= 1,
-      rewardsAvailable,
+      canRedeem: rewardsAvailable >= 1 && !quotaBlocked,
+      rewardsAvailable: quotaBlocked ? 0 : rewardsAvailable,
       rewardTitle: campaign.rewardTitle,
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
+      lockedReason: quotaBlocked ? 'quota_exhausted' : null,
+      unlocksAt: quotaBlocked ? quota?.unlocksAt ?? null : null,
+      redeemMax: campaign.type === 'stamps' ? campaign.redeemMax : undefined,
+      redeemPeriod: campaign.type === 'stamps' ? campaign.redeemPeriod : undefined,
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: campaign.audienceSegmentId ? null : null,
       audienceName: null,

@@ -374,6 +374,14 @@ class _RewardsPageState extends State<RewardsPage> {
                   unlocksAt: item.campaign['unlocksAt'] as String?,
                 )
               : null;
+          final stampQuotaHint = type == 'stamps'
+              ? stampQuotaStatusLine(
+                  lockedReason: item.campaign['lockedReason'] as String?,
+                  unlocksAt: item.campaign['unlocksAt'] as String?,
+                )
+              : null;
+          final stampFrequency =
+              type == 'stamps' ? stampFrequencyLine(item.campaign) : null;
           final audienceEligible = item.campaign['audienceEligible'] == true;
           final audienceLocked = item.campaign['lockedReason'] == 'audience';
           final unlockMessage =
@@ -383,6 +391,8 @@ class _RewardsPageState extends State<RewardsPage> {
             if (!audienceLocked && unlockMessage != null) unlockMessage,
             ?birthdayHint,
             ?promoHint,
+            ?stampQuotaHint,
+            if (stampQuotaHint == null) ?stampFrequency,
             if (!audienceLocked && type != 'promo') ?expireHint,
           ].join(' · ');
 
@@ -405,6 +415,8 @@ class _RewardsPageState extends State<RewardsPage> {
             buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
           } else if (audienceLocked) {
             buttonLabel = 'Indisponível pra você';
+          } else if (item.campaign['lockedReason'] == 'quota_exhausted') {
+            buttonLabel = 'Já resgatado';
           } else {
             buttonLabel = canRedeem
                 ? 'Resgatar e mostrar'

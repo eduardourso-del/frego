@@ -6,7 +6,7 @@ import { FregoWordmark } from '@/components/brand';
 import { RemoteImg, BusinessLogo } from '@/components/remote-img';
 import { Banknote, Cake, Coins, MapPin, Percent, Stamp } from 'lucide-react';
 import { businessTypeLabel } from '@frego/tokens';
-import { promoHint } from '@/lib/promo-label';
+import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
 import type {
   PublicShopCampaign,
   PublicShopPayload,
@@ -36,7 +36,9 @@ function campaignHint(
     return `Acumule ${pts} ponto${pts === 1 ? '' : 's'} (a cada R$ ${rate} = 1 ponto) e ganhe o prêmio`;
   }
   const n = c.stampsNeeded ?? 0;
-  return `Complete ${n} carimbo${n === 1 ? '' : 's'} e ganhe o prêmio`;
+  const goal = `Complete ${n} carimbo${n === 1 ? '' : 's'} e ganhe o prêmio`;
+  if (c.redeemMax == null) return goal;
+  return `${goal} · ${promoFrequencyHint(c)}`;
 }
 
 function CampaignTypeBadge({

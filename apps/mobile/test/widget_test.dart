@@ -27,6 +27,51 @@ void main() {
     expect(find.text('Termos de Uso'), findsOneWidget);
   });
 
+  testWidgets(
+      'iOS large text keeps the phone field and Continuar above the keyboard',
+      (tester) async {
+    const keyboard = 336.0;
+    const screen = Size(402, 874);
+    tester.view.devicePixelRatio = 1.0;
+    tester.view.physicalSize = screen;
+    tester.view.padding = const FakeViewPadding(top: 59, bottom: 34);
+    tester.view.viewPadding = const FakeViewPadding(top: 59, bottom: 34);
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: FregoTheme.light().copyWith(platform: TargetPlatform.iOS),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(2.5),
+          ),
+          child: CupertinoTheme(
+            data: FregoTheme.cupertino(Brightness.light),
+            child: child!,
+          ),
+        ),
+        home: const PhoneEntryPage(isRoot: true),
+      ),
+    );
+
+    final fieldFinder = find.byType(CupertinoTextField);
+    await tester.ensureVisible(fieldFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(fieldFinder);
+    await tester.pump();
+    tester.view.viewInsets = const FakeViewPadding(bottom: keyboard);
+    await tester.pumpAndSettle();
+
+    final keyboardTop = screen.height - keyboard;
+    final field = tester.getRect(find.byType(CupertinoTextField));
+    final button = tester.getRect(find.text('Continuar'));
+    expect(field.bottom, lessThanOrEqualTo(keyboardTop));
+    expect(field.top, greaterThanOrEqualTo(0));
+    expect(button.bottom, lessThanOrEqualTo(keyboardTop));
+    expect(button.top, greaterThanOrEqualTo(field.bottom));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('iOS OTP suggestion paste fills all six boxes', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

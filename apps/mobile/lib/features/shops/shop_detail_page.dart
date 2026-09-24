@@ -612,18 +612,35 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           } else {
             final expireDays =
                 type == 'spend' ? pointsExpireDays : stampsExpireDays;
+            final quotaHint = type == 'stamps'
+                ? stampQuotaStatusLine(
+                    lockedReason: lockedReason,
+                    unlocksAt: unlocksAt,
+                  )
+                : null;
+            final frequency =
+                type == 'stamps' ? stampFrequencyLine(c) : null;
             if (unlockMessage != null && unlockMessage.isNotEmpty) {
               statusHint = unlockMessage;
+            } else if (quotaHint != null) {
+              statusHint = quotaHint;
             } else if (expireDays != null) {
               statusHint = type == 'spend'
                   ? 'Pontos válidos por $expireDays ${_daysWord(expireDays)}'
                   : 'Carimbos válidos por $expireDays ${_daysWord(expireDays)}';
             }
-            buttonLabel = canRedeem
-                ? 'Resgatar e mostrar'
-                : needed > pool
-                    ? 'Ainda falta ${needed - pool}'
-                    : 'Continuar acumulando';
+            if (quotaHint == null && frequency != null) {
+              statusHint = statusHint == null
+                  ? frequency
+                  : '$statusHint · $frequency';
+            }
+            buttonLabel = lockedReason == 'quota_exhausted'
+                ? 'Já resgatado'
+                : canRedeem
+                    ? 'Resgatar e mostrar'
+                    : needed > pool
+                        ? 'Ainda falta ${needed - pool}'
+                        : 'Continuar acumulando';
           }
 
           return Padding(

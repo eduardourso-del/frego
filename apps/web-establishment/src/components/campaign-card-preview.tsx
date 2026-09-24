@@ -211,6 +211,7 @@ export function CampaignCardPreview({
                   <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
                     {sampleProgress}/{needed}
                     {remaining > 0 ? ` · faltam ${remaining}` : ''}
+                    {promoHint ? ` · ${promoHint}` : ''}
                   </p>
                 </>
               ) : (

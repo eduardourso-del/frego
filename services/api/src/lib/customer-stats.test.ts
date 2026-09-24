@@ -20,9 +20,12 @@ function entry(
   };
 }
 
-function snap(campaigns: CampaignWalletEntry[]): WalletSnapshot {
+function snap(
+  campaigns: CampaignWalletEntry[],
+  stamps = 3,
+): WalletSnapshot {
   return {
-    pools: { stamps: 3, points: 0, cashbackCents: 0 },
+    pools: { stamps, points: 0, cashbackCents: 0 },
     stampsExpireDays: null,
     pointsExpireDays: null,
     cashbackExpireDays: null,
@@ -72,5 +75,26 @@ describe('progressFromWallet', () => {
     );
     assert.equal(progress?.campaignId, 'stamps-1');
     assert.equal(progress?.remaining, 7);
+  });
+
+  it('keeps a full stamp card at remaining 0 when the Resgatar cap is hit', () => {
+    const progress = progressFromWallet(
+      snap(
+        [
+          entry({
+            campaignId: 'stamps-1',
+            type: 'stamps',
+            unitsNeeded: 10,
+            canRedeem: false,
+            lockedReason: 'quota_exhausted',
+            rewardsAvailable: 0,
+          }),
+        ],
+        20,
+      ),
+    );
+    assert.equal(progress?.remaining, 0);
+    assert.equal(progress?.canRedeem, false);
+    assert.equal(progress?.lockedReason, 'quota_exhausted');
   });
 });

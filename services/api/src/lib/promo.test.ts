@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   evaluatePromoEntitlement,
+  evaluateRedeemQuota,
   redemptionInPeriod,
   startOfWeekMonday,
   ymdInSaoPaulo,
@@ -166,6 +167,49 @@ describe('evaluatePromoEntitlement', () => {
       spNoon('2027-01-02'),
     );
     assert.equal(yearPeriod.canRedeem, true);
+  });
+});
+
+describe('evaluateRedeemQuota', () => {
+  it('is unlimited when the Campanha has no cap', () => {
+    const got = evaluateRedeemQuota(
+      { redeemMax: null, redeemPeriod: null },
+      [{ createdAt: spNoon('2026-12-20'), quantity: 3 }],
+      spNoon('2026-12-20'),
+    );
+    assert.equal(got.limited, false);
+    assert.equal(got.exhausted, false);
+    assert.equal(got.remaining, null);
+  });
+
+  it('counts Resgate quantity inside the day and resets the next day', () => {
+    const campaign = { redeemMax: 1, redeemPeriod: 'day' as const };
+    const today = evaluateRedeemQuota(
+      campaign,
+      [{ createdAt: spNoon('2026-12-20'), quantity: 1 }],
+      spNoon('2026-12-20'),
+    );
+    assert.equal(today.exhausted, true);
+    assert.equal(today.remaining, 0);
+    assert.equal(today.unlocksAt, '2026-12-21');
+
+    const tomorrow = evaluateRedeemQuota(
+      campaign,
+      [{ createdAt: spNoon('2026-12-20'), quantity: 1 }],
+      spNoon('2026-12-21'),
+    );
+    assert.equal(tomorrow.exhausted, false);
+    assert.equal(tomorrow.remaining, 1);
+  });
+
+  it('treats a quantity of 2 as two Resgates', () => {
+    const got = evaluateRedeemQuota(
+      { redeemMax: 2, redeemPeriod: 'week' },
+      [{ createdAt: spNoon('2026-12-20'), quantity: 2 }],
+      spNoon('2026-12-20'),
+    );
+    assert.equal(got.redeemedInPeriod, 2);
+    assert.equal(got.exhausted, true);
   });
 });
 

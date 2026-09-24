@@ -728,6 +728,19 @@ class _ShopsPageState extends State<ShopsPage> {
                                                         'campaignId'] as String?,
                                                   ),
                                         )
+                                      else if (progress?['lockedReason'] ==
+                                          'quota_exhausted')
+                                        _Pill(
+                                          label: 'Já resgatado neste período',
+                                          tone: _PillTone.stamps,
+                                          onTap: progress?['campaignId'] == null
+                                              ? null
+                                              : () => _openCampaign(
+                                                    businessId: businessId,
+                                                    campaignId: progress![
+                                                        'campaignId'] as String?,
+                                                  ),
+                                        )
                                       else if (remaining != null &&
                                           progress != null &&
                                           !canRedeemProgress)
@@ -1259,6 +1272,26 @@ class _InsightStrip extends StatelessWidget {
               : 'Promoção da casa',
           subtitle: [
             'Promoção',
+            if (shopName != null) shopName,
+          ].join(' · '),
+          onTap: _tap(
+            shopId: shopId,
+            campaignId: next['campaignId'] as String?,
+          ),
+        );
+      }
+      if (next['lockedReason'] == 'quota_exhausted') {
+        return _InsightCard(
+          icon: const Icon(
+            FregoIcons.trending,
+            color: FregoColors.primary500,
+            size: 22,
+          ),
+          tint: FregoColors.primary500,
+          soft: FregoColors.primary50,
+          title: 'Já resgatado neste período',
+          subtitle: [
+            if (reward != null && reward.isNotEmpty) reward,
             if (shopName != null) shopName,
           ].join(' · '),
           onTap: _tap(

@@ -517,6 +517,17 @@ class PdvApi {
     );
   }
 
+  Future<Map<String, dynamic>> lookupVoucher(String voucherCode) async {
+    final code = Uri.encodeQueryComponent(voucherCode);
+    final res = await http
+        .get(
+          Uri.parse('$_base/vouchers/lookup?code=$code'),
+          headers: await _headers(),
+        )
+        .timeout(_timeout);
+    return _decode(res, allowStatuses: const {404});
+  }
+
   Future<FulfillResult> fulfillVoucher({
     String? voucherCode,
     String? transactionId,
