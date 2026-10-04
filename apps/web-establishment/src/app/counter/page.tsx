@@ -1702,7 +1702,7 @@ export default function CounterPage() {
                 cashbackPercent={cashbackPercent}
                 applyCents={applyCents}
                 paidCents={paidCents}
-                showPointsRate={earnMode === 'points'}
+                showPointsRate={false}
                 onFocus={() => setFocus('amount')}
                 onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
               />

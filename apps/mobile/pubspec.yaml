@@ -1,7 +1,7 @@
 name: frego_mobile
 description: Frego — app do cliente e balcão do funcionário.
 publish_to: "none"
-version: 1.0.1+20260922210305
+version: 1.0.2+20260925134228
 
 environment:
   sdk: ^3.12.2
