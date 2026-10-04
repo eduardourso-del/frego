@@ -80,8 +80,8 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(500).send({ error: 'TRIAL_PLAN_MISSING' });
     }
 
-    const primaryColor = body.primaryColor ?? '#24479C';
-    const primaryColorDark = body.primaryColorDark ?? '#1B3781';
+    const primaryColor = body.primaryColor ?? '#070707';
+    const primaryColorDark = body.primaryColorDark ?? '#070707';
 
     const result = await prisma.$transaction(async (tx) => {
       const business = await tx.business.create({

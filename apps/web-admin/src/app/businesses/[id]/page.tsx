@@ -110,8 +110,8 @@ export default function BusinessDetailPage() {
   const [slug, setSlug] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState('');
-  const [primaryColor, setPrimaryColor] = useState('#24479C');
-  const [primaryColorDark, setPrimaryColorDark] = useState('#1B3781');
+  const [primaryColor, setPrimaryColor] = useState('#070707');
+  const [primaryColorDark, setPrimaryColorDark] = useState('#070707');
   const [pointsPerReal, setPointsPerReal] = useState(1);
   const [stampsExpireEnabled, setStampsExpireEnabled] = useState(false);
   const [stampsExpireDays, setStampsExpireDays] = useState(90);

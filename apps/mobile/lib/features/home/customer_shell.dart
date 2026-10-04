@@ -130,7 +130,7 @@ class _CustomerShellState extends State<CustomerShell> {
         controller: _cupertinoTabs,
         tabBar: CupertinoTabBar(
           backgroundColor: FregoColors.card,
-          activeColor: FregoColors.primary500,
+          activeColor: FregoColors.ink,
           inactiveColor: FregoColors.neutral500,
           border: const Border(
             top: BorderSide(color: FregoColors.hairline, width: 0.5),

@@ -452,7 +452,7 @@ class _ShopsPageState extends State<ShopsPage> {
                   ),
                   child: Icon(
                     FregoIcons.shopsFilled,
-                    color: FregoColors.primary500,
+                    color: FregoColors.ink,
                     size: 28,
                   ),
                 ),
@@ -640,6 +640,7 @@ class _ShopsPageState extends State<ShopsPage> {
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(16, 16, 4, 16),
                         decoration: BoxDecoration(
+                          color: FregoColors.card,
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
                             color: redeemable > 0
@@ -660,7 +661,7 @@ class _ShopsPageState extends State<ShopsPage> {
                             _ShopAvatar(
                               letter: letter,
                               logoUrl: business['logoUrl'] as String?,
-                              color: Color(primary ?? 0xFF3B5BDB),
+                              color: Color(primary ?? 0xFF070707),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -908,7 +909,7 @@ class _ShopSearchField extends StatelessWidget {
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
             borderSide: const BorderSide(
-              color: FregoColors.primary500,
+              color: FregoColors.ink,
               width: 1.5,
             ),
           ),
@@ -1000,7 +1001,7 @@ class _FilterChips extends StatelessWidget {
                 Icon(
                   icon,
                   size: 14,
-                  color: selected ? Colors.white : FregoColors.neutral500,
+                  color: selected ? FregoColors.onPrimary : FregoColors.neutral500,
                 ),
                 const SizedBox(width: 6),
               ],
@@ -1009,7 +1010,7 @@ class _FilterChips extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : FregoColors.ink,
+                  color: selected ? FregoColors.onPrimary : FregoColors.ink,
                 ),
               ),
             ],
@@ -1284,10 +1285,10 @@ class _InsightStrip extends StatelessWidget {
         return _InsightCard(
           icon: const Icon(
             FregoIcons.trending,
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
             size: 22,
           ),
-          tint: FregoColors.primary500,
+          tint: FregoColors.ink,
           soft: FregoColors.primary50,
           title: 'Já resgatado neste período',
           subtitle: [
@@ -1304,10 +1305,10 @@ class _InsightStrip extends StatelessWidget {
       return _InsightCard(
         icon: const Icon(
           FregoIcons.trending,
-          color: FregoColors.primary500,
+          color: FregoColors.ink,
           size: 22,
         ),
-        tint: FregoColors.primary500,
+        tint: FregoColors.ink,
         soft: FregoColors.primary50,
         title: remaining == 1
             ? 'Falta 1 $unit para o prêmio'

@@ -95,14 +95,14 @@ function CampaignTypeBadge({
 export function PublicShopPage({ data }: { data: PublicShopPayload }) {
   const { business, locations, campaigns } = data;
   const letter = business.name.trim().charAt(0).toUpperCase() || 'V';
-  const primary = business.primaryColor || '#24479C';
-  const primaryDark = business.primaryColorDark || '#1B3781';
+  const primary = business.primaryColor || '#070707';
+  const primaryDark = business.primaryColorDark || '#070707';
   const location = locations[0];
 
   const hasHero = Boolean(business.heroImageUrl?.trim());
 
   return (
-    <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-ink)]">
+    <div className="min-h-dvh bg-[var(--color-bg)] text-[var(--color-ink)]" data-frego="fregues">
       {/*
         Split hero: photo/brand plane has no text.
         Identity sits on solid page background — readable on any cover photo

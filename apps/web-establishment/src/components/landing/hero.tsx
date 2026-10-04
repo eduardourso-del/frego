@@ -39,7 +39,7 @@ export function LandingHero() {
         aria-hidden
         style={{
           backgroundImage:
-            'radial-gradient(circle at 1px 1px, rgba(22,24,29,0.06) 1px, transparent 0)',
+            'radial-gradient(circle at 1px 1px, rgba(7,7,7,0.06) 1px, transparent 0)',
           backgroundSize: '24px 24px',
         }}
       />
@@ -58,7 +58,7 @@ export function LandingHero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.65, delay: 0.08, ease }}
-            className="mt-8 max-w-xl text-[32px] font-extrabold leading-[1.12] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[40px] lg:text-[44px]"
+            className="mt-8 max-w-xl font-serif text-[32px] leading-[1.12] tracking-[-0.025em] text-[var(--color-ink)] sm:text-[40px] lg:text-[44px]"
           >
             Transforme clientes em fregueses
           </motion.h1>
@@ -67,7 +67,7 @@ export function LandingHero() {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.14, ease }}
-            className="mt-4 max-w-lg text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-primary-600)] sm:text-[22px]"
+            className="mt-4 max-w-lg text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)] sm:text-[22px]"
           >
             A inteligência comercial que seu negócio sempre deveria ter.
           </motion.p>
@@ -98,7 +98,7 @@ export function LandingHero() {
             </Link>
             <a
               href="#como-funciona"
-              className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[var(--color-control)] bg-transparent px-5 text-[14px] font-extrabold text-[var(--color-primary-500)] transition-colors hover:bg-[var(--color-primary-50)]"
+              className="inline-flex min-h-11 items-center justify-center rounded-[8px] border border-[var(--color-control)] bg-transparent px-5 text-[14px] font-semibold text-[var(--color-ink)] transition-colors hover:bg-[var(--color-primary-50)]"
             >
               Ver como funciona
             </a>

@@ -231,9 +231,9 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
   ) {
     final name = business?['name'] as String? ?? 'Loja';
     final logoUrl = business?['logoUrl'] as String?;
-    final primary = _parseHex(business?['primaryColor'] as String?) ?? 0xFF3B5BDB;
+    final primary = _parseHex(business?['primaryColor'] as String?) ?? 0xFF070707;
     final primaryDark =
-        _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF2F49C4;
+        _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF070707;
     final pools = (_data?['pools'] as Map<String, dynamic>?) ??
         (_data?['wallet'] as Map<String, dynamic>?)?['pools']
             as Map<String, dynamic>? ??

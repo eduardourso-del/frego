@@ -24,7 +24,7 @@ export function LandingPricingCta() {
           </p>
           <h2
             id="cta-heading"
-            className="mx-auto mt-4 max-w-xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-white sm:text-[36px]"
+            className="mx-auto mt-4 max-w-xl font-serif text-[28px] leading-[1.15] tracking-[-0.02em] text-white sm:text-[36px]"
           >
             Transforme clientes em fregueses.
           </h2>
@@ -35,7 +35,7 @@ export function LandingPricingCta() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               href="/register"
-              className="inline-flex min-h-11 w-full items-center justify-center rounded-[8px] bg-[var(--color-card)] px-5 text-[14px] font-extrabold text-[var(--color-primary-800)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-[8px] bg-[var(--color-mostarda)] px-5 text-[14px] font-semibold text-[var(--color-grafite)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
             >
               Começar agora
             </Link>

@@ -68,7 +68,7 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
   Widget build(BuildContext context) {
     if (_loading) {
       removeFregoNativeSplash();
-      return const FregoSplash();
+      return const FregoSplash(fregues: true);
     }
 
     removeFregoNativeSplash();
@@ -155,7 +155,7 @@ class AuthGate extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           removeFregoNativeSplash();
-          return const FregoSplash();
+          return const FregoSplash(fregues: true);
         }
         final user = snapshot.data;
         unawaited(FregoTelemetry.setUser(user?.uid));

@@ -125,7 +125,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: FregoColors.primary500,
+                                      color: FregoColors.ink,
                                     ),
                                   ),
                                 ),
@@ -266,7 +266,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     );
 
     return Material(
-      color: _isCashback ? FregoColors.cashbackBg : Colors.white,
+      color: FregoColors.card,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -274,6 +274,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Ink(
           decoration: BoxDecoration(
+            color: FregoColors.card,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color:

@@ -315,7 +315,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   ),
                   child: Icon(
                     FregoIcons.historyFilled,
-                    color: FregoColors.primary500,
+                    color: FregoColors.ink,
                     size: 28,
                   ),
                 ),
@@ -396,8 +396,8 @@ class _HistoryPageState extends State<HistoryPage> {
                           FregoIcons.gift,
                           size: 16,
                           color: _kind == _HistoryKind.vouchers
-                              ? Colors.white
-                              : FregoColors.primary500,
+                              ? FregoColors.onPrimary
+                              : FregoColors.ink,
                         ),
                         selectedColor: FregoColors.primary500,
                         selected: _kind == _HistoryKind.vouchers,
@@ -643,7 +643,7 @@ class _HistoryFilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : FregoColors.neutral500,
+              color: selected ? FregoColors.onPrimary : FregoColors.neutral500,
             ),
           ),
         ),
@@ -669,6 +669,9 @@ class _HistoryKindChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final onSelected = selectedColor.computeLuminance() > 0.45
+        ? FregoColors.onPrimary
+        : Colors.white;
     return Material(
       color: selected ? selectedColor : FregoColors.card,
       borderRadius: BorderRadius.circular(999),
@@ -693,7 +696,7 @@ class _HistoryKindChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: selected ? Colors.white : FregoColors.ink,
+                  color: selected ? onSelected : FregoColors.ink,
                 ),
               ),
             ],
@@ -829,6 +832,7 @@ class _HistoryTile extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
+            color: FregoColors.card,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isRedeem

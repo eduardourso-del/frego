@@ -11,7 +11,7 @@ Plataforma SaaS multi-tenant de fidelidade. O **telefone do cliente é a conta i
 | Banco | PostgreSQL via **Neon** | neon.tech |
 | Auth / Push / Analytics | Firebase (OTP por SMS, FCM, Analytics, Crashlytics) | Console Firebase |
 
-Referência de design (HTML — não publicar): `design_handoff_frego/`.
+Referência de marca (não publicar): `guia-aplicacao-digital/`.
 
 **Idioma do produto: português (pt-BR).**
 
@@ -26,7 +26,7 @@ apps/mobile               # Flutter (cliente + funcionário)
 services/api              # API Cloud Run
 packages/tokens           # Design tokens compartilhados
 db/                       # Schema Prisma + seed
-design_handoff_frego/     # Spec visual
+guia-aplicacao-digital/ # Identidade oficial (Rampa, out/2026)
 scripts/smoke-stamp.sh    # Teste rápido do fluxo de carimbo
 ```
 

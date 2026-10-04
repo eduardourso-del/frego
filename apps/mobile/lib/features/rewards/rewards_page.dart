@@ -356,10 +356,10 @@ class _RewardsPageState extends State<RewardsPage> {
           final logoUrl = item.business['logoUrl'] as String?;
           final primary =
               _parseHex(item.business['primaryColor'] as String?) ??
-                  0xFF3B5BDB;
+                  0xFF070707;
           final primaryDark =
               _parseHex(item.business['primaryColorDark'] as String?) ??
-                  0xFF2F49C4;
+                  0xFF070707;
           final type = item.type;
           final needed = item.needed <= 0 ? 1 : item.needed;
           final canRedeem = item.canRedeem;
@@ -569,7 +569,7 @@ class _FilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : FregoColors.neutral500,
+              color: selected ? FregoColors.onPrimary : FregoColors.neutral500,
             ),
           ),
         ),

@@ -180,9 +180,9 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         (business?['stampsExpireDays'] as num?)?.toInt();
     final pointsExpireDays = (wallet?['pointsExpireDays'] as num?)?.toInt() ??
         (business?['pointsExpireDays'] as num?)?.toInt();
-    final primary = _parseHex(business?['primaryColor'] as String?) ?? 0xFF3B5BDB;
+    final primary = _parseHex(business?['primaryColor'] as String?) ?? 0xFF070707;
     final primaryDark =
-        _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF2F49C4;
+        _parseHex(business?['primaryColorDark'] as String?) ?? 0xFF070707;
     final cupertino = FregoAdaptive.useCupertino(context);
 
     return FregoPage(
@@ -970,7 +970,7 @@ class _ShopLogo extends StatelessWidget {
         child: Text(
           letter,
           style: TextStyle(
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
             fontSize: size * 0.4,
             fontWeight: FontWeight.w700,
           ),

@@ -83,7 +83,7 @@ class BalanceLotsSection extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    foregroundColor: FregoColors.primary500,
+                    foregroundColor: FregoColors.ink,
                   ),
                   child: Text(
                     seeMoreLabel,
@@ -201,16 +201,16 @@ class BalanceLotTile extends StatelessWidget {
             child: isCashback
                 ? FregoIcons.cashback(
                     size: 20,
-                    color: urgent ? _expiringSoon : FregoColors.primary500,
+                    color: urgent ? _expiringSoon : FregoColors.ink,
                   )
                 : isPoints
                     ? FregoIcons.points(
                         size: 20,
-                        color: urgent ? _expiringSoon : FregoColors.primary500,
+                        color: urgent ? _expiringSoon : FregoColors.ink,
                       )
                     : FregoIcons.stamp(
                         size: 20,
-                        color: urgent ? _expiringSoon : FregoColors.primary500,
+                        color: urgent ? _expiringSoon : FregoColors.ink,
                       ),
           ),
           const SizedBox(width: 10),

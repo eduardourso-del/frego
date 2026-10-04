@@ -32,20 +32,23 @@ class FregoWordmark extends StatelessWidget {
   }
 }
 
-/// Matches the native light splash while Flutter is still booting.
+/// Splash while Flutter is booting.
+/// [fregues] frames the mark in Céu Azul with the Mostarda logo.
+/// Lojista stays on Papel with the Grafite logo.
 class FregoSplash extends StatelessWidget {
-  const FregoSplash({super.key, this.wordmarkHeight = 78});
+  const FregoSplash({super.key, this.wordmarkHeight = 78, this.fregues = false});
 
   final double wordmarkHeight;
+  final bool fregues;
 
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.dark,
+      value: fregues ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
       child: ColoredBox(
-        color: FregoColors.neutralBg,
+        color: fregues ? FregoColors.azul : FregoColors.papel,
         child: Center(
-          child: FregoWordmark(height: wordmarkHeight),
+          child: FregoWordmark(height: wordmarkHeight, negative: fregues),
         ),
       ),
     );

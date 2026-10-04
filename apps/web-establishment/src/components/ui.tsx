@@ -28,7 +28,7 @@ export function Button({
     primary:
       'bg-[var(--color-primary-500)] text-[var(--color-on-primary)] hover:bg-[var(--color-primary-600)] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)]',
     secondary:
-      'border border-[var(--color-control)] bg-transparent text-[var(--color-primary-500)] hover:bg-[var(--color-primary-50)]',
+      'border border-[var(--color-control)] bg-transparent text-[var(--color-ink)] hover:bg-[var(--color-primary-50)]',
     ghost:
       'bg-transparent text-[var(--color-neutral-500)] hover:bg-[var(--color-bg)] hover:text-[var(--color-ink)]',
     danger:
@@ -65,7 +65,7 @@ export function Card({
   return (
     <div
       className={cx(
-        'rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-card)]',
+        'rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)]',
         pads[padding],
         className,
       )}

@@ -126,9 +126,9 @@ class _NotificationOnboardingPageState extends State<NotificationOnboardingPage>
                             icon: Icon(
                               FregoIcons.gift,
                               size: 26,
-                              color: FregoColors.primary500,
+                              color: FregoColors.ink,
                             ),
-                            color: FregoColors.primary500,
+                            color: FregoColors.ink,
                             background: FregoColors.primary50,
                             label: 'Campanha\nnovinha',
                           ),

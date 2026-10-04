@@ -253,7 +253,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: canSave
-                            ? FregoColors.primary500
+                            ? FregoColors.ink
                             : FregoColors.neutral400,
                       ),
                     ),
@@ -289,13 +289,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 72,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: FregoColors.primary500,
+                      color: FregoColors.ink,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Text(
                       initial,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: FregoColors.card,
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
                       ),
@@ -649,12 +649,12 @@ class _NotificationToggle extends StatelessWidget {
           cupertino
               ? CupertinoSwitch(
                   value: value,
-                  activeTrackColor: FregoColors.primary500,
+                  activeTrackColor: FregoColors.ink,
                   onChanged: enabled ? onChanged : null,
                 )
               : Switch(
                   value: value,
-                  activeThumbColor: FregoColors.primary500,
+                  activeThumbColor: FregoColors.card,
                   onChanged: enabled ? onChanged : null,
                 ),
         ],
@@ -695,7 +695,7 @@ class _ProfileStats extends StatelessWidget {
           icon: const Icon(
             FregoIcons.trophy,
             size: 18,
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
           ),
           value: '$redeems',
           label: redeems == 1 ? 'prêmio' : 'prêmios',
@@ -704,7 +704,7 @@ class _ProfileStats extends StatelessWidget {
           icon: const Icon(
             FregoIcons.visits,
             size: 18,
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
           ),
           value: '$visits',
           label: visits == 1 ? 'visita' : 'visitas',
@@ -713,7 +713,7 @@ class _ProfileStats extends StatelessWidget {
           _StatItem(
             icon: FregoIcons.stamp(
               size: 18,
-              color: FregoColors.primary500,
+              color: FregoColors.ink,
             ),
             value: '$stampsEarned',
             label: 'carimbos',
@@ -722,7 +722,7 @@ class _ProfileStats extends StatelessWidget {
           _StatItem(
             icon: FregoIcons.points(
               size: 18,
-              color: FregoColors.primary500,
+              color: FregoColors.ink,
             ),
             value: '$pointsEarned',
             label: 'pontos',
@@ -731,7 +731,7 @@ class _ProfileStats extends StatelessWidget {
           _StatItem(
             icon: FregoIcons.cashback(
               size: 18,
-              color: FregoColors.primary500,
+              color: FregoColors.ink,
             ),
             value:
                 'R\$ ${(cashbackEarnedCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',

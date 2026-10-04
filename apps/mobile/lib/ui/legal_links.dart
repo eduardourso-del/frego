@@ -84,7 +84,7 @@ class _LegalTextButton extends StatelessWidget {
             fontSize: 13,
             height: 1.4,
             fontWeight: FontWeight.w600,
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
           ),
         ),
       ),

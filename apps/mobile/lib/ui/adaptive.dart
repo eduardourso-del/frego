@@ -498,15 +498,16 @@ class FregoPrimaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (FregoAdaptive.useCupertino(context)) {
-      final button = CupertinoButton.filled(
+      final button = CupertinoButton(
         onPressed: onPressed,
+        color: FregoColors.mostarda,
         borderRadius: BorderRadius.circular(FregoRadius.sm),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Text(
           label,
           style: const TextStyle(
             fontSize: 14,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w600,
             inherit: false,
             color: FregoColors.onPrimary,
             decoration: TextDecoration.none,
@@ -559,7 +560,7 @@ class FregoSecondaryButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: DefaultTextStyle(
           style: const TextStyle(
-            color: FregoColors.primary500,
+            color: FregoColors.ink,
             fontSize: 14,
             fontWeight: FontWeight.w800,
             decoration: TextDecoration.none,

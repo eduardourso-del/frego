@@ -36,7 +36,7 @@ export default function RegisterPage() {
     slogan: '',
     locationName: '',
     locationAddress: '',
-    primaryColor: '#24479C',
+    primaryColor: '#070707',
   });
 
   function setField<K extends keyof typeof form>(key: K, value: string) {

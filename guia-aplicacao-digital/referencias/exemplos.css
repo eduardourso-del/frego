@@ -1,0 +1,35 @@
+/* Frego | Rampa | 02/10/2026 | v1.0
+   Sugestões usadas nas demonstrações. Adaptar à tecnologia, ao conteúdo e às necessidades do produto.
+   Nomes de referência, sem promessa de compatibilidade com código existente. */
+[data-frego-exemplo] {
+  --ex-surface: #FFFCF7;
+  --ex-muted: #5C544A;
+  --ex-line: #D8D1C6;
+  --ex-control: #82796E;
+  --ex-white: #FFFFFF;
+  --ex-success: #386143;
+  --ex-success-bg: #E8EFE7;
+  --ex-error: #963D22;
+  --ex-error-bg: #F8EBE5;
+  --ex-info: #3F505C;
+  --ex-info-bg: #E8EDF0;
+  --ex-disabled-bg: #E3DED5;
+  --ex-disabled-text: #5C544A;
+  --ex-space-1: 4px;
+  --ex-space-2: 8px;
+  --ex-space-3: 12px;
+  --ex-space-4: 16px;
+  --ex-space-5: 24px;
+  --ex-space-6: 32px;
+  --ex-space-7: 48px;
+  --ex-radius-small: 8px;
+  --ex-radius-card: 16px;
+  --ex-radius-pill: 999px;
+  --ex-text-title: 24px;
+  --ex-text-body: 16px;
+  --ex-text-help: 14px;
+  --ex-text-label: 12px;
+  --ex-control-height: 44px;
+  --ex-line-body: 1.5;
+  --ex-duration: 150ms;
+}

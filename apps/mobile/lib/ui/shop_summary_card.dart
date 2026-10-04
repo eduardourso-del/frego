@@ -26,7 +26,7 @@ class ShopSummaryCard extends StatelessWidget {
     final logoUrl = business!['logoUrl'] as String?;
     final letter = name[0].toUpperCase();
     final accent = Color(
-      _parseHex(business!['primaryColor'] as String?) ?? 0xFF3B5BDB,
+      _parseHex(business!['primaryColor'] as String?) ?? 0xFF070707,
     );
     final address = _primaryAddressLine(
       (business!['locations'] as List<dynamic>? ?? [])
@@ -125,6 +125,7 @@ class ShopSummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: Container(
           decoration: BoxDecoration(
+            color: FregoColors.card,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: FregoColors.hairline),
             boxShadow: [

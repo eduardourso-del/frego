@@ -23,7 +23,7 @@ Future<void> main() async {
     final license = await rootBundle.loadString('google_fonts/OFL.txt');
     yield LicenseEntryWithLineBreaks(['google_fonts'], license);
   });
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+  SystemChrome.setSystemUIOverlayStyle(FregoTheme.statusBar);
   AppConfig.assertShipBuildUsesProductionApi();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -65,11 +65,14 @@ class FregoApp extends StatelessWidget {
               decoration: TextDecoration.none,
               inherit: false,
             );
-        return CupertinoTheme(
-          data: FregoTheme.cupertino(Brightness.light),
-          child: DefaultTextStyle(
-            style: bodyStyle,
-            child: child ?? const SizedBox.shrink(),
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: FregoTheme.statusBar,
+          child: CupertinoTheme(
+            data: FregoTheme.cupertino(Brightness.light),
+            child: DefaultTextStyle(
+              style: bodyStyle,
+              child: child ?? const SizedBox.shrink(),
+            ),
           ),
         );
       },

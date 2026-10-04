@@ -84,6 +84,8 @@ type TypeOption = {
   color: string;
   bg: string;
   fill: string;
+  /** Glyph on the selected fill. Mostarda needs Grafite; dark fills need white. */
+  onFill: string;
 };
 
 const TYPES: TypeOption[] = [
@@ -95,6 +97,7 @@ const TYPES: TypeOption[] = [
     color: 'var(--color-stamps)',
     bg: 'var(--color-stamps-bg)',
     fill: 'var(--color-stamps)',
+    onFill: '#fff',
   },
   {
     value: 'spend',
@@ -104,15 +107,17 @@ const TYPES: TypeOption[] = [
     color: 'var(--color-points)',
     bg: 'var(--color-points-bg)',
     fill: 'var(--color-points)',
+    onFill: '#fff',
   },
   {
     value: 'birthday',
     title: 'Aniversário',
     hint: 'Presente uma vez por ano, no aniversário.',
     Icon: Cake,
-    color: 'var(--color-primary-600)',
+    color: 'var(--color-ink)',
     bg: 'var(--color-primary-50)',
     fill: 'var(--color-primary-500)',
+    onFill: 'var(--color-grafite)',
   },
   {
     value: 'cashback',
@@ -122,6 +127,7 @@ const TYPES: TypeOption[] = [
     color: 'var(--color-cashback)',
     bg: 'var(--color-cashback-bg)',
     fill: 'var(--color-cashback)',
+    onFill: '#fff',
   },
   {
     value: 'promo',
@@ -131,6 +137,7 @@ const TYPES: TypeOption[] = [
     color: 'var(--color-promo)',
     bg: 'var(--color-promo-bg)',
     fill: 'var(--color-promo)',
+    onFill: '#fff',
   },
 ];
 
@@ -575,7 +582,7 @@ export function CampaignCreateForm({
                           ? opt.fill
                           : 'var(--color-neutral-200)',
                         color: selected
-                          ? '#fff'
+                          ? opt.onFill
                           : 'var(--color-neutral-500)',
                       }}
                       aria-hidden

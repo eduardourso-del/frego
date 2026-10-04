@@ -245,20 +245,20 @@ class _WalletPageState extends State<WalletPage> {
                                             business?['primaryColor']
                                                 as String?,
                                           ) ??
-                                          0xFF3B5BDB,
+                                          0xFF070707,
                                     ),
                                     Color(
                                       _parseHex(
                                             business?['primaryColorDark']
                                                 as String?,
                                           ) ??
-                                          0xFF2F49C4,
+                                          0xFF070707,
                                     ),
                                   ],
                                 ),
                                 boxShadow: const [
                                   BoxShadow(
-                                    color: Color(0x473B5BDB),
+                                    color: Color(0x33070707),
                                     blurRadius: 20,
                                     offset: Offset(0, 8),
                                   ),
@@ -399,12 +399,12 @@ class _WalletPageState extends State<WalletPage> {
                                   final primary = _parseHex(
                                         business?['primaryColor'] as String?,
                                       ) ??
-                                      0xFF3B5BDB;
+                                      0xFF070707;
                                   final primaryDark = _parseHex(
                                         business?['primaryColorDark']
                                             as String?,
                                       ) ??
-                                      0xFF2F49C4;
+                                      0xFF070707;
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: LoyaltyCampaignCard(
@@ -503,12 +503,12 @@ class _WalletPageState extends State<WalletPage> {
                                   final primary = _parseHex(
                                         business?['primaryColor'] as String?,
                                       ) ??
-                                      0xFF3B5BDB;
+                                      0xFF070707;
                                   final primaryDark = _parseHex(
                                         business?['primaryColorDark']
                                             as String?,
                                       ) ??
-                                      0xFF2F49C4;
+                                      0xFF070707;
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 12),
                                     child: LoyaltyCampaignCard(
@@ -548,7 +548,7 @@ class _WalletPageState extends State<WalletPage> {
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: Material(
-                                    color: Colors.white,
+                                    color: FregoColors.card,
                                     borderRadius: BorderRadius.circular(16),
                                     child: InkWell(
                                       onTap: () => _openCampaign(c),
@@ -556,6 +556,7 @@ class _WalletPageState extends State<WalletPage> {
                                       child: Container(
                                     padding: const EdgeInsets.all(16),
                                     decoration: BoxDecoration(
+                                      color: FregoColors.card,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
                                         color: isBirthday
@@ -614,7 +615,7 @@ class _WalletPageState extends State<WalletPage> {
                                                   fontSize: 12,
                                                   fontWeight: FontWeight.w600,
                                                   color: isBirthday
-                                                      ? FregoColors.primary500
+                                                      ? FregoColors.ink
                                                       : isPromo
                                                           ? FregoColors.promo
                                                           : type == 'spend'

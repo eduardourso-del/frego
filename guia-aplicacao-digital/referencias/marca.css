@@ -1,0 +1,12 @@
+/* Frego | Rampa | 02/10/2026 | v1.0
+   Cores oficiais e famílias da identidade. Referência opcional; não é adaptador do produto.
+   Nomes de referência, sem promessa de compatibilidade com código existente. */
+:root {
+  --frego-papel: #F4EFE6;
+  --frego-grafite: #070707;
+  --frego-mostarda: #FFD900;
+  --frego-azul: #0073C8;
+  --frego-font-ui: 'Instrument Sans', Arial, sans-serif;
+  --frego-font-display: 'Source Serif 4', Georgia, serif;
+  --frego-font-mono: 'Source Code Pro', monospace;
+}

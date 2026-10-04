@@ -321,7 +321,7 @@ class _FilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: selected ? Colors.white : FregoColors.neutral500,
+              color: selected ? FregoColors.onPrimary : FregoColors.neutral500,
             ),
           ),
         ),

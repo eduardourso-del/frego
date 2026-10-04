@@ -1,14 +1,28 @@
 import type { Metadata, Viewport } from 'next';
-import { Archivo } from 'next/font/google';
+import { Instrument_Sans, Source_Code_Pro, Source_Serif_4 } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth-context';
 import { BusinessProvider } from '@/lib/business-context';
 import './globals.css';
 
-const archivo = Archivo({
+const instrument = Instrument_Sans({
   subsets: ['latin', 'latin-ext'],
-  weight: ['400', '600', '800'],
+  weight: ['400', '500', '600', '700'],
   display: 'swap',
-  variable: '--font-archivo',
+  variable: '--font-instrument',
+});
+
+const sourceSerif = Source_Serif_4({
+  subsets: ['latin', 'latin-ext'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
+  variable: '--font-source-serif',
+});
+
+const sourceCode = Source_Code_Pro({
+  subsets: ['latin', 'latin-ext'],
+  weight: ['400', '500'],
+  display: 'swap',
+  variable: '--font-source-code',
 });
 
 export const metadata: Metadata = {
@@ -46,7 +60,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#F7F8FA',
+  themeColor: '#F4EFE6',
 };
 
 export default function RootLayout({
@@ -55,7 +69,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={archivo.variable}>
+    <html
+      lang="pt-BR"
+      className={`${instrument.variable} ${sourceSerif.variable} ${sourceCode.variable}`}
+    >
       <body className="min-h-dvh antialiased">
         <AuthProvider>
           <BusinessProvider>{children}</BusinessProvider>

@@ -1124,7 +1124,7 @@ class _TillPageState extends State<TillPage> {
               logoUrl: business?.logoUrl,
               color:
                   _parseTagColor(business?.primaryColor) ??
-                  FregoColors.primary500,
+                  FregoColors.ink,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1978,7 +1978,7 @@ class _CustomerCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: FregoColors.primary500,
+                        color: FregoColors.ink,
                       ),
                     ),
                   ),
@@ -3187,7 +3187,7 @@ class _TagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _parseTagColor(tag.color) ?? FregoColors.primary500;
+    final color = _parseTagColor(tag.color) ?? FregoColors.ink;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(

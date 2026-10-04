@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "nome": "marca",
+    "versao": "1.0",
+    "data": "2026-10-02",
+    "autoria": "Rampa · Estúdio de marca",
+    "natureza": "Cores oficiais e famílias da identidade. Referência opcional; não é adaptador do produto."
+  },
+  "valores": {
+    "frego-papel": "#F4EFE6",
+    "frego-grafite": "#070707",
+    "frego-mostarda": "#FFD900",
+    "frego-azul": "#0073C8",
+    "frego-font-ui": "'Instrument Sans', Arial, sans-serif",
+    "frego-font-display": "'Source Serif 4', Georgia, serif",
+    "frego-font-mono": "'Source Code Pro', monospace"
+  }
+}

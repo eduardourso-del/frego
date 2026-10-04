@@ -220,7 +220,7 @@ class _RedeemVoucherSheetState extends State<RedeemVoucherSheet> {
                               style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: FregoColors.primary500,
+                                color: FregoColors.ink,
                               ),
                             ),
                           ),

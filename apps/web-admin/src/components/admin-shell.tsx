@@ -43,7 +43,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       >
         <div className="mb-8 px-2">
           <FregoWordmark height={22} negative />
-          <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-200)]">
+          <p className="mt-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-on-frame-muted)]">
             Admin
           </p>
         </div>

@@ -133,9 +133,9 @@ model Business {
   logoUrl   String?        @map("logo_url")
   /// Imagem de capa (hero) da página pública e detalhe no app.
   heroImageUrl String?       @map("hero_image_url")
-  /// Hex da cor primária da marca (ex. #24479C). Painel + cartões no app do cliente.
-  primaryColor   String  @default("#24479C") @map("primary_color")
-  primaryColorDark String @default("#1B3781") @map("primary_color_dark")
+  /// Cor da loja nas superfícies dela (página pública, cartão no app). Não pinta o cromado da Frego.
+  primaryColor   String  @default("#070707") @map("primary_color")
+  primaryColorDark String @default("#070707") @map("primary_color_dark")
   slogan         String? @map("slogan")
   /// Página / slug público (ex. bloom-coffee)
   slug           String? @unique

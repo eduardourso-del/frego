@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { BusinessLogo } from '@/components/remote-img';
+import { FregoWordmark } from '@/components/brand';
 import { PendingGate } from '@/components/pending-gate';
 
 const mainNav = [
@@ -77,7 +78,7 @@ export function AppShell({
   const name = businessName ?? business?.name ?? 'Frego';
   const letter = name.trim().charAt(0).toUpperCase() || 'V';
   const logoUrl = business?.logoUrl;
-  const primary = business?.primaryColor ?? 'var(--color-primary-500)';
+  const primary = business?.primaryColor ?? '#070707';
   const staffLabel = user?.email?.split('@')[0] ?? 'Equipe';
   const staffInitials = initialsFrom(user?.email ?? staffLabel);
   const businessBlocked =
@@ -96,15 +97,6 @@ export function AppShell({
     isActivePath(pathname, '/reports') ||
     isActivePath(pathname, '/audiences') ||
     moreOpen;
-
-  const brandTheme = business?.primaryColor
-    ? ({
-        '--color-primary-500': business.primaryColor,
-        '--color-primary-600':
-          business.primaryColorDark || business.primaryColor,
-        '--color-primary-50': `${business.primaryColor}14`,
-      } as CSSProperties)
-    : undefined;
 
   useEffect(() => {
     setMoreOpen(false);
@@ -142,7 +134,7 @@ export function AppShell({
         onClick={onNavigate}
         className={`flex min-h-11 items-center gap-3 rounded-[9px] px-2.5 text-[14px] transition-colors ${
           active
-            ? 'bg-[var(--color-primary-50)] font-semibold text-[var(--color-primary-500)]'
+            ? 'bg-[var(--color-primary-500)] font-semibold text-[var(--color-on-primary)]'
             : 'font-medium text-[var(--color-neutral-700)] hover:bg-[var(--color-bg)]'
         }`}
       >
@@ -151,7 +143,7 @@ export function AppShell({
           strokeWidth={active ? 2.25 : 1.75}
           className={
             active
-              ? 'text-[var(--color-primary-500)]'
+              ? 'text-[var(--color-on-primary)]'
               : 'text-[var(--color-neutral-400)]'
           }
           aria-hidden
@@ -203,11 +195,13 @@ export function AppShell({
   return (
     <div
       className="flex h-dvh overflow-hidden bg-[var(--color-bg)] [--app-sidebar-w:228px]"
-      style={brandTheme}
     >
       {/* Desktop sidebar */}
       <aside className="hidden h-full w-[228px] shrink-0 flex-col border-r border-[var(--color-hairline)] bg-[var(--color-card)] px-3.5 py-5 md:flex">
-        <div className="mb-5 shrink-0 px-2">{brandMark}</div>
+        <div className="mb-5 shrink-0 px-2">
+          <FregoWordmark height={22} />
+          <div className="mt-4">{brandMark}</div>
+        </div>
 
         <nav
           className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"
