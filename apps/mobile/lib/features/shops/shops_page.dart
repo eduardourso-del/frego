@@ -28,6 +28,8 @@ class ShopsPage extends StatefulWidget {
 
 enum _ShopFilter { all, favorites, ready, close }
 
+enum _BalanceKind { stamps, points, cashback }
+
 /// White glyphs while the Céu Azul band sits under the status bar.
 const _statusBarOnAzul = SystemUiOverlayStyle(
   statusBarColor: Colors.transparent,
@@ -57,6 +59,7 @@ class _ShopsPageState extends State<ShopsPage> {
   Map<String, dynamic>? _stats;
   _ShopFilter _filter = _ShopFilter.all;
   String? _category;
+  _BalanceKind? _balanceKind;
   final Set<String> _togglingFavorite = {};
 
   @override
@@ -153,6 +156,18 @@ class _ShopsPageState extends State<ShopsPage> {
       if (_category != null && (business['type'] as String?) != _category) {
         return false;
       }
+      if (_balanceKind != null) {
+        final pools = m['pools'] as Map<String, dynamic>? ?? {};
+        final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
+        final points = (pools['points'] as num?)?.toInt() ?? 0;
+        final cashback = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
+        final matches = switch (_balanceKind!) {
+          _BalanceKind.stamps => stamps > 0,
+          _BalanceKind.points => points > 0,
+          _BalanceKind.cashback => cashback > 0,
+        };
+        if (!matches) return false;
+      }
 
       final favorite = m['isFavorite'] == true;
       final redeemable = (m['redeemableCampaigns'] as num?)?.toInt() ?? 0;
@@ -248,20 +263,47 @@ class _ShopsPageState extends State<ShopsPage> {
     return [
       if (stamps > 0)
         _BalanceChip(
-          icon: FregoIcons.stamp(size: 15, color: FregoColors.white),
+          icon: FregoIcons.stamp(
+            size: 15,
+            color: _balanceKind == _BalanceKind.stamps
+                ? FregoColors.ink
+                : FregoColors.white,
+          ),
           label: stamps == 1 ? '1 carimbo' : '$stamps carimbos',
+          selected: _balanceKind == _BalanceKind.stamps,
+          onTap: () => _toggleBalance(_BalanceKind.stamps),
         ),
       if (points > 0)
         _BalanceChip(
-          icon: FregoIcons.points(size: 15, color: FregoColors.white),
+          icon: FregoIcons.points(
+            size: 15,
+            color: _balanceKind == _BalanceKind.points
+                ? FregoColors.ink
+                : FregoColors.white,
+          ),
           label: points == 1 ? '1 ponto' : '$points pontos',
+          selected: _balanceKind == _BalanceKind.points,
+          onTap: () => _toggleBalance(_BalanceKind.points),
         ),
       if (cashbackCents > 0)
         _BalanceChip(
-          icon: FregoIcons.cashback(size: 15, color: FregoColors.white),
+          icon: FregoIcons.cashback(
+            size: 15,
+            color: _balanceKind == _BalanceKind.cashback
+                ? FregoColors.ink
+                : FregoColors.white,
+          ),
           label: _reais(cashbackCents),
+          selected: _balanceKind == _BalanceKind.cashback,
+          onTap: () => _toggleBalance(_BalanceKind.cashback),
         ),
     ];
+  }
+
+  void _toggleBalance(_BalanceKind kind) {
+    setState(() {
+      _balanceKind = _balanceKind == kind ? null : kind;
+    });
   }
 
   String _reais(int cents) {
@@ -469,7 +511,13 @@ class _ShopsPageState extends State<ShopsPage> {
                   favoritesCount: _favoritesCount,
                   readyCount: _readyCount,
                   closeCount: _closeCount,
-                  onChanged: (f) => setState(() => _filter = f),
+                  onChanged: (f) => setState(() {
+                    _filter = f;
+                    if (f == _ShopFilter.all) {
+                      _category = null;
+                      _balanceKind = null;
+                    }
+                  }),
                 ),
                 if (_presentCategories.length > 1) ...[
                   const SizedBox(height: 10),
@@ -622,6 +670,7 @@ class _ShopsPageState extends State<ShopsPage> {
                       setState(() {
                         _filter = _ShopFilter.all;
                         _category = null;
+                        _balanceKind = null;
                       });
                     },
                     expanded: false,
@@ -1312,10 +1361,17 @@ class _PinnedSearchDelegate extends SliverPersistentHeaderDelegate {
 
 /// Top third of the home: Céu Azul, white greeting, prize summary on card.
 class _BalanceChip {
-  const _BalanceChip({required this.icon, required this.label});
+  const _BalanceChip({
+    required this.icon,
+    required this.label,
+    this.selected = false,
+    this.onTap,
+  });
 
   final Widget icon;
   final String label;
+  final bool selected;
+  final VoidCallback? onTap;
 }
 
 class _FreguesHomeHeader extends StatelessWidget {
@@ -1403,31 +1459,42 @@ class _BalanceChipRow extends StatelessWidget {
         children: [
           for (var i = 0; i < items.length; i++) ...[
             if (i > 0) const SizedBox(width: 8),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: FregoColors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: FregoColors.white.withValues(alpha: 0.28),
+            GestureDetector(
+              onTap: items[i].onTap,
+              behavior: HitTestBehavior.opaque,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: items[i].selected
+                      ? FregoColors.mostarda
+                      : FregoColors.white.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: items[i].selected
+                        ? FregoColors.mostarda
+                        : FregoColors.white.withValues(alpha: 0.28),
+                  ),
                 ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    items[i].icon,
-                    const SizedBox(width: 6),
-                    Text(
-                      items[i].label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: FregoColors.white,
-                        letterSpacing: -0.1,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      items[i].icon,
+                      const SizedBox(width: 6),
+                      Text(
+                        items[i].label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: items[i].selected
+                              ? FregoColors.ink
+                              : FregoColors.white,
+                          letterSpacing: -0.1,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
