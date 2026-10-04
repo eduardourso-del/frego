@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FregoWordmark } from '@/components/brand';
+import { StoreBadges } from '@/components/store-badges';
 import { RemoteImg, BusinessLogo } from '@/components/remote-img';
 import { Banknote, Cake, Coins, MapPin, Percent, Stamp } from 'lucide-react';
 import { businessTypeLabel } from '@frego/tokens';
@@ -334,16 +335,9 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
             </span>{' '}
             para começar a acumular.
           </p>
-          <a
-            href="#app"
-            id="app"
-            className="mt-6 inline-flex min-h-12 w-full items-center justify-center rounded-[14px] px-6 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] transition-[transform,opacity] hover:opacity-95 active:scale-[0.98] sm:w-auto"
-            style={{ background: primary }}
-          >
-            Participar no app Frego
-          </a>
+          <StoreBadges className="mt-6" />
           <p className="mt-3 text-[13px] text-[var(--color-neutral-400)]">
-            App Store e Google Play em breve. Peça o QR Code no balcão.
+            Entre com seu telefone. Sem senha.
           </p>
         </section>
       </main>

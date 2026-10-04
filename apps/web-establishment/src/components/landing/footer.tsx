@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { FregoWordmark } from '@/components/brand';
+import { StoreBadges } from '@/components/store-badges';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 
 const productLinks = [
@@ -44,6 +45,7 @@ export function LandingFooter() {
               {CONTACT_EMAIL}
             </a>
           </p>
+          <StoreBadges className="mt-5" />
         </div>
 
         <div>

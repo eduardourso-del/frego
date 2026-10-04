@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { Gift, Heart, Smartphone } from 'lucide-react';
 import { Reveal, RevealGroup, RevealItem } from '@/components/landing/reveal';
+import { StoreBadges } from '@/components/store-badges';
 
 const shots = [
   {
@@ -98,6 +99,7 @@ export function LandingCustomerApp() {
             O app sustenta o relacionamento. Uma rede de benefícios locais —
             não um mural de descontos.
           </p>
+          <StoreBadges className="mt-6" />
         </Reveal>
 
         <RevealGroup className="mt-10 grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
