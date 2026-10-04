@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
@@ -27,6 +28,14 @@ class ShopsPage extends StatefulWidget {
 
 enum _ShopFilter { all, favorites, ready, close }
 
+/// White glyphs while the Céu Azul band sits under the status bar.
+const _statusBarOnAzul = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+  systemStatusBarContrastEnforced: false,
+);
+
 class _ListRow {
   const _ListRow.header(this.header) : membership = null;
   const _ListRow.shop(this.membership) : header = null;
@@ -39,6 +48,7 @@ class _ListRow {
 
 class _ShopsPageState extends State<ShopsPage> {
   final _search = TextEditingController();
+  final _searchFieldKey = GlobalKey();
   bool _loading = true;
   bool _hydrated = false;
   String? _error;
@@ -52,7 +62,6 @@ class _ShopsPageState extends State<ShopsPage> {
   @override
   void initState() {
     super.initState();
-    _search.addListener(() => setState(() {}));
     _load();
   }
 
@@ -225,6 +234,44 @@ class _ShopsPageState extends State<ShopsPage> {
   Map<String, dynamic>? get _nextReward =>
       _stats?['nextReward'] as Map<String, dynamic>?;
 
+  List<_BalanceChip> _balanceChips() {
+    var stamps = 0;
+    var points = 0;
+    var cashbackCents = 0;
+    for (final m in _memberships) {
+      final pools = m['pools'] as Map<String, dynamic>?;
+      if (pools == null) continue;
+      stamps += (pools['stamps'] as num?)?.toInt() ?? 0;
+      points += (pools['points'] as num?)?.toInt() ?? 0;
+      cashbackCents += (pools['cashbackCents'] as num?)?.toInt() ?? 0;
+    }
+    return [
+      if (stamps > 0)
+        _BalanceChip(
+          icon: FregoIcons.stamp(size: 15, color: FregoColors.white),
+          label: stamps == 1 ? '1 carimbo' : '$stamps carimbos',
+        ),
+      if (points > 0)
+        _BalanceChip(
+          icon: FregoIcons.points(size: 15, color: FregoColors.white),
+          label: points == 1 ? '1 ponto' : '$points pontos',
+        ),
+      if (cashbackCents > 0)
+        _BalanceChip(
+          icon: FregoIcons.cashback(size: 15, color: FregoColors.white),
+          label: _reais(cashbackCents),
+        ),
+    ];
+  }
+
+  String _reais(int cents) {
+    final abs = cents.abs();
+    final reais = abs ~/ 100;
+    final centavos = (abs % 100).toString().padLeft(2, '0');
+    final body = '$reais,$centavos';
+    return cents < 0 ? '-R\$ $body' : 'R\$ $body';
+  }
+
   int get _favoritesCount =>
       _memberships.where((m) => m['isFavorite'] == true).length;
 
@@ -346,54 +393,77 @@ class _ShopsPageState extends State<ShopsPage> {
   @override
   Widget build(BuildContext context) {
     final firstName = _firstName;
-    final items = _filtered;
+
+    final top = MediaQuery.paddingOf(context).top;
+    final expanded = MediaQuery.sizeOf(context).height / 3;
+    const toolbar = 56.0;
+    final greeting = firstName != null ? 'Olá, $firstName' : 'Olá';
+    final balances = _loading && !_hydrated ? const <_BalanceChip>[] : _balanceChips();
+    final summary = _loading && !_hydrated
+        ? const _PrizeSummaryPlaceholder()
+        : _InsightStrip(
+            redeemableNow: _redeemableNow,
+            nextReward: _nextReward,
+            birthday: _birthdayHint(),
+            onOpenShop: _openShop,
+            onOpenCampaign: _openCampaign,
+          );
 
     final slivers = <Widget>[
+      SliverAppBar(
+        primary: true,
+        pinned: true,
+        stretch: true,
+        automaticallyImplyLeading: false,
+        automaticallyImplyActions: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        backgroundColor: FregoColors.azul,
+        foregroundColor: FregoColors.white,
+        systemOverlayStyle: _statusBarOnAzul,
+        toolbarHeight: toolbar,
+        expandedHeight: expanded - top,
+        centerTitle: false,
+        titleSpacing: 20,
+        stretchTriggerOffset: 90,
+        onStretchTrigger: _load,
+        titleTextStyle: (Theme.of(context).textTheme.headlineSmall ??
+                const TextStyle())
+            .copyWith(
+          fontSize: 32,
+          height: 1.1,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.6,
+          color: FregoColors.white,
+        ),
+        title: Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis),
+        flexibleSpace: _FreguesHomeHeader(
+          toolbarHeight: toolbar,
+          balances: balances,
+          summary: summary,
+        ),
+      ),
+      if (_memberships.isNotEmpty)
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _PinnedSearchDelegate(
+            controller: _search,
+            fieldKey: _searchFieldKey,
+            onClear: () {
+              _search.clear();
+              setState(() {});
+            },
+          ),
+        ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: 4),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: FregoLargeTitlePage.gutter),
-                child: Text(
-                  'Suas fidelidades em um só lugar',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    color: FregoColors.neutral500,
-                  ),
-                ),
-              ),
               if (_memberships.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: FregoLargeTitlePage.gutter,
-                  ),
-                  child: _InsightStrip(
-                    redeemableNow: _redeemableNow,
-                    nextReward: _nextReward,
-                    birthday: _birthdayHint(),
-                    onOpenShop: _openShop,
-                    onOpenCampaign: _openCampaign,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: FregoLargeTitlePage.gutter,
-                  ),
-                  child: _ShopSearchField(
-                    controller: _search,
-                    onClear: () {
-                      _search.clear();
-                      setState(() {});
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
                 _FilterChips(
                   filter: _filter,
                   favoritesCount: _favoritesCount,
@@ -414,7 +484,13 @@ class _ShopsPageState extends State<ShopsPage> {
           ),
         ),
       ),
-      if (_loading && !_hydrated)
+      ListenableBuilder(
+        listenable: _search,
+        builder: (context, _) {
+          final items = _filtered;
+          return SliverMainAxisGroup(
+            slivers: [
+              if (_loading && !_hydrated)
         const SliverToBoxAdapter(child: FregoShopsSkeleton())
       else if (_error != null)
         SliverFillRemaining(
@@ -803,13 +879,31 @@ class _ShopsPageState extends State<ShopsPage> {
                 },
               ),
             ),
-      ],
+          ],
+            ],
+          );
+        },
+      ),
     ];
 
-    return FregoLargeTitlePage(
-      title: firstName != null ? 'Olá, $firstName' : 'Lojas',
-      onRefresh: _load,
-      slivers: slivers,
+    final bottomClearance = MediaQuery.paddingOf(context).bottom;
+    final scroll = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      slivers: [
+        ...slivers,
+        if (bottomClearance > 0)
+          SliverToBoxAdapter(child: SizedBox(height: bottomClearance)),
+      ],
+    );
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _statusBarOnAzul,
+      child: ColoredBox(
+        color: FregoColors.neutralBg,
+        child: scroll,
+      ),
     );
   }
 
@@ -839,6 +933,7 @@ enum _PillTone { stamps, points, ready, badge }
 
 class _ShopSearchField extends StatelessWidget {
   const _ShopSearchField({
+    super.key,
     required this.controller,
     required this.onClear,
   });
@@ -848,8 +943,6 @@ class _ShopSearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasText = controller.text.isNotEmpty;
-
     if (FregoAdaptive.useCupertino(context)) {
       return CupertinoSearchTextField(
         controller: controller,
@@ -867,7 +960,7 @@ class _ShopSearchField extends StatelessWidget {
           color: FregoColors.neutral400,
           size: 18,
         ),
-        onSuffixTap: hasText ? onClear : null,
+        onSuffixTap: onClear,
       );
     }
 
@@ -885,16 +978,20 @@ class _ShopSearchField extends StatelessWidget {
             color: FregoColors.neutral400,
             size: 22,
           ),
-          suffixIcon: hasText
-              ? IconButton(
-                  onPressed: onClear,
-                  icon: const Icon(
-                    FregoIcons.clear,
-                    size: 18,
-                    color: FregoColors.neutral400,
-                  ),
-                )
-              : null,
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) {
+              if (value.text.isEmpty) return const SizedBox.shrink();
+              return IconButton(
+                onPressed: onClear,
+                icon: const Icon(
+                  FregoIcons.clear,
+                  size: 18,
+                  color: FregoColors.neutral400,
+                ),
+              );
+            },
+          ),
           filled: true,
           fillColor: FregoColors.card,
           contentPadding: const EdgeInsets.symmetric(vertical: 12),
@@ -1155,6 +1252,207 @@ class _Pill extends StatelessWidget {
   }
 }
 
+class _PinnedSearchDelegate extends SliverPersistentHeaderDelegate {
+  _PinnedSearchDelegate({
+    required this.controller,
+    required this.fieldKey,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final Key fieldKey;
+  final VoidCallback onClear;
+
+  static const double height = 64;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: FregoColors.neutralBg,
+          boxShadow: overlapsContent
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF041828).withValues(alpha: 0.08),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            FregoLargeTitlePage.gutter,
+            10,
+            FregoLargeTitlePage.gutter,
+            8,
+          ),
+          child: _ShopSearchField(
+            key: fieldKey,
+            controller: controller,
+            onClear: onClear,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedSearchDelegate oldDelegate) => false;
+}
+
+/// Top third of the home: Céu Azul, white greeting, prize summary on card.
+class _BalanceChip {
+  const _BalanceChip({required this.icon, required this.label});
+
+  final Widget icon;
+  final String label;
+}
+
+class _FreguesHomeHeader extends StatelessWidget {
+  const _FreguesHomeHeader({
+    required this.toolbarHeight,
+    required this.summary,
+    this.balances = const [],
+  });
+
+  final double toolbarHeight;
+  final Widget summary;
+  final List<_BalanceChip> balances;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.paddingOf(context).top;
+    return SizedBox.expand(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final height = constraints.maxHeight;
+          final expanded = MediaQuery.sizeOf(context).height / 3;
+          final room = height - top - toolbarHeight - 16;
+          final fullRoom = expanded - top - toolbarHeight - 16;
+          final fade = fullRoom <= 0
+              ? 1.0
+              : (room / (fullRoom * 0.55)).clamp(0.0, 1.0);
+          return ColoredBox(
+            color: FregoColors.azul,
+            child: room < 8
+                ? const SizedBox.expand()
+                : Padding(
+                    padding: EdgeInsets.fromLTRB(20, top + toolbarHeight, 20, 16),
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.bottomCenter,
+                        minHeight: 0,
+                        maxHeight: double.infinity,
+                        child: Opacity(
+                          opacity: fade,
+                          child: IgnorePointer(
+                            ignoring: fade < 0.5,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Suas fidelidades em um só lugar',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w400,
+                                    color: FregoColors.white,
+                                  ),
+                                ),
+                                if (balances.isNotEmpty) ...[
+                                  const SizedBox(height: 14),
+                                  _BalanceChipRow(items: balances),
+                                ],
+                                const SizedBox(height: 14),
+                                summary,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BalanceChipRow extends StatelessWidget {
+  const _BalanceChipRow({required this.items});
+
+  final List<_BalanceChip> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: FregoColors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: FregoColors.white.withValues(alpha: 0.28),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    items[i].icon,
+                    const SizedBox(width: 6),
+                    Text(
+                      items[i].label,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: FregoColors.white,
+                        letterSpacing: -0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PrizeSummaryPlaceholder extends StatelessWidget {
+  const _PrizeSummaryPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 72,
+      decoration: BoxDecoration(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(16),
+      ),
+    );
+  }
+}
+
 /// Destaques acionáveis: prêmio pronto, progresso ou aniversário.
 class _InsightStrip extends StatelessWidget {
   const _InsightStrip({
@@ -1189,9 +1487,7 @@ class _InsightStrip extends StatelessWidget {
       final shopName = nextReward?['businessName'] as String?;
       final reward = nextReward?['rewardTitle'] as String?;
       return _InsightCard(
-        icon: Icon(FregoIcons.gift, color: FregoColors.success, size: 22),
-        tint: FregoColors.success,
-        soft: const Color(0xFFE6F6EE),
+        icon: Icon(FregoIcons.gift, color: FregoColors.ink, size: 22),
         title: redeemableNow == 1
             ? 'Você tem 1 prêmio pronto'
             : 'Você tem $redeemableNow prêmios prontos',
@@ -1213,10 +1509,8 @@ class _InsightStrip extends StatelessWidget {
       return _InsightCard(
         icon: FregoIcons.birthday(
           size: 22,
-          color: const Color(0xFF9D174D),
+          color: FregoColors.ink,
         ),
-        tint: const Color(0xFF9D174D),
-        soft: const Color(0xFFFDF2F8),
         title: 'Presente de aniversário liberado',
         subtitle: shopName != null
             ? 'Resgate em $shopName'
@@ -1236,10 +1530,8 @@ class _InsightStrip extends StatelessWidget {
         return _InsightCard(
           icon: FregoIcons.birthday(
             size: 22,
-            color: const Color(0xFF9D174D),
+            color: FregoColors.ink,
           ),
-          tint: const Color(0xFF9D174D),
-          soft: const Color(0xFFFDF2F8),
           title: days == 0
               ? 'Seu aniversário é hoje'
               : days == 1
@@ -1265,9 +1557,7 @@ class _InsightStrip extends StatelessWidget {
       final reward = next['rewardTitle'] as String?;
       if (type == 'promo') {
         return _InsightCard(
-          icon: FregoIcons.promo(size: 22, color: FregoColors.promo),
-          tint: FregoColors.promo,
-          soft: FregoColors.promoBg,
+          icon: FregoIcons.promo(size: 22, color: FregoColors.ink),
           title: reward != null && reward.isNotEmpty
               ? reward
               : 'Promoção da casa',
@@ -1288,8 +1578,6 @@ class _InsightStrip extends StatelessWidget {
             color: FregoColors.ink,
             size: 22,
           ),
-          tint: FregoColors.ink,
-          soft: FregoColors.primary50,
           title: 'Já resgatado neste período',
           subtitle: [
             if (reward != null && reward.isNotEmpty) reward,
@@ -1308,8 +1596,6 @@ class _InsightStrip extends StatelessWidget {
           color: FregoColors.ink,
           size: 22,
         ),
-        tint: FregoColors.ink,
-        soft: FregoColors.primary50,
         title: remaining == 1
             ? 'Falta 1 $unit para o prêmio'
             : 'Faltam $remaining $unit para o prêmio',
@@ -1324,82 +1610,106 @@ class _InsightStrip extends StatelessWidget {
       );
     }
 
-    return const SizedBox.shrink();
+    return const _InsightCard(
+      icon: Icon(FregoIcons.gift, color: FregoColors.ink, size: 22),
+      title: 'Nenhum prêmio pronto',
+      subtitle: 'Peça um carimbo no balcão para começar.',
+    );
   }
 }
 
 class _InsightCard extends StatelessWidget {
   const _InsightCard({
     required this.icon,
-    required this.tint,
-    required this.soft,
     required this.title,
     required this.subtitle,
     this.onTap,
   });
 
   final Widget icon;
-  final Color tint;
-  final Color soft;
   final String title;
   final String subtitle;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: soft,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
+    return DecoratedBox(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: icon,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: tint,
-                        letterSpacing: -0.2,
-                      ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF041828).withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: FregoColors.mostarda,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.mode(
+                      FregoColors.ink,
+                      BlendMode.srcIn,
                     ),
-                    if (subtitle.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                    child: icon,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        subtitle,
+                        title,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: FregoColors.neutral700,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: FregoColors.ink,
+                          letterSpacing: -0.2,
                         ),
                       ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: FregoColors.neutral500,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              if (onTap != null)
-                Icon(FregoIcons.chevronRight, size: 18, color: tint),
-            ],
+                if (onTap != null)
+                  const Icon(
+                    FregoIcons.chevronRight,
+                    size: 18,
+                    color: FregoColors.neutral400,
+                  ),
+              ],
+            ),
           ),
         ),
       ),
