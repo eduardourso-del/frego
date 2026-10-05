@@ -11,6 +11,8 @@ export function ProductFrame({
   height,
   priority = false,
   className,
+  sizes = '(min-width: 1024px) 560px, 100vw',
+  unoptimized = false,
 }: {
   src: string;
   alt: string;
@@ -20,6 +22,8 @@ export function ProductFrame({
   height: number;
   priority?: boolean;
   className?: string;
+  sizes?: string;
+  unoptimized?: boolean;
 }) {
   return (
     <figure className={className}>
@@ -39,8 +43,9 @@ export function ProductFrame({
             width={width}
             height={height}
             priority={priority}
+            unoptimized={unoptimized}
             className="h-auto w-full"
-            sizes="(min-width: 1024px) 560px, 100vw"
+            sizes={sizes}
           />
         </div>
       </div>

@@ -69,12 +69,12 @@ export function LandingSales() {
 
         <Reveal delay={0.08}>
           <ProductFrame
-            src="/landing/campanhas.png"
-            alt="Desempenho das campanhas no Frego: resgates, quem voltou e receita gerada"
-            label="frego.app.br/relatorios"
-            caption="No painel, cada campanha mostra quem voltou e o que gerou no caixa"
+            src="/landing/painel.png"
+            alt="Painel com atividade no período e retenção por mês de cadastro"
+            label="frego.app.br/dashboard"
+            caption="No painel, a atividade e a retenção mostram quem voltou e o que o programa gerou"
             width={1024}
-            height={640}
+            height={859}
           />
         </Reveal>
       </div>

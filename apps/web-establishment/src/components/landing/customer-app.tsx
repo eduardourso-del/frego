@@ -59,10 +59,11 @@ function PhoneShot({
         <Image
           src={src}
           alt={alt}
-          width={471}
+          width={470}
           height={1024}
+          unoptimized
           className="h-auto w-full"
-          sizes="(min-width: 1024px) 240px, 60vw"
+          sizes="240px"
         />
       </div>
       <figcaption className="mt-5">

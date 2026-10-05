@@ -10,7 +10,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Reveal, RevealGroup, RevealItem } from '@/components/landing/reveal';
-import { ProductFrame } from '@/components/landing/product-frame';
 
 const outcomes: Array<{
   title: string;
@@ -89,17 +88,6 @@ export function LandingOutcomes() {
             </RevealItem>
           ))}
         </RevealGroup>
-
-        <Reveal className="mt-10" delay={0.08}>
-          <ProductFrame
-            src="/landing/clientes-valiosos.png"
-            alt="Audiências Frego: alto valor, em risco, quase no prêmio e VIP"
-            label="frego.app.br/clientes"
-            caption="Alto valor, em risco, quase no prêmio, VIP — a lista já vem pronta"
-            width={1024}
-            height={720}
-          />
-        </Reveal>
       </div>
     </section>
   );

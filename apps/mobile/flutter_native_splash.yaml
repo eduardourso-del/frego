@@ -10,5 +10,7 @@ flutter_native_splash:
   ios: true
   web: false
   fullscreen: false
-  ios_content_mode: scaleAspectFit
+  # The storyboard pins the wordmark to 200×66 pt. Regenerating this
+  # file stretches the logo to the screen width; keep that size if you do.
+  ios_content_mode: center
   android_gravity: center

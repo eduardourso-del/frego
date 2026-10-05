@@ -438,11 +438,12 @@ class _ShopsPageState extends State<ShopsPage> {
 
     final top = MediaQuery.paddingOf(context).top;
     final expanded = MediaQuery.sizeOf(context).height / 3;
-    const toolbar = 56.0;
+    const toolbar = 68.0;
     final greeting = firstName != null ? 'Olá, $firstName' : 'Olá';
-    final balances = _loading && !_hydrated ? const <_BalanceChip>[] : _balanceChips();
-    final summary = _loading && !_hydrated
-        ? const _PrizeSummaryPlaceholder()
+    final loadingHome = _loading && !_hydrated;
+    final balances = loadingHome ? const <_BalanceChip>[] : _balanceChips();
+    final summary = loadingHome
+        ? const SizedBox.shrink()
         : _InsightStrip(
             redeemableNow: _redeemableNow,
             nextReward: _nextReward,
@@ -480,14 +481,39 @@ class _ShopsPageState extends State<ShopsPage> {
           letterSpacing: -0.6,
           color: FregoColors.white,
         ),
-        title: Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            const Text(
+              'Seus benefícios em um só lugar',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.2,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0,
+                color: FregoColors.white,
+              ),
+            ),
+          ],
+        ),
         flexibleSpace: _FreguesHomeHeader(
           toolbarHeight: toolbar,
+          loading: loadingHome,
           balances: balances,
           summary: summary,
         ),
       ),
-      if (_memberships.isNotEmpty)
+      if (loadingHome)
+        const SliverPersistentHeader(
+          pinned: true,
+          delegate: _PinnedSearchSkeletonDelegate(),
+        )
+      else if (_memberships.isNotEmpty)
         SliverPersistentHeader(
           pinned: true,
           delegate: _PinnedSearchDelegate(
@@ -538,9 +564,9 @@ class _ShopsPageState extends State<ShopsPage> {
           final items = _filtered;
           return SliverMainAxisGroup(
             slivers: [
-              if (_loading && !_hydrated)
-        const SliverToBoxAdapter(child: FregoShopsSkeleton())
-      else if (_error != null)
+              if (loadingHome)
+                const SliverToBoxAdapter(child: FregoShopsSkeleton())
+              else if (_error != null)
         SliverFillRemaining(
           child: Padding(
             padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
@@ -652,7 +678,7 @@ class _ShopsPageState extends State<ShopsPage> {
                   _filter != _ShopFilter.all ||
                   _category != null
                       ? 'Ajuste a busca ou o filtro para ver outras lojas.'
-                      : 'Suas fidelidades aparecem aqui.',
+                      : 'Seus benefícios aparecem aqui.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 14,
@@ -1378,11 +1404,13 @@ class _FreguesHomeHeader extends StatelessWidget {
   const _FreguesHomeHeader({
     required this.toolbarHeight,
     required this.summary,
+    this.loading = false,
     this.balances = const [],
   });
 
   final double toolbarHeight;
   final Widget summary;
+  final bool loading;
   final List<_BalanceChip> balances;
 
   @override
@@ -1417,20 +1445,16 @@ class _FreguesHomeHeader extends StatelessWidget {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Suas fidelidades em um só lugar',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w400,
-                                    color: FregoColors.white,
-                                  ),
-                                ),
-                                if (balances.isNotEmpty) ...[
-                                  const SizedBox(height: 14),
-                                  _BalanceChipRow(items: balances),
+                                if (loading)
+                                  const _HomeHeaderSkeleton()
+                                else ...[
+                                  const SizedBox(height: 6),
+                                  if (balances.isNotEmpty) ...[
+                                    _BalanceChipRow(items: balances),
+                                    const SizedBox(height: 16),
+                                  ],
+                                  summary,
                                 ],
-                                const SizedBox(height: 14),
-                                summary,
                               ],
                             ),
                           ),
@@ -1505,19 +1529,126 @@ class _BalanceChipRow extends StatelessWidget {
   }
 }
 
-class _PrizeSummaryPlaceholder extends StatelessWidget {
-  const _PrizeSummaryPlaceholder();
+class _HomeHeaderSkeleton extends StatelessWidget {
+  const _HomeHeaderSkeleton();
+
+  static const _frost = Color(0x3DFFFFFF);
+  static const _frostHot = Color(0x73FFFFFF);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 72,
-      decoration: BoxDecoration(
-        color: FregoColors.card,
-        borderRadius: BorderRadius.circular(16),
+    return const FregoSkeleton(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(height: 6),
+          Row(
+            children: [
+              FregoBone(
+                width: 124,
+                height: 32,
+                radius: 999,
+                color: _frost,
+                highlight: _frostHot,
+              ),
+              SizedBox(width: 8),
+              FregoBone(
+                width: 112,
+                height: 32,
+                radius: 999,
+                color: _frost,
+                highlight: _frostHot,
+              ),
+              SizedBox(width: 8),
+              FregoBone(
+                width: 96,
+                height: 32,
+                radius: 999,
+                color: _frost,
+                highlight: _frostHot,
+              ),
+            ],
+          ),
+          SizedBox(height: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x38041828),
+                  blurRadius: 18,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Material(
+              color: FregoColors.card,
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(14, 14, 12, 14),
+                child: Row(
+                  children: [
+                    FregoBone(width: 40, height: 40, radius: 12),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          FregoBone(width: 168, height: 14, radius: 6),
+                          SizedBox(height: 8),
+                          FregoBone(width: 120, height: 10, radius: 5),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    FregoBone(width: 8, height: 14, radius: 4),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+}
+
+class _PinnedSearchSkeletonDelegate extends SliverPersistentHeaderDelegate {
+  const _PinnedSearchSkeletonDelegate();
+
+  static const double height = 64;
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return const SizedBox(
+      height: height,
+      width: double.infinity,
+      child: ColoredBox(
+        color: FregoColors.neutralBg,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, 8),
+          child: FregoSkeleton(
+            child: FregoBone(
+              height: 36,
+              radius: 14,
+              color: FregoColors.card,
+              highlight: FregoColors.neutral200,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedSearchSkeletonDelegate oldDelegate) =>
+      false;
 }
 
 /// Destaques acionáveis: prêmio pronto, progresso ou aniversário.

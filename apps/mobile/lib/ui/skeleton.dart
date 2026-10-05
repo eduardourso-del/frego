@@ -71,6 +71,8 @@ class FregoBone extends StatelessWidget {
     this.height = 12,
     this.radius = 8,
     this.circle = false,
+    this.color,
+    this.highlight,
   });
 
   final double? width;
@@ -78,12 +80,18 @@ class FregoBone extends StatelessWidget {
   final double radius;
   final bool circle;
 
+  /// Pulse starts here. Defaults to the paper bone.
+  final Color? color;
+
+  /// Pulse ends here. Defaults to a slightly darker paper bone.
+  final Color? highlight;
+
   @override
   Widget build(BuildContext context) {
     final t = _SkeletonPulse.of(context);
     final color = Color.lerp(
-      FregoColors.neutral100,
-      FregoColors.neutral200,
+      this.color ?? FregoColors.neutral100,
+      highlight ?? FregoColors.neutral200,
       t,
     )!;
     if (circle) {
@@ -138,7 +146,7 @@ class _SkeletonCard extends StatelessWidget {
   }
 }
 
-/// Lojas tab — search, chips, shop rows.
+/// Lojas list under the pinned search: filters, a section, and shop cards.
 class FregoShopsSkeleton extends StatelessWidget {
   const FregoShopsSkeleton({super.key});
 
@@ -148,32 +156,44 @@ class FregoShopsSkeleton extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           FregoLargeTitlePage.gutter,
-          20,
+          4,
           FregoLargeTitlePage.gutter,
           24,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const FregoBone(width: 168, height: 36, radius: 10),
-            const SizedBox(height: 16),
-            const FregoBone(height: 40, radius: 12),
-            const SizedBox(height: 12),
-            Wrap(
+            const Wrap(
               spacing: 8,
-              children: const [
-                FregoBone(width: 72, height: 32, radius: 16),
-                FregoBone(width: 88, height: 32, radius: 16),
-                FregoBone(width: 76, height: 32, radius: 16),
+              runSpacing: 8,
+              children: [
+                FregoBone(width: 72, height: 36, radius: 999),
+                FregoBone(width: 112, height: 36, radius: 999),
+                FregoBone(width: 104, height: 36, radius: 999),
+                FregoBone(width: 88, height: 36, radius: 999),
               ],
             ),
-            const SizedBox(height: 22),
-            const FregoBone(width: 64, height: 10, radius: 6),
+            const SizedBox(height: 10),
+            const Wrap(
+              spacing: 8,
+              children: [
+                FregoBone(width: 84, height: 36, radius: 999),
+                FregoBone(width: 68, height: 36, radius: 999),
+                FregoBone(width: 108, height: 36, radius: 999),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const FregoBone(width: 52, height: 10, radius: 5),
+            const SizedBox(height: 16),
+            const FregoBone(width: 88, height: 14, radius: 6),
+            const SizedBox(height: 8),
+            const _ShopRowBone(),
+            const SizedBox(height: 18),
+            const FregoBone(width: 64, height: 14, radius: 6),
+            const SizedBox(height: 8),
+            const _ShopRowBone(),
             const SizedBox(height: 12),
-            for (var i = 0; i < 4; i++) ...[
-              if (i > 0) const SizedBox(height: 12),
-              const _ShopRowBone(),
-            ],
+            const _ShopRowBone(),
           ],
         ),
       ),
@@ -186,30 +206,48 @@ class _ShopRowBone extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const _SkeletonCard(
-      child: Row(
-        children: [
-          FregoBone(width: 48, height: 48, radius: 14),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FregoBone(width: 72, height: 8, radius: 4),
-                SizedBox(height: 8),
-                FregoBone(width: 140, height: 14, radius: 6),
-                SizedBox(height: 10),
-                Row(
-                  children: [
-                    FregoBone(width: 88, height: 22, radius: 11),
-                    SizedBox(width: 6),
-                    FregoBone(width: 64, height: 22, radius: 11),
-                  ],
-                ),
-              ],
-            ),
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.045),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
+      ),
+      child: const _SkeletonCard(
+        radius: 18,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FregoBone(width: 48, height: 48, radius: 12),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  FregoBone(width: 64, height: 10, radius: 5),
+                  SizedBox(height: 6),
+                  FregoBone(width: 148, height: 14, radius: 6),
+                  SizedBox(height: 6),
+                  FregoBone(width: 180, height: 10, radius: 5),
+                  SizedBox(height: 10),
+                  Row(
+                    children: [
+                      FregoBone(width: 108, height: 24, radius: 999),
+                      SizedBox(width: 6),
+                      FregoBone(width: 92, height: 24, radius: 999),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 8),
+            FregoBone(width: 18, height: 18, radius: 9),
+          ],
+        ),
       ),
     );
   }

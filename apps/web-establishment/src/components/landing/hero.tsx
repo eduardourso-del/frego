@@ -69,7 +69,7 @@ export function LandingHero() {
             transition={{ duration: 0.6, delay: 0.14, ease }}
             className="mt-4 max-w-lg text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)] sm:text-[22px]"
           >
-            A inteligência comercial que seu negócio sempre deveria ter.
+            Quem chamar hoje para o cliente voltar.
           </motion.p>
 
           <motion.p
@@ -133,12 +133,12 @@ export function LandingHero() {
           transition={{ duration: 0.85, delay: 0.18, ease }}
         >
           <ProductFrame
-            src="/landing/painel-hoje.png"
-            alt="Painel Frego mostrando quem merece atenção hoje e o que fazer agora"
+            src="/landing/painel.png"
+            alt="Painel Frego com clientes ativos, atividade no período e retenção por mês de cadastro"
             label="frego.app.br/dashboard"
-            caption="O painel mostra quem sumiu, quem está perto de um benefício e o que fazer agora"
-            width={942}
-            height={1024}
+            caption="Atividade, retorno e retenção — o que aconteceu com os clientes no período"
+            width={1024}
+            height={859}
             priority
           />
         </motion.div>
