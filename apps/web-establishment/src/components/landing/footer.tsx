@@ -1,9 +1,12 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { FregoWordmark } from '@/components/brand';
 import { StoreBadges } from '@/components/store-badges';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
+
+const APP_ONELINK_URL = 'https://onelink.to/quvd8c';
 
 const productLinks = [
   { href: '#como-funciona', label: 'Como funciona' },
@@ -100,6 +103,38 @@ export function LandingFooter() {
               </li>
             ))}
           </ul>
+        </div>
+      </div>
+
+      <div className="hidden border-t border-[var(--color-hairline)] md:block">
+        <div className="mx-auto flex max-w-6xl items-center gap-5 px-8 py-8">
+          <a
+            href={APP_ONELINK_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Abrir o app do cliente no celular"
+            className="shrink-0 rounded-[12px] border border-[var(--color-hairline)] bg-white p-1.5"
+          >
+            <Image
+              src="/landing/app-onelink.png"
+              alt=""
+              width={648}
+              height={648}
+              unoptimized
+              className="h-24 w-24"
+            />
+          </a>
+          <div>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
+              App do cliente
+            </p>
+            <p className="mt-1 text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
+              Abra no celular
+            </p>
+            <p className="mt-1 text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+              Aponte a câmera. Funciona no iPhone e no Android.
+            </p>
+          </div>
         </div>
       </div>
 
