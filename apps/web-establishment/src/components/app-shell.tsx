@@ -11,6 +11,7 @@ import {
   BarChart3,
   Settings,
   Stamp,
+  BookOpen,
   MoreHorizontal,
   X,
   LogOut,
@@ -32,6 +33,7 @@ const mainNav = [
 const utilityNav = [
   { href: '/counter', label: 'Balcão', icon: Stamp },
   { href: '/settings', label: 'Configurações', icon: Settings },
+  { href: '/guia', label: 'Guia', icon: BookOpen },
 ];
 
 /** Tabs fixas no rodapé mobile — Balcão no centro. */
@@ -62,6 +64,8 @@ type AppShellProps = {
   topbar?: ReactNode;
   /** Título mostrado no header mobile quando não há topbar desktop. */
   title?: string;
+  /** O guia pode ser lido enquanto o estabelecimento aguarda aprovação. */
+  skipPendingGate?: boolean;
 };
 
 export function AppShell({
@@ -69,6 +73,7 @@ export function AppShell({
   businessName,
   topbar,
   title,
+  skipPendingGate = false,
 }: AppShellProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -96,6 +101,7 @@ export function AppShell({
     isActivePath(pathname, '/settings') ||
     isActivePath(pathname, '/reports') ||
     isActivePath(pathname, '/audiences') ||
+    isActivePath(pathname, '/guia') ||
     moreOpen;
 
   useEffect(() => {
@@ -272,9 +278,9 @@ export function AppShell({
           <div className="hidden shrink-0 md:block">{topbar}</div>
         ) : null}
 
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 scroll-smooth overflow-auto">
           <div className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
-            <PendingGate>{children}</PendingGate>
+            {skipPendingGate ? children : <PendingGate>{children}</PendingGate>}
           </div>
         </div>
 
@@ -381,7 +387,7 @@ export function AppShell({
                   Mais
                 </p>
                 <p className="text-[13px] text-[var(--color-neutral-500)]">
-                  Audiências, relatórios, configurações e a conta
+                  Audiências, relatórios, o guia e a conta
                 </p>
               </div>
               <button
@@ -449,6 +455,12 @@ export function AppShell({
                   href="/settings"
                   label="Configurações"
                   icon={Settings}
+                  onNavigate={() => setMoreOpen(false)}
+                />
+                <NavLink
+                  href="/guia"
+                  label="Guia"
+                  icon={BookOpen}
                   onNavigate={() => setMoreOpen(false)}
                 />
                 {!businessBlocked ? (

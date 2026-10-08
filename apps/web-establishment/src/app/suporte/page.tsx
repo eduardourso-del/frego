@@ -81,8 +81,9 @@ export default function SuportePage() {
       <p>
         O painel da loja está em <Link href="/login">frego.app.br/login</Link>.
         Para cadastrar o negócio, use{' '}
-        <Link href="/register">Cadastrar meu negócio</Link>. Dúvidas de
-        campanha, balcão ou acesso: o mesmo e-mail{' '}
+        <Link href="/register">Cadastrar meu negócio</Link>. O{' '}
+        <Link href="/guia">guia do painel</Link> explica campanhas, audiências,
+        relatórios e o balcão. Dúvidas de acesso: o mesmo e-mail{' '}
         <a href={CONTACT_MAILTO}>{CONTACT_EMAIL}</a>.
       </p>
 
