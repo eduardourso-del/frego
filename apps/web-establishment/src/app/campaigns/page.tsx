@@ -33,6 +33,8 @@ type Campaign = {
   type: CampaignType | string;
   status: CampaignStatus | string;
   stampsNeeded: number | null;
+  cartela?: boolean;
+  activatedAt?: string | null;
   pointsPerReal: number | null;
   cashbackPercent?: number | null;
   rewardTitle: string | null;
@@ -625,6 +627,8 @@ function CampaignsPageContent() {
       unlimited: c.redeemMax == null,
       redeemMax: c.redeemMax ?? 1,
       redeemPeriod: period,
+      cartela: Boolean(c.cartela),
+      cartelaLocked: Boolean(c.activatedAt),
     });
     setShowForm(true);
     setError(null);
@@ -689,6 +693,7 @@ function CampaignsPageContent() {
                 weekdays: [],
                 redeemMax: form.unlimited ? null : form.redeemMax,
                 redeemPeriod: form.unlimited ? null : form.redeemPeriod,
+                cartela: form.cartela,
               }
             : {
                 startsOn: null,
@@ -729,7 +734,9 @@ function CampaignsPageContent() {
           throw new Error('A data de início não pode ser depois da data de fim.');
         }
         throw new Error(
-          json.error ?? (editingId ? 'Não foi possível salvar.' : 'Não foi possível criar.'),
+          json.message ??
+            json.error ??
+            (editingId ? 'Não foi possível salvar.' : 'Não foi possível criar.'),
         );
       }
       closeForm();
@@ -999,7 +1006,7 @@ function CampaignsPageContent() {
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-stamps-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]">
                           <Stamp size={13} strokeWidth={2.25} aria-hidden />
-                          Carimbos
+                          {c.cartela ? 'Cartela' : 'Carimbos'}
                         </span>
                       )}
                       <span className="rounded-full bg-[var(--color-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-neutral-600)] ring-1 ring-inset ring-[var(--color-hairline)]">

@@ -343,6 +343,11 @@ model Campaign {
   rewardDescription String?   @map("reward_description")
   /// Foto do prêmio (produto) — aparece no app e no balcão.
   rewardImageUrl String?      @map("reward_image_url")
+  /// Stamp Campanha only. Carimbos earned here Resgatar only this Prêmio.
+  /// Chosen before the first activation, then fixed.
+  cartela      Boolean   @default(false)
+  /// Set the first time the Campanha becomes active. Locks cartela.
+  activatedAt  DateTime? @map("activated_at")
   /// Se definido, só membros da audiência podem resgatar.
   audienceSegmentId String?   @map("audience_segment_id")
   /// Set when audience FCM was claimed/sent. Re-activate does not send again.

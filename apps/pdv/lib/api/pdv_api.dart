@@ -197,6 +197,38 @@ List<CounterSale> prependSale(List<CounterSale> current, CounterSale? sale) {
   ].take(8).toList();
 }
 
+class StampDestination {
+  const StampDestination({
+    required this.campaignId,
+    required this.label,
+    required this.balance,
+    required this.cartela,
+    required this.earnable,
+  });
+
+  final String? campaignId;
+  final String label;
+  final int balance;
+  final bool cartela;
+  final bool earnable;
+
+  String get key => campaignId ?? 'shared';
+
+  static List<StampDestination> parse(Object? raw) {
+    if (raw is! List) return const [];
+    return raw.whereType<Map>().map((item) {
+      final map = Map<String, dynamic>.from(item);
+      return StampDestination(
+        campaignId: map['campaignId'] as String?,
+        label: map['label'] as String? ?? 'Carimbos',
+        balance: (map['balance'] as num?)?.toInt() ?? 0,
+        cartela: map['cartela'] == true,
+        earnable: map['earnable'] == true,
+      );
+    }).toList();
+  }
+}
+
 class LookupResult {
   const LookupResult({
     required this.found,
@@ -220,6 +252,7 @@ class LookupResult {
     this.recentSales = const [],
     this.activeEarnKinds = const [],
     this.earnKindsFromApi = false,
+    this.stampDestinations = const [],
   });
 
   final bool found;
@@ -243,6 +276,7 @@ class LookupResult {
   final List<CounterSale> recentSales;
   final List<String> activeEarnKinds;
   final bool earnKindsFromApi;
+  final List<StampDestination> stampDestinations;
 
   LookupResult copyWith({
     int? stamps,
@@ -253,6 +287,7 @@ class LookupResult {
     List<OpenVoucher>? openVouchers,
     List<CounterSale>? recentSales,
     List<CustomerTag>? tags,
+    List<StampDestination>? stampDestinations,
   }) {
     return LookupResult(
       found: found,
@@ -276,6 +311,7 @@ class LookupResult {
       recentSales: recentSales ?? this.recentSales,
       activeEarnKinds: activeEarnKinds,
       earnKindsFromApi: earnKindsFromApi,
+      stampDestinations: stampDestinations ?? this.stampDestinations,
     );
   }
 
@@ -322,6 +358,12 @@ class LookupResult {
           .toList(),
       activeEarnKinds: parseEarnKinds(json['activeEarnKinds']),
       earnKindsFromApi: json.containsKey('activeEarnKinds'),
+      stampDestinations: StampDestination.parse(
+        json['stampDestinations'] ??
+            (json['wallet'] is Map
+                ? (json['wallet'] as Map)['stampDestinations']
+                : null),
+      ),
     );
   }
 }
@@ -333,6 +375,7 @@ class EarnResult {
     required this.points,
     this.cashbackCents = 0,
     this.sale,
+    this.stampDestinations = const [],
   });
 
   final String message;
@@ -340,6 +383,7 @@ class EarnResult {
   final int points;
   final int cashbackCents;
   final CounterSale? sale;
+  final List<StampDestination> stampDestinations;
 }
 
 class ReverseResult {
@@ -433,12 +477,14 @@ class PdvApi {
     required String phone,
     bool addFirstStamp = false,
     String? displayName,
+    String? campaignId,
   }) async {
     final name = displayName?.trim();
     final json = await _post('/customers', {
       'phone': phone,
       'addFirstStamp': addFirstStamp,
       if (name != null && name.isNotEmpty) 'displayName': name,
+      if (campaignId != null) 'campaignId': campaignId,
     });
     final customer = json['customer'] as Map<String, dynamic>? ?? {};
     final membership = json['membership'] as Map<String, dynamic>?;
@@ -461,6 +507,11 @@ class PdvApi {
       points: (pools?['points'] as num?)?.toInt() ?? 0,
       cashbackCents: (pools?['cashbackCents'] as num?)?.toInt() ?? 0,
       recentSales: sale != null ? [sale] : const [],
+      stampDestinations: StampDestination.parse(
+        json['wallet'] is Map
+            ? (json['wallet'] as Map)['stampDestinations']
+            : null,
+      ),
     );
   }
 
@@ -470,6 +521,7 @@ class PdvApi {
     int? quantity,
     int? amountCents,
     int? applyCashbackCents,
+    String? campaignId,
   }) async {
     final json = await _post('/transactions', {
       'membershipId': membershipId,
@@ -479,6 +531,7 @@ class PdvApi {
       if (unitKind != 'points' && unitKind != 'cashback') 'quantity': quantity ?? 1,
       if (applyCashbackCents != null && applyCashbackCents > 0)
         'applyCashbackCents': applyCashbackCents,
+      if (campaignId != null) 'campaignId': campaignId,
     });
     final pools =
         (json['wallet'] is Map
@@ -495,6 +548,11 @@ class PdvApi {
           (pools?['cashbackCents'] as num?)?.toInt() ??
           0,
       sale: CounterSale.tryParse(json['sale']),
+      stampDestinations: StampDestination.parse(
+        json['wallet'] is Map
+            ? (json['wallet'] as Map)['stampDestinations']
+            : null,
+      ),
     );
   }
 

@@ -49,6 +49,9 @@ export type CampaignFormState = {
   unlimited: boolean;
   redeemMax: number;
   redeemPeriod: PromoPeriod;
+  cartela: boolean;
+  /** True after the Campanha has been active once. The Cartela choice is fixed. */
+  cartelaLocked: boolean;
 };
 
 export type AudienceOption = {
@@ -74,6 +77,8 @@ export const emptyCampaignForm: CampaignFormState = {
   unlimited: true,
   redeemMax: 1,
   redeemPeriod: 'day',
+  cartela: false,
+  cartelaLocked: false,
 };
 
 type TypeOption = {
@@ -193,10 +198,11 @@ function applyType(form: CampaignFormState, type: CampaignType): CampaignFormSta
           redeemMax: 1,
           redeemPeriod: 'campaign' as const,
           weekdays: [] as number[],
+          cartela: false,
         }
       : type === 'stamps'
         ? { unlimited: true, redeemMax: 1, redeemPeriod: 'day' as const }
-        : {}),
+        : { cartela: false }),
   };
 }
 
@@ -633,6 +639,27 @@ export function CampaignCreateForm({
 
             {form.type === 'stamps' ? (
               <>
+                <label className="mt-3 flex items-start gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    checked={form.cartela}
+                    disabled={form.cartelaLocked}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, cartela: e.target.checked }))
+                    }
+                  />
+                  <span>
+                    Cartela própria
+                    <span className="mt-0.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      Os carimbos desta campanha só resgatam este prêmio. Sem
+                      cartela, eles entram no saldo compartilhado da loja.
+                      {form.cartelaLocked
+                        ? ' Isso ficou definido quando a campanha foi ativada.'
+                        : ' Dá para mudar até a primeira ativação.'}
+                    </span>
+                  </span>
+                </label>
                 <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
                   Carimbos para ganhar
                   <Stepper

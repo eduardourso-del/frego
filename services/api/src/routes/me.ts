@@ -287,6 +287,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           associatedAt: m.associatedAt,
           business: m.business,
           pools: wallet.pools,
+          stampDestinations: wallet.stampDestinations,
           stampsExpireDays: wallet.stampsExpireDays,
           pointsExpireDays: wallet.pointsExpireDays,
           lots: wallet.lots,
@@ -439,6 +440,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       badges,
       wallet,
       pools: wallet.pools,
+      stampDestinations: wallet.stampDestinations,
       campaigns: wallet.campaigns,
       memberships: memberships.map((m) => ({
         id: m.id,

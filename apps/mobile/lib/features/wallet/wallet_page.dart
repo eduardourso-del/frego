@@ -8,6 +8,7 @@ import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
 
@@ -143,9 +144,20 @@ class _WalletPageState extends State<WalletPage> {
     );
     final memberships = _data?['memberships'] as List<dynamic>? ?? [];
     final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
+    final earnKinds = earnKindsFromCampaigns(campaigns);
+    final stampRows = _data == null
+        ? const <Map<String, dynamic>>[]
+        : stampDestinationsOf(_data!);
+    final showStamps = earnKinds.contains('stamps') ||
+        stamps > 0 ||
+        stampRows.isNotEmpty;
+    final stampValue = stampRows.length > 1
+        ? stampSummary(_data!)
+        : stampRows.length == 1
+            ? '${stampRows.first['balance'] ?? stamps}'
+            : '$stamps';
     final points = (pools['points'] as num?)?.toInt() ?? 0;
     final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
-    final earnKinds = earnKindsFromCampaigns(campaigns);
 
     return Scaffold(
       body: SafeArea(
@@ -291,18 +303,33 @@ class _WalletPageState extends State<WalletPage> {
                                       ),
                                     ),
                                   const SizedBox(height: 20),
+                                  if (stampRows.length > 1) ...[
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: [
+                                        for (final dest in stampRows)
+                                          _PoolChip(
+                                            label: dest['label'] as String? ??
+                                                'Carimbos',
+                                            value:
+                                                '${(dest['balance'] as num?)?.toInt() ?? 0}',
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
                                   Row(
                                     children: [
-                                      if (earnKinds.contains('stamps') ||
-                                          stamps > 0)
+                                      if (showStamps && stampRows.length <= 1)
                                         Expanded(
                                           child: _PoolChip(
                                             label: 'Carimbos',
-                                            value: '$stamps',
+                                            value: stampValue,
                                           ),
                                         ),
-                                      if ((earnKinds.contains('stamps') ||
-                                              stamps > 0) &&
+                                      if (showStamps &&
+                                          stampRows.length <= 1 &&
                                           (earnKinds.contains('points') ||
                                               points > 0))
                                         const SizedBox(width: 12),
@@ -314,8 +341,7 @@ class _WalletPageState extends State<WalletPage> {
                                             value: '$points',
                                           ),
                                         ),
-                                      if ((earnKinds.contains('stamps') ||
-                                              stamps > 0 ||
+                                      if ((showStamps && stampRows.length <= 1 ||
                                               earnKinds.contains('points') ||
                                               points > 0) &&
                                           (earnKinds.contains('cashback') ||
@@ -345,9 +371,11 @@ class _WalletPageState extends State<WalletPage> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              campaigns.any((c) => c['type'] == 'cashback')
-                                  ? 'Cashback aparece primeiro. Use o saldo no caixa.'
-                                  : 'Escolha onde gastar seus carimbos ou pontos.',
+                              stampRows.length > 1
+                                  ? 'Cada cartela tem o seu saldo. Os outros prêmios de carimbo usam o mesmo saldo.'
+                                  : campaigns.any((c) => c['type'] == 'cashback')
+                                      ? 'Cashback aparece primeiro. Use o saldo no caixa.'
+                                      : 'Escolha onde gastar seus carimbos ou pontos.',
                               style: const TextStyle(
                                 fontSize: 14,
                                 color: FregoColors.neutral500,
@@ -382,11 +410,12 @@ class _WalletPageState extends State<WalletPage> {
                                         ?.toInt() ??
                                     (pools['cashbackCents'] as num?)?.toInt() ??
                                     0;
-                                final pool = type == 'spend'
-                                    ? points
-                                    : isCashback
-                                        ? cashbackBalance
-                                        : stamps;
+                                final pool = campaignUnits(
+                                  c,
+                                  stamps: stamps,
+                                  points: points,
+                                  cashbackCents: cashbackBalance,
+                                );
                                 final isBirthday = type == 'birthday';
                                 final isPromo = type == 'promo';
                                 final lockedReason =
@@ -491,6 +520,13 @@ class _WalletPageState extends State<WalletPage> {
                                           '${c['rewardTitle'] != null ? ' · ${c['rewardTitle']}' : ''}';
                                   if (quotaHint == null && frequency != null) {
                                     subtitle = '$subtitle · $frequency';
+                                  }
+                                  final scope = stampScopeLabel(
+                                    c,
+                                    split: stampRows.length > 1,
+                                  );
+                                  if (scope != null) {
+                                    subtitle = '$scope · $subtitle';
                                   }
                                   buttonLabel = lockedReason == 'quota_exhausted'
                                       ? 'Já resgatado'

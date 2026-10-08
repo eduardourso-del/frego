@@ -34,6 +34,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.onOpenShop,
     this.onOpen,
     this.promoCalendar,
+    this.scopeLabel,
   });
 
   final String businessName;
@@ -66,6 +67,9 @@ class LoyaltyCampaignCard extends StatelessWidget {
 
   /// Promoção calendar (dates + weekdays) as the customer should see it.
   final PromoCalendar? promoCalendar;
+
+  /// Cartela vs shared carimbos. Empty when the shop has a single destination.
+  final String? scopeLabel;
 
   bool get _isBirthday => campaignType == 'birthday';
   bool get _isPromo => campaignType == 'promo';
@@ -170,6 +174,22 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 color: FregoColors.ink,
                               ),
                             ),
+                            if (scopeLabel != null &&
+                                scopeLabel!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                scopeLabel!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: scopeLabel!.startsWith('Cartela')
+                                      ? accent
+                                      : FregoColors.neutral500,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 8),
                             if (_isBirthday)
                               _BirthdayBody(

@@ -110,6 +110,12 @@ type ProfileResponse = {
   };
   wallet: {
     pools: { stamps: number; points: number; cashbackCents?: number };
+    stampDestinations?: Array<{
+      campaignId: string | null;
+      label: string;
+      balance: number;
+      cartela: boolean;
+    }>;
     campaigns: Array<{
       campaignId: string;
       campaignName: string;
@@ -118,6 +124,8 @@ type ProfileResponse = {
       canRedeem: boolean;
       rewardTitle: string | null;
       rewardsAvailable: number;
+      balance?: number;
+      cartela?: boolean;
     }>;
   };
   pools: { stamps: number; points: number; cashbackCents?: number };
@@ -199,6 +207,20 @@ function formatMoney(cents: number) {
     style: 'currency',
     currency: 'BRL',
   });
+}
+
+function stampLine(
+  destinations:
+    | Array<{ label: string; balance: number }>
+    | undefined,
+  shared: number,
+): string {
+  const rows = destinations ?? [];
+  if (rows.length <= 1) {
+    const n = rows[0]?.balance ?? shared;
+    return `${n} ${n === 1 ? 'carimbo' : 'carimbos'}`;
+  }
+  return rows.map((d) => `${d.label} ${d.balance}`).join(' · ');
 }
 
 function showPool(
@@ -1262,15 +1284,21 @@ function CustomersPageContent() {
                     <div
                       className={`mt-3 grid gap-2 ${poolGridClass(business?.activeEarnKinds, profile.pools)}`}
                     >
-                      {showPool(business?.activeEarnKinds, 'stamps', profile.pools.stamps) && (
+                      {(showPool(business?.activeEarnKinds, 'stamps', profile.pools.stamps) ||
+                        (profile.wallet.stampDestinations?.length ?? 0) > 0) && (
                         <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-stamps-bg)] px-3 py-2.5">
                           <Stamp className="h-4 w-4 shrink-0 text-[var(--color-stamps)]" />
                           <div className="min-w-0">
                             <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                              {profile.pools.stamps}
+                              {stampLine(
+                                profile.wallet.stampDestinations,
+                                profile.pools.stamps,
+                              )}
                             </p>
                             <p className="text-[11px] text-[var(--color-neutral-500)]">
-                              Carimbos
+                              {(profile.wallet.stampDestinations?.length ?? 0) > 1
+                                ? 'Saldos'
+                                : 'Carimbos'}
                             </p>
                           </div>
                         </div>
@@ -1351,7 +1379,12 @@ function CustomersPageContent() {
                             {business?.name ?? 'Esta loja'}
                           </p>
                           <p className="text-[11px] text-[var(--color-neutral-400)]">
-                            Esta loja · {profile.pools.stamps} carimbos ·{' '}
+                            Esta loja ·{' '}
+                            {stampLine(
+                              profile.wallet.stampDestinations,
+                              profile.pools.stamps,
+                            )}{' '}
+                            ·{' '}
                             {profile.pools.points} pontos
                             {(profile.pools.cashbackCents ?? 0) > 0
                               ? ` · ${formatMoney(profile.pools.cashbackCents ?? 0)} cashback`
@@ -1415,9 +1448,11 @@ function CustomersPageContent() {
                             );
                           }
                           const current =
-                            camp.type === 'spend'
-                              ? profile.pools.points
-                              : profile.pools.stamps;
+                            typeof camp.balance === 'number'
+                              ? camp.balance
+                              : camp.type === 'spend'
+                                ? profile.pools.points
+                                : profile.pools.stamps;
                           const inCycle = camp.canRedeem
                             ? camp.unitsNeeded
                             : current % camp.unitsNeeded;

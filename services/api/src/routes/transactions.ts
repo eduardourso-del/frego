@@ -26,6 +26,10 @@ import {
   reverseBlockForEarn,
   reverseBlockMessage,
 } from '../lib/tx-reverse.js';
+import {
+  loadEarnStampDestinations,
+  resolveStampEarnCampaignId,
+} from '../lib/stamp-destination.js';
 
 const createTxBody = z.object({
   membershipId: z.string().min(1),
@@ -146,9 +150,33 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       quantity = 0;
     }
 
+    let stampCampaignId: string | null = null;
+    let stampEarn: { cartela: boolean; label: string; balance: number } | null =
+      null;
     if (unitKind === 'stamps') {
       // Carimbo is visit/earn only — never a sale, never cashback.
       amountCents = null;
+      const destinations = await loadEarnStampDestinations(auth.businessId);
+      const resolved = resolveStampEarnCampaignId(
+        destinations,
+        body.campaignId,
+      );
+      if (!resolved.ok) {
+        return reply.code(400).send({
+          error: resolved.error,
+          message: resolved.message,
+        });
+      }
+      stampCampaignId = resolved.campaignId;
+      const chosen =
+        destinations.find((d) =>
+          stampCampaignId
+            ? d.campaignId === stampCampaignId
+            : !d.cartela && d.earnable,
+        ) ?? null;
+      stampEarn = chosen
+        ? { cartela: chosen.cartela, label: chosen.label, balance: 0 }
+        : null;
     }
 
     const applyRequested = unitKind === 'stamps' ? 0 : requestedApply;
@@ -220,7 +248,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
               data: {
                 businessId: auth.businessId,
                 membershipId: membership.id,
-                campaignId: null,
+                campaignId: unitKind === 'stamps' ? stampCampaignId : null,
                 locationId,
                 actorTeamMemberId: auth.teamMemberId,
                 type: 'stamp',
@@ -274,7 +302,27 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       });
       message = `${reais} — saldo ${cashbackLabel(wallet.pools.cashbackCents)}`;
     } else {
-      message = `+${quantity} carimbo${quantity > 1 ? 's' : ''} — saldo ${wallet.pools.stamps}`;
+      const earned = stampEarn;
+      const row = earned
+        ? wallet.stampDestinations.find((d) =>
+            earned.cartela
+              ? d.campaignId === stampCampaignId
+              : !d.cartela,
+          )
+        : undefined;
+      if (stampEarn && row) {
+        stampEarn = {
+          cartela: row.cartela,
+          label: row.label,
+          balance: row.balance,
+        };
+      }
+      const qty =
+        quantity === 1 ? '+1 carimbo' : `+${quantity} carimbos`;
+      const saldo = stampEarn?.balance ?? wallet.pools.stamps;
+      message = stampEarn?.cartela
+        ? `${qty} · ${stampEarn.label} — saldo ${saldo}`
+        : `${qty} — saldo ${saldo}`;
     }
     if (applied > 0) {
       message += ` · −${cashbackLabel(applied)} cashback`;
@@ -294,6 +342,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       cashbackCents: cashbackEarned > 0 ? cashbackEarned : null,
       transactionId: created.earnTx?.id ?? created.cashbackTx?.id ?? null,
       wallet,
+      stampEarn: unitKind === 'stamps' ? stampEarn : null,
       log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
 
@@ -404,7 +453,13 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
 
     const campaigns = await prisma.campaign.findMany({
       where: { businessId: auth.businessId },
-      select: { id: true, type: true, stampsNeeded: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        cartela: true,
+        stampsNeeded: true,
+      },
     });
     const metaById = new Map(
       campaigns.map((c) => [c.id, c]),
@@ -416,11 +471,14 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       events.cashback,
       business.cashbackExpireDays,
     );
+    const cartelaPools = [...events.cartelas.values()].map((cartelaEvents) =>
+      poolLotsFifo(cartelaEvents, business.stampsExpireDays),
+    );
 
     for (const tx of toReverse) {
       if (tx.type !== 'stamp') continue;
       const state = earnLotStateFromPools(
-        [stampPool, pointPool, cashbackPool],
+        [stampPool, pointPool, cashbackPool, ...cartelaPools],
         tx.id,
       );
       const block = reverseBlockForEarn(state, tx.quantity);

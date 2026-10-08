@@ -10,6 +10,7 @@ import '../../ui/campaign_order.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import 'campaign_detail_page.dart';
 import 'earn_detail_page.dart';
@@ -176,6 +177,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     final points = (pools['points'] as num?)?.toInt() ?? 0;
     final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
     final wallet = _data?['wallet'] as Map<String, dynamic>?;
+    final stampRows = stampDestinationsOf(wallet ?? _data ?? {});
     final stampsExpireDays = (wallet?['stampsExpireDays'] as num?)?.toInt() ??
         (business?['stampsExpireDays'] as num?)?.toInt();
     final pointsExpireDays = (wallet?['pointsExpireDays'] as num?)?.toInt() ??
@@ -231,6 +233,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                   cupertino: cupertino,
                   business: business,
                   stamps: stamps,
+                  stampRows: stampRows,
                   points: points,
                   cashbackCents: cashbackCents,
                   stampsExpireDays: stampsExpireDays,
@@ -249,6 +252,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     required bool cupertino,
     required Map<String, dynamic>? business,
     required int stamps,
+    required List<Map<String, dynamic>> stampRows,
     required int points,
     required int cashbackCents,
     required int? stampsExpireDays,
@@ -393,8 +397,21 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (earnKinds.contains('stamps') || stamps > 0)
-                _MiniStat(label: 'Carimbos', value: '$stamps'),
+              if (stampRows.length > 1)
+                for (final dest in stampRows)
+                  _MiniStat(
+                    label: dest['label'] as String? ?? 'Carimbos',
+                    value: '${(dest['balance'] as num?)?.toInt() ?? 0}',
+                  )
+              else if (earnKinds.contains('stamps') ||
+                  stamps > 0 ||
+                  stampRows.isNotEmpty)
+                _MiniStat(
+                  label: 'Carimbos',
+                  value: stampRows.length == 1
+                      ? '${(stampRows.first['balance'] as num?)?.toInt() ?? stamps}'
+                      : '$stamps',
+                ),
               if (earnKinds.contains('points') || points > 0)
                 _MiniStat(label: 'Pontos', value: '$points'),
               if (earnKinds.contains('cashback') || cashbackCents > 0)
@@ -529,9 +546,11 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       ),
       const SizedBox(height: 4),
       Text(
-        campaigns.any((c) => c['type'] == 'cashback')
-            ? 'Cashback primeiro — o saldo é descontado no caixa. Depois, carimbos e pontos.'
-            : 'O mesmo cartão que a loja configura — progresso e prêmio ao vivo.',
+        stampRows.length > 1
+            ? 'Cada cartela tem o seu saldo e só troca o prêmio dela. Os outros prêmios de carimbo usam o mesmo saldo.'
+            : campaigns.any((c) => c['type'] == 'cashback')
+                ? 'Cashback primeiro — o saldo é descontado no caixa. Depois, carimbos e pontos.'
+                : 'O mesmo cartão que a loja configura — progresso e prêmio ao vivo.',
         style: const TextStyle(
           fontSize: 13,
           height: 1.35,
@@ -560,11 +579,12 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           final isCashback = type == 'cashback';
           final cashbackBalance =
               (c['cashbackBalanceCents'] as num?)?.toInt() ?? cashbackCents;
-          final pool = type == 'spend'
-              ? points
-              : isCashback
-                  ? cashbackBalance
-                  : stamps;
+          final pool = campaignUnits(
+            c,
+            stamps: stamps,
+            points: points,
+            cashbackCents: cashbackBalance,
+          );
           final isBirthday = type == 'birthday';
           final isPromo = type == 'promo';
           final lockedReason = c['lockedReason'] as String?;
@@ -669,6 +689,10 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               audienceUnlocked: audienceEligible && !audienceLocked,
               audienceLabel: unlockMessage ??
                   (audienceEligible ? 'Conquista liberada pra você' : null),
+              scopeLabel: stampScopeLabel(
+                c,
+                split: stampRows.length > 1,
+              ),
               onRedeem: isCashback || !canRedeem || _redeeming
                   ? null
                   : () => _redeem(c),

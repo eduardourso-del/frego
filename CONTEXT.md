@@ -8,6 +8,14 @@ Loyalty at the till and in the customer’s pocket. The phone number is the cust
 A shop-defined program at a business that may entitle a Prêmio. Kinds: stamps, spend, birthday, cashback, Promoção.
 _Avoid_: offer, promotion (as the name for every Campanha)
 
+**Carimbo**:
+A unit a customer holds at one business toward stamp Campanhas.
+_Avoid_: stamp, ponto, punch
+
+**Cartela**:
+The carimbos that belong to one stamp Campanha and can Resgatar only that Campanha's Prêmio. A stamp Campanha without a Cartela spends the business's shared carimbos.
+_Avoid_: card, cartão, punch card, pool
+
 **Promoção**:
 A Campanha whose Prêmio is entitled by Audience, shop calendar, and a Resgatar frequency cap — not by stamps or points.
 _Avoid_: offer, gift, brinde, perk

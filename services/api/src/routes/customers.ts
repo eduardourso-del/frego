@@ -3,9 +3,13 @@ import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import { normalizeLast4, phoneLast4, toE164 } from '../lib/phone.js';
-import { deriveWallet } from '../lib/wallet.js';
+import { campaignSpendableUnits, deriveWallet } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
 import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
+import {
+  loadEarnStampDestinations,
+  resolveStampEarnCampaignId,
+} from '../lib/stamp-destination.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
 import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
@@ -48,6 +52,8 @@ const createBody = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD')
     .optional(),
   addFirstStamp: z.boolean().optional(),
+  /** Cartela id, or `shared`, when the till has more than one carimbo destination. */
+  campaignId: z.string().min(1).optional(),
   locationId: z.string().optional(),
 });
 
@@ -185,6 +191,9 @@ async function serializeCustomerLookup(
     otherShops,
     wallet,
     pools: wallet?.pools ?? { stamps: 0, points: 0, cashbackCents: 0 },
+    stampDestinations:
+      wallet?.stampDestinations ??
+      (await loadEarnStampDestinations(businessId)),
     pointsPerReal: business?.pointsPerReal ?? 1,
     cashbackPercent: cashbackEarn?.percent ?? 0,
     activeEarnKinds,
@@ -434,9 +443,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
                 ? primary.canRedeem
                   ? 1
                   : 0
-                : primary.type === 'spend'
-                  ? wallet.pools.points
-                  : wallet.pools.stamps,
+                : campaignSpendableUnits(primary, wallet.pools),
             needed:
               primary.type === 'promo' ||
               primary.type === 'birthday' ||
@@ -550,6 +557,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
             tags: tagsByMembership.get(m.id) ?? [],
           })),
           activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
+          stampDestinations: await loadEarnStampDestinations(auth.businessId),
         };
       }
 
@@ -580,6 +588,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           matches: [],
           hint: 'FULL_PHONE',
           activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
+          stampDestinations: await loadEarnStampDestinations(auth.businessId),
         });
       }
 
@@ -598,6 +607,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
             tags: [],
           })),
           activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
+          stampDestinations: await loadEarnStampDestinations(auth.businessId),
         };
       }
 
@@ -621,6 +631,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         found: false,
         phoneE164,
         activeEarnKinds: await activeEarnKindsForBusiness(auth.businessId),
+        stampDestinations: await loadEarnStampDestinations(auth.businessId),
       });
     }
 
@@ -707,24 +718,38 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     let stampTransaction = null;
     let wallet = await deriveWallet(membership.id, auth.businessId);
 
+    let stampEarn: { cartela: boolean; label: string; balance: number } | null =
+      null;
     if (body.addFirstStamp) {
-      const earnKinds = await activeEarnKindsForBusiness(auth.businessId);
-      if (!earnKinds.includes('stamps')) {
+      const destinations = await loadEarnStampDestinations(auth.businessId);
+      const resolved = resolveStampEarnCampaignId(
+        destinations,
+        body.campaignId,
+      );
+      if (!resolved.ok) {
         return reply.code(400).send({
-          error: 'EARN_KIND_INACTIVE',
-          message: 'Esta loja não tem campanha de carimbos ativa.',
+          error: resolved.error,
+          message: resolved.message,
         });
       }
       const locationId = body.locationId ?? auth.locationId;
       if (!locationId) {
         return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
       }
+      const chosen = destinations.find((d) =>
+        resolved.campaignId
+          ? d.campaignId === resolved.campaignId
+          : !d.cartela && d.earnable,
+      );
+      stampEarn = chosen
+        ? { cartela: chosen.cartela, label: chosen.label, balance: 0 }
+        : null;
 
       stampTransaction = await prisma.transaction.create({
         data: {
           businessId: auth.businessId,
           membershipId: membership.id,
-          campaignId: null,
+          campaignId: resolved.campaignId,
           locationId,
           actorTeamMemberId: auth.teamMemberId,
           type: 'stamp',
@@ -734,6 +759,18 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         },
       });
       wallet = await deriveWallet(membership.id, auth.businessId);
+      const matched = wallet.stampDestinations.find((d) =>
+        resolved.campaignId
+          ? d.campaignId === resolved.campaignId
+          : !d.cartela,
+      );
+      if (matched) {
+        stampEarn = {
+          cartela: matched.cartela,
+          label: matched.label,
+          balance: matched.balance,
+        };
+      }
 
       queueEarnNotify({
         businessId: auth.businessId,
@@ -744,6 +781,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         quantity: 1,
         transactionId: stampTransaction.id,
         wallet,
+        stampEarn,
         log: (msg, extra) => request.log.info(extra ?? {}, msg),
       });
     }

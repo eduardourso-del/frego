@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { prisma } from '@frego/db';
 import {
   deriveWallet,
+  isNearRewardCampaign,
   presentCustomerCampaigns,
   type CampaignWalletEntry,
   type WalletSnapshot,
@@ -208,19 +209,11 @@ function aggregateFromTxs(
   };
 }
 
-function isNearRewardFromPools(
+function isNearRewardFromCampaigns(
+  campaigns: CampaignWalletEntry[],
   pools: { stamps: number; points: number },
-  primary: { type: string; unitsNeeded: number } | null,
 ): boolean {
-  if (!primary || primary.unitsNeeded <= 0) return false;
-  const current =
-    primary.type === 'spend' ? pools.points : pools.stamps;
-  const inCycle = current % primary.unitsNeeded;
-  const progress =
-    inCycle === 0 && current > 0
-      ? 1
-      : inCycle / primary.unitsNeeded;
-  return progress >= 0.8 || current >= primary.unitsNeeded;
+  return campaigns.some((c) => isNearRewardCampaign(c, pools));
 }
 
 /**
@@ -313,30 +306,7 @@ export async function loadMembershipAudienceStats(
     const wallets = await Promise.all(
       memberships.map(async (m) => {
         const wallet = await deriveWallet(m.id, businessId);
-        const primary =
-          wallet.campaigns.find(
-            (c) =>
-              c.type !== 'birthday' &&
-              c.type !== 'cashback' &&
-              c.type !== 'promo' &&
-              c.canRedeem,
-          ) ??
-          wallet.campaigns.find(
-            (c) =>
-              c.type !== 'birthday' &&
-              c.type !== 'cashback' &&
-              c.type !== 'promo',
-          ) ??
-          null;
-        return [
-          m.id,
-          isNearRewardFromPools(
-            wallet.pools,
-            primary
-              ? { type: primary.type, unitsNeeded: primary.unitsNeeded }
-              : null,
-          ),
-        ] as const;
+        return [m.id, isNearRewardFromCampaigns(wallet.campaigns, wallet.pools)] as const;
       }),
     );
     nearByMember = new Map(wallets);

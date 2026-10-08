@@ -6,6 +6,7 @@ import '../../ui/adaptive.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/shop_detail_page.dart';
@@ -31,6 +32,7 @@ class _RewardItem {
     required this.points,
     required this.stampsExpireDays,
     required this.pointsExpireDays,
+    required this.stampSplit,
   });
 
   final String businessId;
@@ -40,6 +42,7 @@ class _RewardItem {
   final int points;
   final int? stampsExpireDays;
   final int? pointsExpireDays;
+  final bool stampSplit;
 
   bool get canRedeem => campaign['canRedeem'] == true;
 
@@ -53,6 +56,8 @@ class _RewardItem {
     if (type == 'cashback') {
       return (campaign['cashbackBalanceCents'] as num?)?.toInt() ?? 0;
     }
+    final explicit = campaign['balance'];
+    if (explicit is num) return explicit.toInt();
     return stamps;
   }
 
@@ -136,6 +141,7 @@ class _RewardsPageState extends State<RewardsPage> {
               points: points,
               stampsExpireDays: stampsExpire,
               pointsExpireDays: pointsExpire,
+              stampSplit: stampDestinationsOf(m).length > 1,
             ),
           );
         }
@@ -457,6 +463,10 @@ class _RewardsPageState extends State<RewardsPage> {
                   (audienceEligible
                       ? 'Conquista liberada pra você'
                       : null),
+              scopeLabel: stampScopeLabel(
+                item.campaign,
+                split: item.stampSplit,
+              ),
               onRedeem: type == 'cashback' || !canRedeem || _redeeming
                   ? null
                   : () => _redeem(item),

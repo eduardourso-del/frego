@@ -6,6 +6,11 @@ import {
   evaluateRedeemQuota,
   normalizeWeekdays,
 } from './promo.js';
+import {
+  buildStampDestinations,
+  isCartelaCampaign,
+  type StampDestination,
+} from './stamp-destination.js';
 
 export type UnitKind = 'stamps' | 'points' | 'cashback_cents';
 
@@ -65,6 +70,10 @@ export type CampaignWalletEntry = {
   audienceEligible?: boolean | null;
   audienceName?: string | null;
   audienceUnlockMessage?: string | null;
+  /** Units this Campanha spends. Shared stamp Campanhas share one balance. */
+  balance: number;
+  /** Stamp Campanha whose carimbos do not join the shared pile. */
+  cartela: boolean;
 };
 
 /** Snapshot completo: pools + campanhas elegíveis. */
@@ -79,6 +88,8 @@ export type WalletSnapshot = {
   /** Lotes restantes no saldo (FIFO), com data de ganho e validade. */
   lots: WalletLot[];
   campaigns: CampaignWalletEntry[];
+  /** Shared pile and each active Cartela. One row keeps a single carimbo total. */
+  stampDestinations: StampDestination[];
 };
 
 export type WalletLot = {
@@ -90,6 +101,8 @@ export type WalletLot = {
   expiresAt: string | null;
   /** Dias restantes até expirar (0 = último dia). null se não expira. */
   daysLeft: number | null;
+  /** Cartela name, or Carimbos / the single shared Campanha. Null for points and cashback. */
+  destinationLabel: string | null;
 };
 
 const LOYALTY_TYPES = ['stamps', 'spend'] as const;
@@ -115,7 +128,38 @@ type CampaignMeta = {
   id: string;
   type: string;
   stampsNeeded: number | null;
+  cartela: boolean;
+  name: string;
 };
+
+export function campaignSpendableUnits(
+  campaign: { type: string; cartela?: boolean; balance?: number },
+  pools: { stamps: number; points: number },
+): number {
+  if (campaign.type === 'spend') return pools.points;
+  if (campaign.type !== 'stamps') return 0;
+  if (campaign.cartela) return campaign.balance ?? 0;
+  return pools.stamps;
+}
+
+/** Perto do prêmio: 80% of the way on the balance that Campanha spends. */
+export function isNearRewardCampaign(
+  campaign: {
+    type: string;
+    unitsNeeded: number;
+    cartela?: boolean;
+    balance?: number;
+  },
+  pools: { stamps: number; points: number },
+): boolean {
+  if (campaign.type !== 'stamps' && campaign.type !== 'spend') return false;
+  if (campaign.unitsNeeded <= 0) return false;
+  const current = campaignSpendableUnits(campaign, pools);
+  const inCycle = current % campaign.unitsNeeded;
+  const progress =
+    inCycle === 0 && current > 0 ? 1 : inCycle / campaign.unitsNeeded;
+  return progress >= 0.8 || current >= campaign.unitsNeeded;
+}
 
 export type { CampaignMeta as CampaignKindMeta };
 
@@ -311,6 +355,7 @@ function lotDaysLeft(expiresAt: Date | null, now = new Date()): number | null {
 function toWalletLots(
   unitKind: UnitKind,
   lots: Lot[],
+  destinationLabel: string | null,
   now = new Date(),
 ): WalletLot[] {
   return lots.map((lot) => ({
@@ -321,6 +366,7 @@ function toWalletLots(
       ? lot.expiresAt.toISOString().slice(0, 10)
       : null,
     daysLeft: lotDaysLeft(lot.expiresAt, now),
+    destinationLabel,
   }));
 }
 
@@ -348,6 +394,7 @@ export async function deriveWallet(
         id: true,
         name: true,
         type: true,
+        cartela: true,
         stampsNeeded: true,
         pointsPerReal: true,
         rewardTitle: true,
@@ -403,8 +450,10 @@ export async function deriveWallet(
   for (const c of campaigns) {
     metaById.set(c.id, {
       id: c.id,
+      name: c.name,
       type: c.type,
       stampsNeeded: c.stampsNeeded,
+      cartela: c.cartela,
     });
   }
 
@@ -418,17 +467,32 @@ export async function deriveWallet(
   if (missingIds.length > 0) {
     const extra = await prisma.campaign.findMany({
       where: { id: { in: missingIds }, businessId },
-      select: { id: true, type: true, stampsNeeded: true },
+      select: { id: true, name: true, type: true, cartela: true, stampsNeeded: true },
     });
     for (const c of extra) metaById.set(c.id, c);
   }
 
-  const { stamps: stampEvents, points: pointEvents, cashback: cashbackEvents } =
-    ledgerPoolEvents(transactions as LedgerTx[], metaById);
+  const {
+    stamps: stampEvents,
+    points: pointEvents,
+    cashback: cashbackEvents,
+    cartelas: cartelaEvents,
+  } = ledgerPoolEvents(transactions as LedgerTx[], metaById);
 
   const stampPool = poolLotsFifo(stampEvents, stampsExpireDays);
   const pointPool = poolLotsFifo(pointEvents, pointsExpireDays);
   const cashbackPool = poolLotsFifo(cashbackEvents, cashbackExpireDays);
+  const cartelaPools = new Map<
+    string,
+    { balance: number; lots: Lot[] }
+  >();
+  for (const [campaignId, events] of cartelaEvents) {
+    const pooled = poolLotsFifo(events, stampsExpireDays);
+    cartelaPools.set(campaignId, {
+      balance: pooled.balance,
+      lots: pooled.lots,
+    });
+  }
 
   const pools: WalletPools = {
     stamps: stampPool.balance,
@@ -436,10 +500,28 @@ export async function deriveWallet(
     cashbackCents: cashbackPool.balance,
   };
 
+  const sharedLabel =
+    campaigns.filter(
+      (c) =>
+        (c.type === 'stamps' || c.type === 'visits') && !c.cartela,
+    ).length === 1
+      ? campaigns.find(
+          (c) =>
+            (c.type === 'stamps' || c.type === 'visits') && !c.cartela,
+        )!.name
+      : 'Carimbos';
+
   const lots: WalletLot[] = [
-    ...toWalletLots('stamps', stampPool.lots),
-    ...toWalletLots('points', pointPool.lots),
-    ...toWalletLots('cashback_cents', cashbackPool.lots),
+    ...toWalletLots('stamps', stampPool.lots, sharedLabel),
+    ...[...cartelaPools.entries()].flatMap(([campaignId, pooled]) =>
+      toWalletLots(
+        'stamps',
+        pooled.lots,
+        metaById.get(campaignId)?.name ?? 'Cartela',
+      ),
+    ),
+    ...toWalletLots('points', pointPool.lots, null),
+    ...toWalletLots('cashback_cents', cashbackPool.lots, null),
   ].sort((a, b) => {
     // Soonest expiry first; non-expiring last
     if (a.expiresAt == null && b.expiresAt == null) {
@@ -461,8 +543,13 @@ export async function deriveWallet(
     const needed =
       campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
     const kind = campaignUnitKind(campaign.type) ?? 'stamps';
-    const pool = kind === 'points' ? pools.points : pools.stamps;
-    const poolRewards = Math.floor(pool / needed);
+    const cartela = isCartelaCampaign(campaign);
+    const balance = cartela
+      ? (cartelaPools.get(campaign.id)?.balance ?? 0)
+      : kind === 'points'
+        ? pools.points
+        : pools.stamps;
+    const poolRewards = Math.floor(balance / needed);
     const quota =
       campaign.type === 'stamps'
         ? evaluateRedeemQuota(
@@ -500,6 +587,8 @@ export async function deriveWallet(
       audienceEligible: campaign.audienceSegmentId ? null : null,
       audienceName: null,
       audienceUnlockMessage: null,
+      balance,
+      cartela,
     };
   });
 
@@ -541,6 +630,8 @@ export async function deriveWallet(
       audienceEligible: null,
       audienceName: null,
       audienceUnlockMessage: null,
+      balance: 0,
+      cartela: false,
     });
   }
 
@@ -574,6 +665,8 @@ export async function deriveWallet(
       audienceEligible: null,
       audienceName: null,
       audienceUnlockMessage: null,
+      balance: 0,
+      cartela: false,
     });
   }
 
@@ -596,8 +689,21 @@ export async function deriveWallet(
       audienceEligible: null,
       audienceName: null,
       audienceUnlockMessage: null,
+      balance: 0,
+      cartela: false,
     });
   }
+
+  const activeShared = campaigns
+    .filter((c) => c.type === 'stamps' && !c.cartela)
+    .map((c) => ({ id: c.id, name: c.name }));
+  const activeCartelas = campaigns
+    .filter((c) => isCartelaCampaign(c))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      balance: cartelaPools.get(c.id)?.balance ?? 0,
+    }));
 
   return {
     pools,
@@ -607,6 +713,11 @@ export async function deriveWallet(
     cashbackPercent,
     lots,
     campaigns: entries,
+    stampDestinations: buildStampDestinations({
+      sharedBalance: pools.stamps,
+      activeShared,
+      activeCartelas,
+    }),
   };
 }
 
@@ -649,10 +760,22 @@ export function presentCustomerCampaigns(
 export function ledgerPoolEvents(
   transactions: LedgerTx[],
   metaById: Map<string, CampaignMeta>,
-): { stamps: PoolEvent[]; points: PoolEvent[]; cashback: PoolEvent[] } {
+): {
+  stamps: PoolEvent[];
+  points: PoolEvent[];
+  cashback: PoolEvent[];
+  cartelas: Map<string, PoolEvent[]>;
+} {
   const stamps: PoolEvent[] = [];
   const points: PoolEvent[] = [];
   const cashback: PoolEvent[] = [];
+  const cartelas = new Map<string, PoolEvent[]>();
+
+  const pushCartela = (campaignId: string, event: PoolEvent) => {
+    const list = cartelas.get(campaignId) ?? [];
+    list.push(event);
+    cartelas.set(campaignId, list);
+  };
 
   for (const tx of transactions) {
     if (shouldOmitFromLedger(tx.metadata)) continue;
@@ -667,7 +790,16 @@ export function ledgerPoolEvents(
       };
       if (kind === 'points') points.push(event);
       else if (kind === 'cashback_cents') cashback.push(event);
-      else if (kind === 'stamps') stamps.push(event);
+      else if (kind === 'stamps') {
+        const campaign = tx.campaignId
+          ? metaById.get(tx.campaignId)
+          : undefined;
+        if (campaign && isCartelaCampaign(campaign)) {
+          pushCartela(campaign.id, event);
+        } else {
+          stamps.push(event);
+        }
+      }
       continue;
     }
 
@@ -705,11 +837,12 @@ export function ledgerPoolEvents(
         id: tx.id,
       };
       if (kind === 'points') points.push(event);
+      else if (isCartelaCampaign(campaign)) pushCartela(campaign.id, event);
       else stamps.push(event);
     }
   }
 
-  return { stamps, points, cashback };
+  return { stamps, points, cashback, cartelas };
 }
 
 function resolveEarnUnitKind(

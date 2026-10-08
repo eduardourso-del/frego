@@ -70,6 +70,7 @@ export async function notifyEarnPush(
         amountCents: input.amountCents,
         cashbackCents: input.cashbackCents,
         wallet: input.wallet,
+        stampEarn: input.stampEarn,
       }),
     );
 

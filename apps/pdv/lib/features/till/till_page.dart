@@ -71,6 +71,7 @@ class _TillPageState extends State<TillPage> {
   final _applyFocus = FocusNode();
 
   EarnMode _mode = EarnMode.stamps;
+  String? _stampTarget;
   _TillTask _task = _TillTask.earn;
   List<String> _earnKinds = const [];
   List<CustomerTag> _catalog = const [];
@@ -630,8 +631,13 @@ class _TillPageState extends State<TillPage> {
         background: _createActionColor(),
       );
     }
+    final earnableStamps = lookup.stampDestinations.where((d) => d.earnable);
+    final needsStampPick = _mode == EarnMode.stamps &&
+        earnableStamps.length > 1 &&
+        _stampTarget == null;
     final earnDisabled =
         _loading ||
+        needsStampPick ||
         (lookup.associatedHere && !_canEarn && lookup.cashbackCents <= 0);
     return _TillCta(
       label: _earnCtaLabel(lookup),
@@ -913,6 +919,18 @@ class _TillPageState extends State<TillPage> {
       });
       return;
     }
+    final earnable =
+        _lookup?.stampDestinations.where((d) => d.earnable).length ?? 0;
+    if (withEarn &&
+        _mode == EarnMode.stamps &&
+        earnable > 1 &&
+        _stampTarget == null) {
+      setState(() {
+        _error = 'Escolha onde o carimbo entra.';
+        _loading = false;
+      });
+      return;
+    }
     if (withEarn &&
         (_mode == EarnMode.points || _mode == EarnMode.cashback) &&
         _amountCents == null) {
@@ -931,6 +949,7 @@ class _TillPageState extends State<TillPage> {
         phone: phone,
         addFirstStamp: _mode == EarnMode.stamps && withEarn && _amountCents == null,
         displayName: _optionalCreateName,
+        campaignId: _mode == EarnMode.stamps ? _stampTarget : null,
       );
       setState(
         () => _lookup = created.copyWith(
@@ -982,6 +1001,15 @@ class _TillPageState extends State<TillPage> {
       });
       return;
     }
+    final earnable =
+        _lookup?.stampDestinations.where((d) => d.earnable).length ?? 0;
+    if (unitKind == 'stamps' && earnable > 1 && _stampTarget == null) {
+      setState(() {
+        _error = 'Escolha onde o carimbo entra.';
+        _loading = false;
+      });
+      return;
+    }
     if ((unitKind == 'points' ||
             unitKind == 'cashback' ||
             applyingLeftover) &&
@@ -1002,6 +1030,7 @@ class _TillPageState extends State<TillPage> {
         unitKind: unitKind,
         amountCents: unitKind == 'stamps' ? null : _amountCents,
         quantity: unitKind == 'stamps' ? 1 : null,
+        campaignId: unitKind == 'stamps' ? _stampTarget : null,
         applyCashbackCents: applyingLeftover ? _applyCents : null,
       );
       setState(() {
@@ -1011,8 +1040,12 @@ class _TillPageState extends State<TillPage> {
           stamps: result.stamps,
           points: result.points,
           cashbackCents: result.cashbackCents,
+          stampDestinations: result.stampDestinations.isEmpty
+              ? null
+              : result.stampDestinations,
           recentSales: prependSale(_lookup?.recentSales ?? const [], result.sale),
         );
+        _stampTarget = null;
         _amount.clear();
         _applyAmount.clear();
         _applyCashback = false;
@@ -1086,6 +1119,7 @@ class _TillPageState extends State<TillPage> {
   void _resetLookup() {
     setState(() {
       _lookup = null;
+      _stampTarget = null;
       _error = null;
       _voucherResult = null;
       _lastSale = null;
@@ -1208,7 +1242,10 @@ class _TillPageState extends State<TillPage> {
               _ModeToggle(
                 mode: _mode,
                 modes: _availableModes,
-                onChanged: (mode) => setState(() => _mode = mode),
+                onChanged: (mode) => setState(() {
+                  _mode = mode;
+                  _stampTarget = null;
+                }),
               ),
               const SizedBox(height: 16),
             ] else if (_availableModes.isEmpty) ...[
@@ -1413,6 +1450,36 @@ class _TillPageState extends State<TillPage> {
                   ],
                 ),
               ),
+            ],
+            if (_lookup != null &&
+                _mode == EarnMode.stamps &&
+                _lookup!.stampDestinations.where((d) => d.earnable).length >
+                    1) ...[
+              const Text(
+                'ONDE ENTRA O CARIMBO',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.4,
+                  color: FregoColors.neutral400,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final dest in _lookup!.stampDestinations
+                      .where((d) => d.earnable))
+                    ChoiceChip(
+                      label: Text(dest.label),
+                      selected: _stampTarget == dest.key,
+                      onSelected: (_) =>
+                          setState(() => _stampTarget = dest.key),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
             ],
             if (_lookup != null && _lookup!.found && !(_lookup!.multiple)) ...[
               const SizedBox(height: 16),
@@ -1933,7 +2000,10 @@ class _CustomerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showStamps = earnKinds.contains('stamps') || lookup.stamps > 0;
+    final stampRows = lookup.stampDestinations;
+    final showStamps = earnKinds.contains('stamps') ||
+        lookup.stamps > 0 ||
+        stampRows.isNotEmpty;
     final showPoints = earnKinds.contains('points') || lookup.points > 0;
     final showCashback =
         earnKinds.contains('cashback') ||
@@ -2030,44 +2100,50 @@ class _CustomerCard extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 12),
-          if (showStamps || showPoints)
-            Row(
-              children: [
-                if (showStamps)
-                  Expanded(
-                    child: _PoolTile(
-                      label: 'Carimbos',
-                      value: '${lookup.stamps}',
-                      color: FregoColors.stamps,
-                      background: FregoColors.stampsBg,
-                      ring: FregoColors.stampsRing,
-                    ),
-                  ),
-                if (showStamps && showPoints) const SizedBox(width: 8),
-                if (showPoints)
-                  Expanded(
-                    child: _PoolTile(
-                      label: 'Pontos',
-                      value: '${lookup.points}',
-                      color: FregoColors.points,
-                      background: FregoColors.pointsBg,
-                      ring: FregoColors.pointsRing,
-                    ),
-                  ),
-              ],
-            ),
-          if (showCashback) ...[
-            const SizedBox(height: 8),
-            _PoolTile(
-              label: 'Cashback',
-              value: formatBrl(lookup.cashbackCents),
-              color: FregoColors.cashback,
-              background: FregoColors.cashbackBg,
-              ring: FregoColors.cashbackRing,
-              caption: cashbackPercent > 0 && mode == EarnMode.cashback
-                  ? '$cashbackPercent% do valor pago'
-                  : null,
-            ),
+          _BalanceGrid(
+            tiles: [
+              if (showStamps && stampRows.length > 1)
+                for (final dest in stampRows)
+                  _PoolTile(
+                    label: dest.label,
+                    value: '${dest.balance}',
+                    color: FregoColors.stamps,
+                    background: FregoColors.stampsBg,
+                    ring: FregoColors.stampsRing,
+                  )
+              else if (showStamps)
+                _PoolTile(
+                  label: stampRows.length == 1
+                      ? stampRows.first.label
+                      : 'Carimbos',
+                  value: stampRows.length == 1
+                      ? '${stampRows.first.balance}'
+                      : '${lookup.stamps}',
+                  color: FregoColors.stamps,
+                  background: FregoColors.stampsBg,
+                  ring: FregoColors.stampsRing,
+                ),
+              if (showPoints)
+                _PoolTile(
+                  label: 'Pontos',
+                  value: '${lookup.points}',
+                  color: FregoColors.points,
+                  background: FregoColors.pointsBg,
+                  ring: FregoColors.pointsRing,
+                ),
+              if (showCashback)
+                _PoolTile(
+                  label: 'Cashback',
+                  value: formatBrl(lookup.cashbackCents),
+                  color: FregoColors.cashback,
+                  background: FregoColors.cashbackBg,
+                  ring: FregoColors.cashbackRing,
+                  caption: cashbackPercent > 0 && mode == EarnMode.cashback
+                      ? '$cashbackPercent% do valor pago'
+                      : null,
+                ),
+            ],
+          ),
             if (lookup.cashbackCents > 0 && mode != EarnMode.stamps)
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2144,7 +2220,6 @@ class _CustomerCard extends StatelessWidget {
                   ),
                 ],
               ),
-          ],
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: Text(
@@ -2293,6 +2368,42 @@ class _CustomerCard extends StatelessWidget {
   }
 }
 
+/// Equal tiles. Pairs share a row; a leftover tile spans the card.
+class _BalanceGrid extends StatelessWidget {
+  const _BalanceGrid({required this.tiles});
+
+  final List<Widget> tiles;
+
+  @override
+  Widget build(BuildContext context) {
+    if (tiles.isEmpty) return const SizedBox.shrink();
+    const gap = 8.0;
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      final left = tiles[i];
+      final right = i + 1 < tiles.length ? tiles[i + 1] : null;
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(top: rows.isEmpty ? 0 : gap),
+          child: right == null
+              ? left
+              : IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: left),
+                      const SizedBox(width: gap),
+                      Expanded(child: right),
+                    ],
+                  ),
+                ),
+        ),
+      );
+    }
+    return Column(children: rows);
+  }
+}
+
 class _PoolTile extends StatelessWidget {
   const _PoolTile({
     required this.label,
@@ -2313,6 +2424,7 @@ class _PoolTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: background,
@@ -2324,6 +2436,8 @@ class _PoolTile extends StatelessWidget {
         children: [
           Text(
             label.toUpperCase(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,

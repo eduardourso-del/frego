@@ -51,8 +51,17 @@ type TillFocus = 'none' | 'voucher' | 'phone' | 'fullPhone' | 'amount' | 'apply'
 type TillTask = 'earn' | 'voucher';
 type CounterOverlay = 'matches' | 'vouchers' | 'sales' | 'tags' | 'scan' | null;
 
+type StampDestination = {
+  campaignId: string | null;
+  label: string;
+  balance: number;
+  cartela: boolean;
+  earnable: boolean;
+};
+
 type WalletSnapshot = {
   pools: { stamps: number; points: number; cashbackCents?: number };
+  stampDestinations?: StampDestination[];
   campaigns?: Array<{
     campaignId: string;
     campaignName: string;
@@ -118,6 +127,7 @@ type LookupResult = {
   openVouchers?: OpenVoucher[];
   recentSales?: CounterSale[];
   activeEarnKinds?: EarnMode[];
+  stampDestinations?: StampDestination[];
   error?: string;
 };
 
@@ -131,6 +141,12 @@ function parseEarnKinds(raw: unknown): EarnMode[] {
   if (!Array.isArray(raw)) return [];
   const allowed = new Set<EarnMode>(['stamps', 'points', 'cashback']);
   return raw.filter((k): k is EarnMode => allowed.has(k as EarnMode));
+}
+
+function stampDestinationsFrom(lookup: LookupResult | null): StampDestination[] {
+  const raw =
+    lookup?.wallet?.stampDestinations ?? lookup?.stampDestinations ?? [];
+  return raw.filter((d) => typeof d.label === 'string');
 }
 
 function poolsFrom(lookup: LookupResult | null) {
@@ -149,6 +165,7 @@ export default function CounterPage() {
   const [createName, setCreateName] = useState('');
   const [amount, setAmount] = useState('');
   const [earnMode, setEarnMode] = useState<EarnMode>('stamps');
+  const [stampTarget, setStampTarget] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<LookupResult | null>(null);
@@ -583,6 +600,14 @@ export default function CounterPage() {
       setLoading(false);
       return;
     }
+    const addingStamp =
+      earnMode === 'stamps' && withEarn && amountCents == null;
+    const earnable = stampDestinationsFrom(lookup).filter((d) => d.earnable);
+    if (addingStamp && earnable.length > 1 && !stampTarget) {
+      setError('Escolha onde o carimbo entra.');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -593,6 +618,9 @@ export default function CounterPage() {
         body: JSON.stringify({
           phone,
           addFirstStamp: earnMode === 'stamps' && withEarn && amountCents == null,
+          ...(earnMode === 'stamps' && withEarn && stampTarget
+            ? { campaignId: stampTarget }
+            : {}),
           ...(name ? { displayName: name } : {}),
         }),
       });
@@ -606,12 +634,15 @@ export default function CounterPage() {
         membership: data.membership,
         wallet: data.wallet,
         pools: data.pools ?? data.wallet?.pools,
+        stampDestinations:
+          data.wallet?.stampDestinations ?? data.stampDestinations,
         pointsPerReal,
         cashbackPercent,
         cashback: data.cashback,
         recentSales: data.sale ? [data.sale as CounterSale] : [],
       });
       rememberSale(data.sale as CounterSale | undefined);
+      setStampTarget(null);
 
       if (
         withEarn &&
@@ -648,6 +679,14 @@ export default function CounterPage() {
       setLoading(false);
       return;
     }
+    if (unitKind === 'stamps') {
+      const earnable = stampDestinationsFrom(lookup).filter((d) => d.earnable);
+      if (earnable.length > 1 && !stampTarget) {
+        setError('Escolha onde o carimbo entra.');
+        setLoading(false);
+        return;
+      }
+    }
     if (
       (unitKind === 'points' ||
         unitKind === 'cashback' ||
@@ -672,6 +711,9 @@ export default function CounterPage() {
             ? { amountCents }
             : {}),
           ...(unitKind === 'stamps' ? { quantity: 1 } : {}),
+          ...(unitKind === 'stamps' && stampTarget
+            ? { campaignId: stampTarget }
+            : {}),
           ...(applyingLeftover ? { applyCashbackCents: applyCents } : {}),
         }),
       });
@@ -689,6 +731,7 @@ export default function CounterPage() {
             associatedHere: true,
             membership: prev.membership ?? { id: mid, isVip: false },
             wallet: data.wallet,
+            stampDestinations: data.wallet?.stampDestinations,
             pools: nextPools,
             cashback: prev.cashback
               ? {
@@ -706,6 +749,7 @@ export default function CounterPage() {
         );
       });
       rememberSale(sale);
+      setStampTarget(null);
       setToast(sale ? null : data.message);
       setAmount('');
       setApplyAmount('');
@@ -876,6 +920,10 @@ export default function CounterPage() {
     }
   }
 
+  const stampDestinations = stampDestinationsFrom(lookup);
+  const earnableStamps = stampDestinations.filter((d) => d.earnable);
+  const needsStampPick =
+    earnMode === 'stamps' && earnableStamps.length > 1 && !stampTarget;
   const openVouchers = lookup?.openVouchers ?? [];
   const canApplyLeftover = cashbackBalance > 0;
   const showStampsPool = earnKinds.includes('stamps') || pools.stamps > 0;
@@ -1013,10 +1061,12 @@ export default function CounterPage() {
             lookup.associatedHere &&
             !canEarn &&
             !canApplyLeftover,
-        )));
+        ) ||
+        needsStampPick));
 
   function startNewSearch() {
     setLookup(null);
+    setStampTarget(null);
     setError(null);
     setVoucherResult(null);
     setApplyCashback(false);
@@ -1373,6 +1423,34 @@ export default function CounterPage() {
           </p>
         ) : null}
 
+        {earnMode === 'stamps' && earnableStamps.length > 1 && lookup ? (
+          <div className="mb-3 flex flex-col gap-1.5">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+              Onde entra o carimbo
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {earnableStamps.map((dest) => {
+                const key = dest.campaignId ?? 'shared';
+                const selected = stampTarget === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setStampTarget(key)}
+                    className={`min-h-11 rounded-full px-3 text-[13px] font-semibold ${
+                      selected
+                        ? 'bg-[var(--color-stamps)] text-white'
+                        : 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]'
+                    }`}
+                  >
+                    {dest.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
         {lookup ? null : (
         <form onSubmit={doLookup} className="flex flex-col gap-3">
           <label className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-700)]">
@@ -1536,16 +1614,32 @@ export default function CounterPage() {
                     : 'grid-cols-1'
               }`}
             >
-              {showStampsPool && (
+              {showStampsPool && stampDestinations.length > 1 ? (
+                <div className="col-span-full flex flex-col gap-1.5">
+                  {stampDestinations.map((dest) => (
+                    <div
+                      key={dest.campaignId ?? 'shared'}
+                      className="flex items-baseline justify-between rounded-[14px] bg-[var(--color-stamps-bg)] px-2.5 py-2 ring-1 ring-inset ring-[var(--color-stamps-ring)]"
+                    >
+                      <p className="text-[12px] font-semibold text-[var(--color-stamps)]">
+                        {dest.label}
+                      </p>
+                      <p className="text-[18px] font-semibold leading-none text-[var(--color-ink)]">
+                        {dest.balance}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : showStampsPool ? (
                 <div className="rounded-[14px] bg-[var(--color-stamps-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-stamps-ring)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-stamps)]">
-                    Carimbos
+                    {stampDestinations[0]?.label ?? 'Carimbos'}
                   </p>
                   <p className="mt-0.5 text-[22px] font-semibold leading-none text-[var(--color-ink)]">
-                    {pools.stamps}
+                    {stampDestinations[0]?.balance ?? pools.stamps}
                   </p>
                 </div>
-              )}
+              ) : null}
               {showPointsPool && (
                 <div className="rounded-[14px] bg-[var(--color-points-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-points-ring)]">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-points)]">

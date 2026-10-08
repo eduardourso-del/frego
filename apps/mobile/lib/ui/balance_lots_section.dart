@@ -179,9 +179,12 @@ class BalanceLotTile extends StatelessWidget {
         : isPoints
             ? (qty == 1 ? 'ponto' : 'pontos')
             : (qty == 1 ? 'carimbo' : 'carimbos');
+    final destination = lot['destinationLabel'] as String?;
     final qtyLabel = isCashback
         ? '+${_formatBrl(qty)} cashback'
-        : '+$qty $unitLabel';
+        : destination != null && destination.isNotEmpty && !isPoints
+            ? '+$qty $unitLabel · $destination'
+            : '+$qty $unitLabel';
     final expiring = daysLeft != null && expiresAt != null && daysLeft <= 14;
     final urgent = daysLeft != null && daysLeft <= 7;
 

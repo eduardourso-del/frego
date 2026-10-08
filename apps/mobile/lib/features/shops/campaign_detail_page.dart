@@ -9,6 +9,7 @@ import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/shop_summary_card.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import 'shop_detail_page.dart';
 
@@ -242,6 +243,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     final points = (pools['points'] as num?)?.toInt() ?? 0;
     final cashbackCents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
     final wallet = _data?['wallet'] as Map<String, dynamic>?;
+    final stampRows = stampDestinationsOf(wallet ?? _data ?? {});
     final stampsExpireDays = (wallet?['stampsExpireDays'] as num?)?.toInt() ??
         (business?['stampsExpireDays'] as num?)?.toInt();
     final pointsExpireDays = (wallet?['pointsExpireDays'] as num?)?.toInt() ??
@@ -258,11 +260,12 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     final isPromo = type == 'promo';
     final cashbackBalance =
         (campaign['cashbackBalanceCents'] as num?)?.toInt() ?? cashbackCents;
-    final pool = type == 'spend'
-        ? points
-        : isCashback
-            ? cashbackBalance
-            : stamps;
+    final pool = campaignUnits(
+      campaign,
+      stamps: stamps,
+      points: points,
+      cashbackCents: cashbackBalance,
+    );
     final lockedReason = campaign['lockedReason'] as String?;
     final daysUntil = (campaign['daysUntilBirthday'] as num?)?.toInt();
     final unlocksAt = campaign['unlocksAt'] as String?;
@@ -393,6 +396,10 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         audienceUnlocked: audienceEligible && !audienceLocked,
         audienceLabel: unlockMessage ??
             (audienceEligible ? 'Conquista liberada pra você' : null),
+        scopeLabel: stampScopeLabel(
+          campaign,
+          split: stampRows.length > 1,
+        ),
         onRedeem: isCashback || !canRedeem || _redeeming
             ? null
             : () => _redeem(campaign),

@@ -16,6 +16,8 @@ function entry(
     rewardDescription: null,
     rewardImageUrl: null,
     rewardsAvailable: 0,
+    balance: 0,
+    cartela: false,
     ...partial,
   };
 }
@@ -32,6 +34,7 @@ function snap(
     cashbackPercent: 0,
     lots: [],
     campaigns,
+    stampDestinations: [],
   };
 }
 
@@ -96,5 +99,25 @@ describe('progressFromWallet', () => {
     assert.equal(progress?.remaining, 0);
     assert.equal(progress?.canRedeem, false);
     assert.equal(progress?.lockedReason, 'quota_exhausted');
+  });
+
+  it('measures a Cartela on its own balance', () => {
+    const progress = progressFromWallet(
+      snap(
+        [
+          entry({
+            campaignId: 'cafe',
+            campaignName: 'Café',
+            type: 'stamps',
+            unitsNeeded: 10,
+            cartela: true,
+            balance: 9,
+          }),
+        ],
+        0,
+      ),
+    );
+    assert.equal(progress?.current, 9);
+    assert.equal(progress?.remaining, 1);
   });
 });

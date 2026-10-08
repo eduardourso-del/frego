@@ -18,6 +18,8 @@ export type EarnNotifyInput = {
   cashbackCents?: number | null;
   transactionId?: string | null;
   wallet: WalletSnapshot;
+  /** Set on a carimbo earn so the copy names a Cartela or the shared balance. */
+  stampEarn?: { cartela: boolean; label: string; balance: number } | null;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 };
 
@@ -32,6 +34,7 @@ export function buildEarnWhatsAppLines(input: {
   amountCents?: number | null;
   cashbackCents?: number | null;
   wallet: WalletSnapshot;
+  stampEarn?: { cartela: boolean; label: string; balance: number } | null;
 }): EarnNotifyLines {
   const businessName = (input.businessName || 'Frego').slice(0, 60);
 
@@ -54,8 +57,12 @@ export function buildEarnWhatsAppLines(input: {
         ? `+${money(input.cashbackCents)} cashback`
         : 'compra registrada';
   } else {
-    earnLine =
+    const qty =
       input.quantity === 1 ? '+1 carimbo' : `+${input.quantity} carimbos`;
+    earnLine =
+      input.stampEarn?.cartela && input.stampEarn.label
+        ? `${qty} · ${input.stampEarn.label}`
+        : qty;
   }
   if (
     input.unitKind !== 'cashback' &&
@@ -66,7 +73,11 @@ export function buildEarnWhatsAppLines(input: {
   }
 
   const cashbackBal = input.wallet.pools.cashbackCents ?? 0;
-  let balanceLine = `${input.wallet.pools.stamps} carimbos · ${input.wallet.pools.points} pts`;
+  const stampBalance =
+    input.unitKind === 'stamps' && input.stampEarn
+      ? input.stampEarn.balance
+      : input.wallet.pools.stamps;
+  let balanceLine = `${stampBalance} carimbos · ${input.wallet.pools.points} pts`;
   if (cashbackBal > 0) {
     balanceLine += ` · ${money(cashbackBal)} cashback`;
   }
@@ -86,19 +97,22 @@ export function buildEarnWhatsAppLines(input: {
         c.unitsNeeded > 0,
     );
     if (relevant.length > 0) {
-      const poolFor = (type: string) =>
-        type === 'spend' ? input.wallet.pools.points : input.wallet.pools.stamps;
+      const poolFor = (c: (typeof relevant)[number]) =>
+        c.balance ??
+        (c.type === 'spend'
+          ? input.wallet.pools.points
+          : input.wallet.pools.stamps);
       let best = relevant[0]!;
       let bestRemain = best.unitsNeeded;
       for (const c of relevant) {
-        const have = poolFor(c.type) % c.unitsNeeded;
+        const have = poolFor(c) % c.unitsNeeded;
         const remain = c.unitsNeeded - have;
         if (remain < bestRemain) {
           best = c;
           bestRemain = remain;
         }
       }
-      const have = poolFor(best.type) % best.unitsNeeded;
+      const have = poolFor(best) % best.unitsNeeded;
       const remain = best.unitsNeeded - have;
       if (remain > 0 && remain < best.unitsNeeded) {
         hintLine = `${best.campaignName}: faltam ${remain}`;

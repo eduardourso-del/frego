@@ -7,6 +7,7 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
@@ -158,11 +159,10 @@ class _ShopsPageState extends State<ShopsPage> {
       }
       if (_balanceKind != null) {
         final pools = m['pools'] as Map<String, dynamic>? ?? {};
-        final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
         final points = (pools['points'] as num?)?.toInt() ?? 0;
         final cashback = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
         final matches = switch (_balanceKind!) {
-          _BalanceKind.stamps => stamps > 0,
+          _BalanceKind.stamps => holdsStamps(m),
           _BalanceKind.points => points > 0,
           _BalanceKind.cashback => cashback > 0,
         };
@@ -250,18 +250,22 @@ class _ShopsPageState extends State<ShopsPage> {
       _stats?['nextReward'] as Map<String, dynamic>?;
 
   List<_BalanceChip> _balanceChips() {
-    var stamps = 0;
+    final header = stampHeader(_memberships);
     var points = 0;
     var cashbackCents = 0;
     for (final m in _memberships) {
       final pools = m['pools'] as Map<String, dynamic>?;
       if (pools == null) continue;
-      stamps += (pools['stamps'] as num?)?.toInt() ?? 0;
       points += (pools['points'] as num?)?.toInt() ?? 0;
       cashbackCents += (pools['cashbackCents'] as num?)?.toInt() ?? 0;
     }
+    final stampLabel = header.split
+        ? 'Carimbos'
+        : header.units == 1
+            ? '1 carimbo'
+            : '${header.units} carimbos';
     return [
-      if (stamps > 0)
+      if (header.any && (header.split || header.units > 0))
         _BalanceChip(
           icon: FregoIcons.stamp(
             size: 15,
@@ -269,7 +273,7 @@ class _ShopsPageState extends State<ShopsPage> {
                 ? FregoColors.ink
                 : FregoColors.white,
           ),
-          label: stamps == 1 ? '1 carimbo' : '$stamps carimbos',
+          label: stampLabel,
           selected: _balanceKind == _BalanceKind.stamps,
           onTap: () => _toggleBalance(_BalanceKind.stamps),
         ),
@@ -757,7 +761,7 @@ class _ShopsPageState extends State<ShopsPage> {
                       m['business'] as Map<String, dynamic>? ?? {};
                   final pools = m['pools'] as Map<String, dynamic>? ??
                       {'stamps': 0, 'points': 0};
-                  final stamps = (pools['stamps'] as num?)?.toInt() ?? 0;
+                  final stampLabel = stampSummary(m);
                   final points = (pools['points'] as num?)?.toInt() ?? 0;
                   final redeemable =
                       (m['redeemableCampaigns'] as num?)?.toInt() ?? 0;
@@ -916,10 +920,7 @@ class _ShopsPageState extends State<ShopsPage> {
                                                   ),
                                         )
                                       else ...[
-                                        _Pill(
-                                          label: '$stamps carimbos',
-                                          tone: _PillTone.stamps,
-                                        ),
+                                        ..._stampPills(m, stampLabel),
                                         if (points > 0)
                                           _Pill(
                                             label: '$points pts',
@@ -987,6 +988,23 @@ class _ShopsPageState extends State<ShopsPage> {
     final cleaned = hex.replaceFirst('#', '');
     if (cleaned.length != 6) return null;
     return int.tryParse('FF$cleaned', radix: 16);
+  }
+
+  List<Widget> _stampPills(Map<String, dynamic> membership, String fallback) {
+    final rows = stampDestinationsOf(membership);
+    if (rows.length <= 1) {
+      return [
+        _Pill(label: fallback, tone: _PillTone.stamps),
+      ];
+    }
+    return [
+      for (final dest in rows)
+        _Pill(
+          label:
+              '${dest['label'] ?? 'Carimbos'} ${(dest['balance'] as num?)?.toInt() ?? 0}',
+          tone: _PillTone.stamps,
+        ),
+    ];
   }
 
   String _progressLabel({

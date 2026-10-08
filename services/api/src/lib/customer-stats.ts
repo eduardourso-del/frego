@@ -1,5 +1,10 @@
 import { prisma } from '@frego/db';
-import { deriveWallet, type CampaignWalletEntry, type WalletSnapshot } from './wallet.js';
+import {
+  campaignSpendableUnits,
+  deriveWallet,
+  type CampaignWalletEntry,
+  type WalletSnapshot,
+} from './wallet.js';
 
 import { shouldOmitFromLedger } from './ledger-meta.js';
 
@@ -117,7 +122,9 @@ export function progressFromWallet(
   }
 
   const current =
-    primary.type === 'spend' ? wallet.pools.points : wallet.pools.stamps;
+    primary.type === 'spend'
+      ? wallet.pools.points
+      : campaignSpendableUnits(primary, wallet.pools);
   const needed = primary.unitsNeeded;
   const inCycle = current % needed;
   const quotaBlocked = primary.lockedReason === 'quota_exhausted';

@@ -50,6 +50,7 @@ export async function notifyEarnWhatsAppForBusiness(
     amountCents: input.amountCents,
     cashbackCents: input.cashbackCents,
     wallet: input.wallet,
+    stampEarn: input.stampEarn,
   });
 
   const result = await sendWhatsAppTemplate({

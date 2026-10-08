@@ -21,6 +21,7 @@ function wallet(partial?: Partial<WalletSnapshot['pools']>): WalletSnapshot {
     pointsExpireDays: null,
     cashbackExpireDays: null,
     cashbackPercent: 0,
+    stampDestinations: [],
   };
 }
 
@@ -40,6 +41,18 @@ describe('earn notify copy', () => {
     assert.equal(push.title, 'Café Bloom');
     assert.match(push.body, /Você acabou de ganhar \+1 carimbo/);
     assert.match(push.body, /Seu saldo agora é: 3 carimbos · 0 pts/);
+  });
+
+  it('names a Cartela and reports that Cartela balance', () => {
+    const lines = buildEarnWhatsAppLines({
+      businessName: 'Padaria Sol',
+      unitKind: 'stamps',
+      quantity: 1,
+      wallet: wallet({ stamps: 4 }),
+      stampEarn: { cartela: true, label: 'Café', balance: 9 },
+    });
+    assert.equal(lines.earnLine, '+1 carimbo · Café');
+    assert.match(lines.balanceLine, /^9 carimbos/);
   });
 
   it('includes points and cashback in the shared earn line', () => {

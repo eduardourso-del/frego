@@ -9,6 +9,7 @@ import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/shop_summary_card.dart';
 import '../../ui/skeleton.dart';
+import '../../ui/stamp_balance.dart';
 import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
@@ -198,7 +199,7 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
         (_wallet?['wallet'] as Map<String, dynamic>?)?['pools']
             as Map<String, dynamic>? ??
         {};
-    final balanceLine = _balanceLine(kind, pools);
+    final balanceLine = _balanceLine(kind, pools, _wallet);
     final location = (item?['location'] as Map?)?['name'] as String?;
     final actor = item?['actorName'] as String?;
 
@@ -400,7 +401,11 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
     return qty == 1 ? '+1 carimbo' : '+$qty carimbos';
   }
 
-  String? _balanceLine(String kind, Map<String, dynamic> pools) {
+  String? _balanceLine(
+    String kind,
+    Map<String, dynamic> pools,
+    Map<String, dynamic>? wallet,
+  ) {
     if (kind == 'cashback') {
       final cents = (pools['cashbackCents'] as num?)?.toInt() ?? 0;
       return _formatBrl(cents);
@@ -408,6 +413,15 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
     if (kind == 'points') {
       final n = (pools['points'] as num?)?.toInt() ?? 0;
       return n == 1 ? '1 ponto' : '$n pontos';
+    }
+    final nested = wallet?['wallet'];
+    final source = wallet != null && wallet['stampDestinations'] is List
+        ? wallet
+        : nested is Map
+            ? Map<String, dynamic>.from(nested)
+            : wallet;
+    if (source != null && stampDestinationsOf(source).length > 1) {
+      return stampSummary(source);
     }
     final n = (pools['stamps'] as num?)?.toInt() ?? 0;
     return n == 1 ? '1 carimbo' : '$n carimbos';

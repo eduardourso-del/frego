@@ -12,6 +12,10 @@ import {
   shouldQueueCampaignAudiencePush,
 } from '../lib/push/campaign-notify.js';
 import { civilYmd, normalizeWeekdays } from '../lib/promo.js';
+import {
+  nextActivatedAt,
+  resolveCartelaWrite,
+} from '../lib/stamp-destination.js';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -72,6 +76,7 @@ const campaignFields = z.object({
       z.null(),
     ])
     .optional(),
+  cartela: z.boolean().optional(),
 });
 
 function parseDateOnly(value: string | null | undefined): Date | null | undefined {
@@ -401,6 +406,17 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       ? 1
       : (body.stampsNeeded ?? (body.type === 'spend' ? 100 : 10));
     const promo = promoWriteData(body);
+    const cartelaWrite = resolveCartelaWrite({
+      nextType: body.type,
+      requested: body.cartela,
+      existing: null,
+    });
+    if (!cartelaWrite.ok) {
+      return reply.code(400).send({
+        error: cartelaWrite.error,
+        message: cartelaWrite.message,
+      });
+    }
 
     const campaign = await prisma.campaign.create({
       data: {
@@ -408,6 +424,8 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
         name: body.name,
         type: body.type as CampaignType,
         status,
+        cartela: cartelaWrite.cartela,
+        activatedAt: nextActivatedAt(null, status),
         stampsNeeded,
         pointsPerReal:
           body.type === 'spend' ? (body.pointsPerReal ?? 1) : null,
@@ -548,8 +566,24 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       weekdays: _weekdays,
       redeemMax: _redeemMax,
       redeemPeriod: _redeemPeriod,
+      cartela: requestedCartela,
       ...data
     } = body;
+    const cartelaWrite = resolveCartelaWrite({
+      nextType,
+      requested: requestedCartela,
+      existing: {
+        type: existing.type,
+        cartela: existing.cartela,
+        activatedAt: existing.activatedAt,
+      },
+    });
+    if (!cartelaWrite.ok) {
+      return reply.code(cartelaWrite.error === 'CARTELA_LOCKED' ? 409 : 400).send({
+        error: cartelaWrite.error,
+        message: cartelaWrite.message,
+      });
+    }
     const promo = promoWriteData({ ...body, type: nextType }, existing);
     const campaign = await prisma.$transaction(async (tx) => {
       if (locationIds) {
@@ -590,6 +624,8 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
           ...(audienceSegmentId !== undefined
             ? { audienceSegmentId }
             : {}),
+          cartela: cartelaWrite.cartela,
+          activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
         },
         include: {
           locations: true,
@@ -631,6 +667,18 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!existing) {
       return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+    if (existing.cartela) {
+      const txs = await prisma.transaction.count({
+        where: { campaignId: id },
+      });
+      if (txs > 0) {
+        return reply.code(409).send({
+          error: 'CARTELA_KEEP',
+          message:
+            'Arquive a cartela. Os carimbos dela não voltam para o saldo compartilhado.',
+        });
+      }
     }
     await prisma.campaign.delete({ where: { id } });
     return { ok: true };
