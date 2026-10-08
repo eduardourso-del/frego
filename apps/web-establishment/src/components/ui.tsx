@@ -1,13 +1,15 @@
 'use client';
 
 import Link from 'next/link';
+import { Eye, EyeOff } from 'lucide-react';
 import { FregoMark } from '@/components/brand';
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
+import {
+  useState,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from 'react';
 
 const cx = (...parts: Array<string | false | null | undefined>) =>
@@ -185,12 +187,100 @@ const controlClass =
 export function TextField({
   label,
   className,
+  error,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label?: string;
+  error?: string;
+}) {
   return (
     <label className="block">
-      {label ? <FieldLabel>{label}</FieldLabel> : null}
-      <input className={cx(controlClass, className)} {...props} />
+      {label ? (
+        <FieldLabel className={error ? 'text-[var(--color-danger)]' : undefined}>
+          {label}
+        </FieldLabel>
+      ) : null}
+      <input
+        {...props}
+        aria-invalid={error ? true : props['aria-invalid']}
+        aria-describedby={
+          error && props.id ? `${props.id}-error` : props['aria-describedby']
+        }
+        className={cx(
+          controlClass,
+          error &&
+            '!border-[var(--color-danger)] focus:!border-[var(--color-danger)]',
+          className,
+        )}
+      />
+      {error ? (
+        <p
+          id={props.id ? `${props.id}-error` : undefined}
+          className="mt-1.5 text-[13px] text-[var(--color-danger)]"
+        >
+          {error}
+        </p>
+      ) : null}
+    </label>
+  );
+}
+
+export function PasswordField({
+  label,
+  className,
+  error,
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
+  label?: string;
+  error?: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="block">
+      {label ? (
+        <FieldLabel className={error ? 'text-[var(--color-danger)]' : undefined}>
+          {label}
+        </FieldLabel>
+      ) : null}
+      <span className="relative block">
+        <input
+          {...props}
+          type={visible ? 'text' : 'password'}
+          aria-invalid={error ? true : props['aria-invalid']}
+          aria-describedby={
+            error && props.id ? `${props.id}-error` : props['aria-describedby']
+          }
+          className={cx(
+            controlClass,
+            'pr-12',
+            error &&
+              '!border-[var(--color-danger)] focus:!border-[var(--color-danger)]',
+            className,
+          )}
+        />
+        <button
+          type="button"
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--color-neutral-600)]"
+          aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}
+          aria-pressed={visible}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setVisible((current) => !current)}
+        >
+          {visible ? (
+            <EyeOff size={20} strokeWidth={2} aria-hidden />
+          ) : (
+            <Eye size={20} strokeWidth={2} aria-hidden />
+          )}
+        </button>
+      </span>
+      {error ? (
+        <p
+          id={props.id ? `${props.id}-error` : undefined}
+          className="mt-1.5 text-[13px] text-[var(--color-danger)]"
+        >
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }

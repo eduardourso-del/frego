@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireFirebaseUser } from '../plugins/auth.js';
 import { businessTypeSchema } from '../lib/business-type.js';
+import { normalizeCnpj } from '../lib/cnpj.js';
 
 const hexColor = z
   .string()
@@ -14,6 +15,7 @@ const registerBody = z.object({
   businessName: z.string().min(2).max(80),
   type: businessTypeSchema,
   slogan: z.string().max(160).optional(),
+  cnpj: z.string().trim().max(18).optional(),
   primaryColor: hexColor,
   primaryColorDark: hexColor,
   locationName: z.string().min(2).max(80),
@@ -48,6 +50,16 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = registerBody.parse(request.body);
+    const cnpj = normalizeCnpj(body.cnpj);
+    if (cnpj === 'invalid') {
+      return reply.code(400).send({ error: 'INVALID_CNPJ' });
+    }
+    if (cnpj) {
+      const cnpjTaken = await prisma.business.findUnique({ where: { cnpj } });
+      if (cnpjTaken) {
+        return reply.code(409).send({ error: 'CNPJ_TAKEN' });
+      }
+    }
 
     const existingMember = await prisma.teamMember.findFirst({
       where: {
@@ -90,6 +102,7 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
           type: body.type,
           status: 'pending',
           slogan: body.slogan ?? null,
+          cnpj,
           primaryColor,
           primaryColorDark,
           slug,

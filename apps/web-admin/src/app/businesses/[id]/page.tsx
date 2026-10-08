@@ -15,6 +15,7 @@ import {
   STATUS_OPTIONS,
   WHATSAPP_STATUS_LABEL,
 } from '@/lib/labels';
+import { formatCnpj } from '@/lib/cnpj';
 
 type LocationDraft = {
   id: string;
@@ -34,6 +35,7 @@ type Detail = {
     primaryColor: string;
     primaryColorDark: string;
     slogan: string | null;
+    cnpj: string | null;
     slug: string | null;
     pointsPerReal: number;
     cashbackPercent: number;
@@ -89,6 +91,8 @@ const inputClass =
 
 function apiErrorMessage(error: string | undefined) {
   if (error === 'SLUG_TAKEN') return 'Este slug já está em uso.';
+  if (error === 'INVALID_CNPJ') return 'CNPJ inválido.';
+  if (error === 'CNPJ_TAKEN') return 'Este CNPJ já está cadastrado.';
   if (error === 'LOCATION_NOT_FOUND') return 'Unidade não encontrada.';
   if (error === 'NOT_FOUND') return 'Estabelecimento não encontrado.';
   return error ?? 'Falha ao salvar';
@@ -107,6 +111,7 @@ export default function BusinessDetailPage() {
   const [type, setType] = useState('café');
   const [status, setStatus] = useState('pending');
   const [slogan, setSlogan] = useState('');
+  const [cnpj, setCnpj] = useState('');
   const [slug, setSlug] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState('');
@@ -128,6 +133,7 @@ export default function BusinessDetailPage() {
     setType(b.type);
     setStatus(b.status);
     setSlogan(b.slogan ?? '');
+    setCnpj(formatCnpj(b.cnpj ?? ''));
     setSlug(b.slug ?? '');
     setLogoUrl(b.logoUrl ?? '');
     setHeroImageUrl(b.heroImageUrl ?? '');
@@ -212,6 +218,7 @@ export default function BusinessDetailPage() {
           type,
           status,
           slogan: slogan || null,
+          cnpj: cnpj || null,
           slug: slug || null,
           logoUrl: logoUrl || null,
           heroImageUrl: heroImageUrl || null,
@@ -442,6 +449,17 @@ export default function BusinessDetailPage() {
                 value={slogan}
                 onChange={(e) => setSlogan(e.target.value)}
                 className={inputClass}
+              />
+            </label>
+
+            <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
+              CNPJ
+              <input
+                inputMode="numeric"
+                value={cnpj}
+                onChange={(e) => setCnpj(formatCnpj(e.target.value))}
+                className={inputClass}
+                placeholder="00.000.000/0000-00"
               />
             </label>
 

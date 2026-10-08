@@ -137,6 +137,8 @@ model Business {
   primaryColor   String  @default("#070707") @map("primary_color")
   primaryColorDark String @default("#070707") @map("primary_color_dark")
   slogan         String? @map("slogan")
+  /// CNPJ, apenas dígitos. Opcional no cadastro.
+  cnpj           String? @unique
   /// Página / slug público (ex. bloom-coffee)
   slug           String? @unique
   /// Quantos reais o cliente precisa gastar para ganhar 1 ponto no acúmulo.

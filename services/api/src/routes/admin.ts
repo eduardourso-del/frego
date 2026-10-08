@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma, type BusinessStatus } from '@frego/db';
 import { requirePlatformAuth } from '../plugins/auth.js';
+import { normalizeCnpj } from '../lib/cnpj.js';
 
 const STATUSES = [
   'pending',
@@ -24,6 +25,7 @@ const updateBusinessBody = z.object({
   name: z.string().min(1).max(80).optional(),
   type: z.string().min(1).max(40).optional(),
   slogan: z.string().max(160).nullable().optional(),
+  cnpj: z.string().trim().max(18).nullable().optional(),
   logoUrl: optionalUrl.optional(),
   heroImageUrl: optionalUrl.optional(),
   primaryColor: hexColor.optional(),
@@ -142,6 +144,7 @@ async function loadBusinessDetail(id: string) {
       primaryColor: business.primaryColor,
       primaryColorDark: business.primaryColorDark,
       slogan: business.slogan,
+      cnpj: business.cnpj,
       slug: business.slug,
       pointsPerReal: business.pointsPerReal,
       cashbackPercent: business.cashbackPercent,
@@ -332,6 +335,23 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
 
+    let cnpj: string | null | undefined;
+    if (body.cnpj !== undefined) {
+      const parsed = normalizeCnpj(body.cnpj);
+      if (parsed === 'invalid') {
+        return reply.code(400).send({ error: 'INVALID_CNPJ' });
+      }
+      if (parsed) {
+        const taken = await prisma.business.findFirst({
+          where: { cnpj: parsed, NOT: { id } },
+        });
+        if (taken) {
+          return reply.code(409).send({ error: 'CNPJ_TAKEN' });
+        }
+      }
+      cnpj = parsed;
+    }
+
     const slug = blankToNull(body.slug);
     if (slug) {
       const taken = await prisma.business.findFirst({
@@ -349,6 +369,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         type: body.type,
         slogan:
           body.slogan === undefined ? undefined : body.slogan || null,
+        cnpj,
         logoUrl: blankToNull(body.logoUrl),
         heroImageUrl: blankToNull(body.heroImageUrl),
         primaryColor: body.primaryColor,
