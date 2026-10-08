@@ -390,6 +390,7 @@ export default function CounterPage() {
         {
           method: 'POST',
           headers: await authHeaders(),
+          body: '{}',
         },
       );
       const data = await res.json();
