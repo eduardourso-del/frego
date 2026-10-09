@@ -11,6 +11,7 @@ import {
   BarChart3,
   Settings,
   Stamp,
+  ClipboardList,
   BookOpen,
   MoreHorizontal,
   X,
@@ -27,6 +28,7 @@ const mainNav = [
   { href: '/customers', label: 'Clientes', icon: Users },
   { href: '/audiences', label: 'Audiências', icon: Layers },
   { href: '/campaigns', label: 'Campanhas', icon: Target },
+  { href: '/pesquisas', label: 'Pesquisa', icon: ClipboardList, beta: true },
   { href: '/reports', label: 'Relatórios', icon: BarChart3 },
 ];
 
@@ -101,6 +103,7 @@ export function AppShell({
     isActivePath(pathname, '/settings') ||
     isActivePath(pathname, '/reports') ||
     isActivePath(pathname, '/audiences') ||
+    isActivePath(pathname, '/pesquisas') ||
     isActivePath(pathname, '/guia') ||
     moreOpen;
 
@@ -126,11 +129,13 @@ export function AppShell({
     href,
     label,
     icon: Icon,
+    beta,
     onNavigate,
   }: {
     href: string;
     label: string;
     icon: typeof LayoutDashboard;
+    beta?: boolean;
     onNavigate?: () => void;
   }) {
     const active = isActivePath(pathname, href);
@@ -154,7 +159,18 @@ export function AppShell({
           }
           aria-hidden
         />
-        {label}
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {beta ? (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.04em] ${
+              active
+                ? 'bg-black/10 text-[var(--color-on-primary)]'
+                : 'bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]'
+            }`}
+          >
+            Beta
+          </span>
+        ) : null}
       </Link>
     );
   }
@@ -387,7 +403,7 @@ export function AppShell({
                   Mais
                 </p>
                 <p className="text-[13px] text-[var(--color-neutral-500)]">
-                  Audiências, relatórios, o guia e a conta
+                  Pesquisa, audiências, relatórios, o guia e a conta
                 </p>
               </div>
               <button
@@ -439,6 +455,13 @@ export function AppShell({
               ) : null}
 
               <div className="flex flex-col gap-0.5">
+                <NavLink
+                  href="/pesquisas"
+                  label="Pesquisa"
+                  icon={ClipboardList}
+                  beta
+                  onNavigate={() => setMoreOpen(false)}
+                />
                 <NavLink
                   href="/audiences"
                   label="Audiências"

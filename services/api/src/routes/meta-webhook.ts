@@ -6,6 +6,7 @@ import {
   CAMPAIGN_TEMPLATE_NAME,
   EARN_TEMPLATE_LANG,
   EARN_TEMPLATE_NAME,
+  PESQUISA_TEMPLATE_NAME,
   WELCOME_TEMPLATE_LANG,
   WELCOME_TEMPLATE_NAME,
   mapWebhookTemplateEvent,
@@ -93,6 +94,18 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
                           ? String(change.value.message_template_id)
                           : conn.templateWelcomeId,
                         templateWelcomeSyncedAt: new Date(),
+                        ...(mapped === 'approved' ? { lastError: null } : {}),
+                      },
+                    });
+                  } else if (templateName === PESQUISA_TEMPLATE_NAME) {
+                    await prisma.businessWhatsAppConnection.update({
+                      where: { id: conn.id },
+                      data: {
+                        templatePesquisaStatus: mapped,
+                        templatePesquisaId: change.value?.message_template_id
+                          ? String(change.value.message_template_id)
+                          : conn.templatePesquisaId,
+                        templatePesquisaSyncedAt: new Date(),
                         ...(mapped === 'approved' ? { lastError: null } : {}),
                       },
                     });

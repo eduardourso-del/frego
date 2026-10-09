@@ -14,6 +14,7 @@ import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import 'campaign_detail_page.dart';
 import 'earn_detail_page.dart';
+import 'pesquisa_page.dart';
 import 'shop_balance_page.dart';
 
 class ShopDetailPage extends StatefulWidget {
@@ -34,6 +35,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
   bool _togglingFavorite = false;
   String? _error;
   Map<String, dynamic>? _data;
+  Map<String, dynamic>? _convite;
   bool _isFavorite = false;
 
   @override
@@ -52,10 +54,17 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     });
     try {
       final data = await fetchMyWallet(businessId: widget.businessId);
+      Map<String, dynamic>? convite;
+      try {
+        convite = await fetchMyConvite(widget.businessId);
+      } catch (_) {
+        convite = null;
+      }
       if (!mounted) return;
       final membership = data['membership'] as Map<String, dynamic>?;
       setState(() {
         _data = data;
+        _convite = convite;
         _isFavorite = membership?['isFavorite'] == true;
         _loading = false;
         _error = null;
@@ -535,6 +544,51 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         ),
       ],
       const SizedBox(height: 20),
+      if (_convite?['state'] == 'open') ...[
+        const Text(
+          'Pesquisa',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.04,
+            color: FregoColors.neutral400,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          () {
+            final purchase = (_convite?['purchase'] as String?)?.trim() ?? '';
+            return purchase.isEmpty ? 'Toque para responder.' : purchase;
+          }(),
+          style: const TextStyle(
+            fontSize: 13,
+            height: 1.35,
+            color: FregoColors.neutral500,
+          ),
+        ),
+        const SizedBox(height: 10),
+        _PesquisaInvite(
+          name: (_convite?['pesquisaName'] as String?)?.trim() ?? '',
+          sentence: ((_convite?['snapshot'] as Map<String, dynamic>?)?['bonus']
+                      as Map<String, dynamic>?)?['sentence'] as String? ??
+              (_convite?['snapshot'] as Map<String, dynamic>?)?['inviteLine']
+                  as String? ??
+              'A loja deixou uma pesquisa.',
+          questionCount:
+              ((_convite?['snapshot'] as Map<String, dynamic>?)?['questions']
+                          as List<dynamic>?)
+                      ?.length ??
+                  0,
+          onTap: () async {
+            await FregoAdaptive.push(
+              context,
+              PesquisaPage(businessId: widget.businessId),
+            );
+            if (mounted) _load();
+          },
+        ),
+        const SizedBox(height: 20),
+      ],
       const Text(
         'Suas campanhas',
         style: TextStyle(
@@ -1038,6 +1092,117 @@ class _MiniStat extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PesquisaInvite extends StatelessWidget {
+  const _PesquisaInvite({
+    required this.name,
+    required this.sentence,
+    required this.questionCount,
+    required this.onTap,
+  });
+
+  final String name;
+  final String sentence;
+  final int questionCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = name.isEmpty ? 'Pesquisa' : name;
+    final countLabel =
+        questionCount == 1 ? '1 pergunta' : '$questionCount perguntas';
+    return Material(
+      color: FregoColors.card,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: FregoColors.hairline),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: FregoColors.successBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: FregoIcons.thumbUp(
+                  color: FregoColors.successFill,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        height: 1.2,
+                        color: FregoColors.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      sentence,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.3,
+                        color: FregoColors.neutral500,
+                      ),
+                    ),
+                    if (questionCount > 0) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          FregoIcons.thumbUp(
+                            size: 14,
+                            color: FregoColors.successFill,
+                          ),
+                          const SizedBox(width: 4),
+                          FregoIcons.thumbDown(
+                            size: 14,
+                            color: FregoColors.dangerFill,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            countLabel,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: FregoColors.neutral400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(
+                FregoIcons.chevronRight,
+                color: FregoColors.neutral400,
+              ),
+            ],
+          ),
         ),
       ),
     );

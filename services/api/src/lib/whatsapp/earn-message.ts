@@ -20,6 +20,8 @@ export type EarnNotifyInput = {
   wallet: WalletSnapshot;
   /** Set on a carimbo earn so the copy names a Cartela or the shared balance. */
   stampEarn?: { cartela: boolean; label: string; balance: number } | null;
+  /** Set when this earn opened or refreshed a Convite. */
+  pesquisa?: { sentence: string; url: string; conviteId: string } | null;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 };
 

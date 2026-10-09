@@ -46,6 +46,18 @@ abstract final class FregoIcons {
       _lucide('percent', size: size, color: color);
   static Widget promoFilled({double size = 24, Color? color}) =>
       promo(size: size, color: color);
+  static Widget thumbUp({double size = 24, Color? color, bool filled = false}) =>
+      _lucide(filled ? 'thumbs-up-filled' : 'thumbs-up', size: size, color: color);
+  static Widget thumbDown({
+    double size = 24,
+    Color? color,
+    bool filled = false,
+  }) =>
+      _lucide(
+        filled ? 'thumbs-down-filled' : 'thumbs-down',
+        size: size,
+        color: color,
+      );
 
   static const gift = Icons.card_giftcard_rounded;
   static const stampCheck = Icons.check_rounded;

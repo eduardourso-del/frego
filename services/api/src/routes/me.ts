@@ -9,7 +9,7 @@ import {
 } from '../lib/customer-stats.js';
 import { deriveWallet } from '../lib/wallet.js';
 import { createVoucherMeta, voucherFromMetadata } from '../lib/voucher.js';
-import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { metaString, shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import {
   membershipMatchesAudience,
   parseAudienceRules,
@@ -614,6 +614,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             primaryColor: true,
             stampsExpireDays: true,
             pointsExpireDays: true,
+            cashbackExpireDays: true,
           },
         },
       },
@@ -637,6 +638,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
               primaryColor: true,
               stampsExpireDays: true,
               pointsExpireDays: true,
+              cashbackExpireDays: true,
             },
           },
           campaign: {
@@ -682,14 +684,17 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       const voucher = voucherFromMetadata(tx.metadata, {
         createdAt: tx.createdAt,
       });
+      const pesquisa = metaString(tx.metadata, 'role') === 'pesquisa';
       const expireDays =
         tx.unitKind === 'points'
           ? tx.business.pointsExpireDays
-          : tx.unitKind === 'stamps'
-            ? tx.business.stampsExpireDays
-            : tx.amountCents != null && tx.amountCents > 0
-              ? tx.business.pointsExpireDays
-              : tx.business.stampsExpireDays;
+          : tx.unitKind === 'cashback_cents'
+            ? tx.business.cashbackExpireDays
+            : tx.unitKind === 'stamps'
+              ? tx.business.stampsExpireDays
+              : tx.amountCents != null && tx.amountCents > 0
+                ? tx.business.pointsExpireDays
+                : tx.business.stampsExpireDays;
       let expiresAt: string | null = null;
       if (tx.type === 'stamp' && expireDays != null && expireDays > 0) {
         const earned = new Date(tx.createdAt);
@@ -727,6 +732,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         voucherExpiresAt: voucher?.expiresAt ?? null,
         rewardTitle:
           tx.campaign?.rewardTitle ?? tx.campaign?.name ?? null,
+        source: pesquisa ? 'pesquisa' : null,
+        sourceLabel: pesquisa ? metaString(tx.metadata, 'label') : null,
       };
     });
 

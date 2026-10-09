@@ -750,7 +750,11 @@ class _HistoryTile extends StatelessWidget {
     final expiresAt = item['expiresAt'] as String?;
 
     final money = 'R\$ ${(qty / 100).toStringAsFixed(2).replaceAll('.', ',')}';
-    final title = unit == 'cashback_cents'
+    final pesquisaLabel = item['source'] == 'pesquisa'
+        ? item['sourceLabel'] as String?
+        : null;
+    final title = pesquisaLabel ??
+        (unit == 'cashback_cents'
         ? (isRedeem ? 'Cashback usado · $money' : '+ $money cashback')
         : isRedeem
             ? (voucherUsed
@@ -760,7 +764,7 @@ class _HistoryTile extends StatelessWidget {
                     : 'Resgatou $reward')
             : unit == 'points'
                 ? '+$qty ${qty == 1 ? 'ponto' : 'pontos'}'
-                : '+$qty ${qty == 1 ? 'carimbo' : 'carimbos'}';
+                : '+$qty ${qty == 1 ? 'carimbo' : 'carimbos'}');
 
     final expiryLine = !isRedeem ? _formatExpiry(expiresAt) : null;
     final inactive = voucherUsed || voucherExpired;

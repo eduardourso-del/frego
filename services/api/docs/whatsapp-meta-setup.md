@@ -107,6 +107,8 @@ Seu saldo agora é: *{{3}}*.
 {{4}}
 
 Abra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.
+
+Baixe o app Frego em https://onelink.to/quvd8c no celular.
 ```
 
 ### Welcome template (auto)
@@ -121,6 +123,8 @@ Abra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.
 Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.
 
 Use o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.
+
+Baixe o app Frego em https://onelink.to/quvd8c no celular.
 ```
 
 ### Campaign template (auto)
@@ -137,6 +141,8 @@ Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.
 {{2}}
 
 Abra o app Frego para conferir os detalhes e participar.
+
+Baixe o app Frego em https://onelink.to/quvd8c no celular.
 ```
 
 Push uses the same announcement: title is the store name; body is “Lançou uma nova campanha: {nome}. Abra o app Frego para conferir os detalhes e participar.”

@@ -8,6 +8,7 @@ import '../profile/profile_page.dart';
 import '../rewards/rewards_page.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/earn_detail_page.dart';
+import '../shops/pesquisa_page.dart';
 import '../shops/shop_detail_page.dart';
 import '../shops/shops_page.dart';
 import '../../analytics/frego_telemetry.dart';
@@ -67,6 +68,7 @@ class _CustomerShellState extends State<CustomerShell> {
           businessId: target.businessId,
           campaignId: target.campaignId!,
         ),
+      'pesquisa' => PesquisaPage(businessId: target.businessId),
       'earn' => EarnDetailPage(
           businessId: target.businessId,
           unitKind: target.unitKind,

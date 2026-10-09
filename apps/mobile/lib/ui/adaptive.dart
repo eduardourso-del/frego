@@ -595,6 +595,8 @@ class FregoTextField extends StatelessWidget {
     this.autofocus = false,
     this.enabled = true,
     this.maxLength,
+    this.minLines = 1,
+    this.maxLines = 1,
     this.textAlign = TextAlign.start,
     this.focusNode,
     this.inputFormatters,
@@ -615,6 +617,8 @@ class FregoTextField extends StatelessWidget {
   final bool autofocus;
   final bool enabled;
   final int? maxLength;
+  final int minLines;
+  final int maxLines;
   final TextAlign textAlign;
   final FocusNode? focusNode;
   final List<TextInputFormatter>? inputFormatters;
@@ -654,6 +658,8 @@ class FregoTextField extends StatelessWidget {
             autofocus: autofocus,
             enabled: enabled,
             maxLength: maxLength,
+            minLines: minLines,
+            maxLines: maxLines,
             textAlign: textAlign,
             obscureText: obscureText,
             readOnly: readOnly,
@@ -704,6 +710,8 @@ class FregoTextField extends StatelessWidget {
       autofocus: autofocus,
       enabled: enabled,
       maxLength: maxLength,
+      minLines: minLines,
+      maxLines: maxLines,
       textAlign: textAlign,
       obscureText: obscureText,
       readOnly: readOnly,

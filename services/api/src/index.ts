@@ -14,6 +14,7 @@ import { healthRoutes } from './routes/health.js';
 import { registerRoutes } from './routes/register.js';
 import { adminRoutes } from './routes/admin.js';
 import { whatsappRoutes } from './routes/whatsapp.js';
+import { pesquisaRoutes } from './routes/pesquisas.js';
 import { metaWebhookRoutes } from './routes/meta-webhook.js';
 import { publicBusinessRoutes } from './routes/public-business.js';
 import { voucherRoutes } from './routes/vouchers.js';
@@ -53,6 +54,7 @@ async function main() {
   await app.register(transactionRoutes);
   await app.register(voucherRoutes);
   await app.register(campaignRoutes);
+  await app.register(pesquisaRoutes);
   await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
 

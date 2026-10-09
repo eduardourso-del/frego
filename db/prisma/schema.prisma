@@ -162,6 +162,7 @@ model Business {
   teamMembers  TeamMember[]
   memberships  Membership[]
   campaigns    Campaign[]
+  pesquisas    Pesquisa[]
   audienceSegments AudienceSegment[]
   tags         BusinessTag[]
   transactions Transaction[]
@@ -240,6 +241,8 @@ model Customer {
   memberships  Membership[]
   deviceTokens DeviceToken[]
   transactions Transaction[] @relation("CustomerActorTransactions")
+  convites     Convite[]
+  respostas    Resposta[]
 
   @@index([phoneLast4])
   @@index([deletedAt])
@@ -277,6 +280,8 @@ model Membership {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   tags         MembershipTag[]
+  convites     Convite[]
+  respostas    Resposta[]
 
   @@unique([customerId, businessId])
   @@index([businessId])
@@ -361,6 +366,7 @@ model Campaign {
   audienceSegment AudienceSegment? @relation(fields: [audienceSegmentId], references: [id], onDelete: SetNull)
   locations   CampaignLocation[]
   transactions Transaction[]
+  pesquisaBonuses Pesquisa[]
 
   @@index([businessId, status])
   @@index([audienceSegmentId])
@@ -385,6 +391,7 @@ model AudienceSegment {
 
   business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
   campaigns Campaign[]
+  pesquisas Pesquisa[]
 
   @@index([businessId])
   @@map("audience_segments")
@@ -430,12 +437,150 @@ model Transaction {
   location        Location    @relation(fields: [locationId], references: [id], onDelete: Restrict)
   actorTeamMember TeamMember? @relation(fields: [actorTeamMemberId], references: [id], onDelete: Restrict)
   actorCustomer   Customer?   @relation("CustomerActorTransactions", fields: [actorCustomerId], references: [id], onDelete: Restrict)
+  pesquisaResposta Resposta?
 
   @@index([businessId, createdAt])
   @@index([membershipId, campaignId, type])
   @@index([membershipId, type, unitKind])
   @@index([locationId, createdAt])
   @@map("transactions")
+}
+
+// ─── Pesquisa ────────────────────────────────────────────────────────────────
+
+enum PesquisaStatus {
+  draft
+  active
+  archived
+}
+
+enum PesquisaBonusKind {
+  stamps
+  points
+  cashback
+}
+
+enum PesquisaBonusMode {
+  fixed
+  double
+}
+
+enum ConviteStatus {
+  open
+  replaced
+  closed
+  answered
+}
+
+enum PolegarValue {
+  up
+  down
+}
+
+/// The Estabelecimento's questions. Not a Campanha.
+model Pesquisa {
+  id               String            @id @default(cuid())
+  businessId       String            @map("business_id")
+  name             String
+  status           PesquisaStatus    @default(draft)
+  notePrompt       String?           @map("note_prompt")
+  bonusEnabled     Boolean           @default(false) @map("bonus_enabled")
+  bonusKind        PesquisaBonusKind? @map("bonus_kind")
+  /// fixed: bonusQuantity is the credit. double: the Convite copies this earn's pontos or cashback.
+  bonusMode        PesquisaBonusMode @default(fixed) @map("bonus_mode")
+  /// Carimbos, pontos, or cashback cents. Null when bonusMode is double.
+  bonusQuantity    Int?              @map("bonus_quantity")
+  /// Cartela Campanha when bonusKind is stamps. Null = shared carimbos.
+  bonusCampaignId  String?           @map("bonus_campaign_id")
+  /// Null = every Cliente. Set = only Clientes in this Audiência get a Convite.
+  audienceSegmentId String?          @map("audience_segment_id")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  archivedAt       DateTime?         @map("archived_at")
+
+  business      Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  bonusCampaign Campaign?          @relation(fields: [bonusCampaignId], references: [id], onDelete: SetNull)
+  audienceSegment AudienceSegment? @relation(fields: [audienceSegmentId], references: [id], onDelete: SetNull)
+  questions     PesquisaQuestion[]
+  convites      Convite[]
+  respostas     Resposta[]
+
+  @@index([businessId, status])
+  @@index([bonusCampaignId])
+  @@index([audienceSegmentId])
+  @@map("pesquisas")
+}
+
+model PesquisaQuestion {
+  id         String @id @default(cuid())
+  pesquisaId String @map("pesquisa_id")
+  position   Int
+  prompt     String
+
+  pesquisa Pesquisa @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+
+  @@unique([pesquisaId, position])
+  @@map("pesquisa_questions")
+}
+
+/// Open offer tied to one qualifying earn. The page in hand keeps this snapshot.
+model Convite {
+  id                 String        @id @default(cuid())
+  pesquisaId         String        @map("pesquisa_id")
+  membershipId       String        @map("membership_id")
+  customerId         String        @map("customer_id")
+  earnTransactionId  String?       @map("earn_transaction_id")
+  saleId             String?       @map("sale_id")
+  status             ConviteStatus @default(open)
+  snapshot           Json
+  token              String        @unique
+  createdAt          DateTime      @default(now()) @map("created_at")
+  closedAt           DateTime?     @map("closed_at")
+
+  pesquisa   Pesquisa  @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  resposta   Resposta?
+
+  @@index([pesquisaId, customerId, status])
+  @@index([saleId])
+  @@index([earnTransactionId])
+  @@map("convites")
+}
+
+model Resposta {
+  id                  String   @id @default(cuid())
+  pesquisaId          String   @map("pesquisa_id")
+  conviteId           String   @unique @map("convite_id")
+  membershipId        String   @map("membership_id")
+  customerId          String   @map("customer_id")
+  note                String?
+  bonusTransactionId  String?  @unique @map("bonus_transaction_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  pesquisa         Pesquisa        @relation(fields: [pesquisaId], references: [id], onDelete: Cascade)
+  convite          Convite         @relation(fields: [conviteId], references: [id], onDelete: Restrict)
+  membership       Membership      @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  customer         Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  bonusTransaction Transaction?    @relation(fields: [bonusTransactionId], references: [id], onDelete: SetNull)
+  answers          RespostaAnswer[]
+
+  @@unique([pesquisaId, customerId])
+  @@index([pesquisaId, createdAt])
+  @@map("respostas")
+}
+
+model RespostaAnswer {
+  id         String       @id @default(cuid())
+  respostaId String       @map("resposta_id")
+  position   Int
+  prompt     String
+  value      PolegarValue
+
+  resposta Resposta @relation(fields: [respostaId], references: [id], onDelete: Cascade)
+
+  @@unique([respostaId, position])
+  @@map("resposta_answers")
 }
 
 // ─── WhatsApp (per-business Cloud API) ───────────────────────────────────────
@@ -471,6 +616,12 @@ model BusinessWhatsAppConnection {
   templateCampaignStatus WhatsAppTemplateStatus   @default(missing) @map("template_campaign_status")
   templateCampaignId     String?                  @map("template_campaign_id")
   templateCampaignSyncedAt DateTime?              @map("template_campaign_synced_at")
+  /// Earn message that names a Pesquisa and carries the signed page.
+  templatePesquisaName   String                   @default("frego_earn_pesquisa") @map("template_pesquisa_name")
+  templatePesquisaLang   String                   @default("pt_BR") @map("template_pesquisa_lang")
+  templatePesquisaStatus WhatsAppTemplateStatus   @default(missing) @map("template_pesquisa_status")
+  templatePesquisaId     String?                  @map("template_pesquisa_id")
+  templatePesquisaSyncedAt DateTime?              @map("template_pesquisa_synced_at")
   /// True when onboarded via WhatsApp Business app coexistence (keep app + Cloud API).
   coexistence        Boolean                  @default(false)
   smbSyncStartedAt   DateTime?                @map("smb_sync_started_at")

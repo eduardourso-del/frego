@@ -25,7 +25,11 @@ import {
   WELCOME_TEMPLATE_NAME,
   ensureCampaignTemplate,
   ensureEarnTemplate,
+  ensurePesquisaTemplate,
   ensureWelcomeTemplate,
+  fetchPesquisaTemplateState,
+  PESQUISA_TEMPLATE_LANG,
+  PESQUISA_TEMPLATE_NAME,
   fetchCampaignTemplateState,
   fetchEarnTemplateState,
   fetchWelcomeTemplateState,
@@ -75,6 +79,11 @@ function connectionPublic(row: {
   templateCampaignStatus: string;
   templateCampaignId: string | null;
   templateCampaignSyncedAt: Date | null;
+  templatePesquisaName: string;
+  templatePesquisaLang: string;
+  templatePesquisaStatus: string;
+  templatePesquisaId: string | null;
+  templatePesquisaSyncedAt: Date | null;
   coexistence: boolean;
   smbSyncStartedAt: Date | null;
   connectedAt: Date;
@@ -104,6 +113,11 @@ function connectionPublic(row: {
     templateCampaignStatus: row.templateCampaignStatus,
     templateCampaignId: row.templateCampaignId,
     templateCampaignSyncedAt: row.templateCampaignSyncedAt,
+    templatePesquisaName: row.templatePesquisaName,
+    templatePesquisaLang: row.templatePesquisaLang,
+    templatePesquisaStatus: row.templatePesquisaStatus,
+    templatePesquisaId: row.templatePesquisaId,
+    templatePesquisaSyncedAt: row.templatePesquisaSyncedAt,
     coexistence: row.coexistence,
     smbSyncStartedAt: row.smbSyncStartedAt,
     connectedAt: row.connectedAt,
@@ -194,6 +208,34 @@ async function applyCampaignTemplateState(
   });
 }
 
+async function applyPesquisaTemplateState(
+  connectionId: string,
+  accessToken: string,
+  wabaId: string,
+  mode: 'ensure' | 'sync',
+) {
+  const result =
+    mode === 'ensure'
+      ? await ensurePesquisaTemplate(wabaId, accessToken)
+      : await fetchPesquisaTemplateState(wabaId, accessToken);
+
+  return prisma.businessWhatsAppConnection.update({
+    where: { id: connectionId },
+    data: {
+      templatePesquisaName: PESQUISA_TEMPLATE_NAME,
+      templatePesquisaLang: PESQUISA_TEMPLATE_LANG,
+      templatePesquisaStatus: result.status,
+      templatePesquisaId: result.templateId,
+      templatePesquisaSyncedAt: new Date(),
+      ...(result.error && result.status === 'missing'
+        ? { lastError: result.error }
+        : result.status === 'approved'
+          ? { lastError: null }
+          : {}),
+    },
+  });
+}
+
 async function applyAllTemplateStates(
   connectionId: string,
   accessToken: string,
@@ -202,7 +244,8 @@ async function applyAllTemplateStates(
 ) {
   await applyEarnTemplateState(connectionId, accessToken, wabaId, mode);
   await applyWelcomeTemplateState(connectionId, accessToken, wabaId, mode);
-  return applyCampaignTemplateState(connectionId, accessToken, wabaId, mode);
+  await applyCampaignTemplateState(connectionId, accessToken, wabaId, mode);
+  return applyPesquisaTemplateState(connectionId, accessToken, wabaId, mode);
 }
 
 export const whatsappRoutes: FastifyPluginAsync = async (app) => {

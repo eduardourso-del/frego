@@ -25,8 +25,12 @@ The carimbos that belong to one stamp Campanha and can Resgatar only that Campan
 _Avoid_: card, cartão, punch card, pool
 
 **Promoção**:
-A Campanha whose Prêmio is entitled by Audience, the Estabelecimento calendar, and a Resgatar frequency cap — not by stamps or points.
+A Campanha whose Prêmio is entitled by Audiência, the Estabelecimento calendar, and a Resgatar frequency cap — not by stamps or points.
 _Avoid_: offer, gift, brinde, perk
+
+**Audiência**:
+A saved set of Clientes. A Campanha or a Pesquisa can be limited to one. With none set, every Cliente qualifies.
+_Avoid_: segment, list, filter, audience
 
 **Prêmio**:
 The in-store reward a Cliente is entitled to collect.
@@ -52,6 +56,10 @@ _Avoid_: fulfill, redeem (staff), use, Usar (UI label on the typed/scanned path)
 The questions an Estabelecimento asks a Cliente: up to five polegar questions and one optional note.
 _Avoid_: survey, research, campanha, NPS
 
+**Convite**:
+The open offer for one Cliente to answer a Pesquisa, tied to her latest qualifying earn.
+_Avoid_: invite, link, notification, survey
+
 **Polegar**:
 A Pesquisa question the Cliente answers up or down.
 _Avoid_: thumbs, rating, star, NPS
@@ -61,5 +69,5 @@ A Cliente's finished Pesquisa: every Polegar answered, note optional.
 _Avoid_: reply, submission, response
 
 **Bônus**:
-The wallet credit an Estabelecimento sets on a Pesquisa. One wallet: carimbos on the shared pile or one Cartela, pontos, or cashback.
+The wallet credit an Estabelecimento sets on a Pesquisa. One wallet: a fixed number of carimbos on the shared pile or one Cartela, a fixed number of pontos, a fixed cashback amount, or a double of the pontos or cashback on that earn. It is offered only on an earn that credited that same wallet. With none set, any qualifying earn can open a Convite.
 _Avoid_: prêmio, reward, voucher

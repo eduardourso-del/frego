@@ -5,7 +5,7 @@ import {
   buildEarnWhatsAppLines,
   type EarnNotifyInput,
 } from './earn-message.js';
-import { queueEarnPush } from '../push/earn-notify.js';
+import { queueEarnPush, queuePesquisaPush } from '../push/earn-notify.js';
 
 export type { EarnNotifyInput };
 
@@ -53,18 +53,33 @@ export async function notifyEarnWhatsAppForBusiness(
     stampEarn: input.stampEarn,
   });
 
+  const pesquisaTemplate =
+    input.pesquisa && conn.templatePesquisaStatus === 'approved';
   const result = await sendWhatsAppTemplate({
     accessToken,
     phoneNumberId: conn.phoneNumberId,
     toE164: input.toE164,
-    templateName: conn.templateEarnName,
-    languageCode: conn.templateEarnLang,
-    bodyParams: [
-      lines.businessName,
-      lines.earnLine,
-      lines.balanceLine,
-      lines.hintLine || '—',
-    ],
+    templateName: pesquisaTemplate
+      ? conn.templatePesquisaName
+      : conn.templateEarnName,
+    languageCode: pesquisaTemplate
+      ? conn.templatePesquisaLang
+      : conn.templateEarnLang,
+    bodyParams: pesquisaTemplate
+      ? [
+          lines.businessName,
+          lines.earnLine,
+          lines.balanceLine,
+          lines.hintLine || '—',
+          input.pesquisa!.sentence,
+          input.pesquisa!.url,
+        ]
+      : [
+          lines.businessName,
+          lines.earnLine,
+          lines.balanceLine,
+          lines.hintLine || '—',
+        ],
   });
 
   if (!result.ok) {
@@ -103,8 +118,18 @@ export function queueEarnWhatsAppForBusiness(input: EarnNotifyInput): void {
   });
 }
 
-/** WhatsApp + push, same earn copy. Fire-and-forget. */
+/** WhatsApp, the earn push, and a push for the Convite. Fire-and-forget. */
 export function queueEarnNotify(input: EarnNotifyInput): void {
   queueEarnWhatsAppForBusiness(input);
   queueEarnPush(input);
+  if (input.pesquisa) {
+    queuePesquisaPush({
+      customerId: input.customerId,
+      businessId: input.businessId,
+      businessName: input.businessName,
+      sentence: input.pesquisa.sentence,
+      conviteId: input.pesquisa.conviteId,
+      log: input.log,
+    });
+  }
 }

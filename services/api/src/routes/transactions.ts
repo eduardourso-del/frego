@@ -12,6 +12,10 @@ import {
 import { resolveCashbackEarn } from '../lib/cashback.js';
 import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
 import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
+import {
+  closeConvitesForSale,
+  openConviteForEarn,
+} from '../lib/pesquisa-flow.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import {
   isReversalMarker,
@@ -331,6 +335,31 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       message += ` · +${cashbackLabel(cashbackEarned)} cashback`;
     }
 
+    const anchorId = created.earnTx?.id ?? created.cashbackTx?.id ?? null;
+    const credited =
+      (created.earnTx != null && quantity > 0) || cashbackEarned > 0;
+    let pesquisa: {
+      sentence: string;
+      url: string;
+      conviteId: string;
+    } | null = null;
+    if (credited && anchorId) {
+      try {
+        pesquisa = await openConviteForEarn({
+          businessId: auth.businessId,
+          membershipId: membership.id,
+          customerId: membership.customer.id,
+          earnTransactionId: anchorId,
+          saleId,
+          earnedStamps: unitKind === 'stamps' ? quantity : 0,
+          earnedPoints: unitKind === 'points' ? quantity : 0,
+          earnedCashbackCents: cashbackEarned,
+        });
+      } catch (err) {
+        request.log.error({ err }, 'pesquisa_convite_failed');
+      }
+    }
+
     queueEarnNotify({
       businessId: auth.businessId,
       businessName: business.name,
@@ -340,9 +369,10 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       quantity,
       amountCents,
       cashbackCents: cashbackEarned > 0 ? cashbackEarned : null,
-      transactionId: created.earnTx?.id ?? created.cashbackTx?.id ?? null,
+      transactionId: anchorId,
       wallet,
       stampEarn: unitKind === 'stamps' ? stampEarn : null,
+      pesquisa,
       log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
 
@@ -521,6 +551,8 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
         });
       }
     });
+
+    await closeConvitesForSale(saleId ?? target.id);
 
     const wallet = await deriveWallet(target.membershipId, auth.businessId);
     return {

@@ -357,8 +357,8 @@ export default function SettingsPage() {
           <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
         ) : (
           <div className="flex flex-col gap-4">
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-              <div className="flex min-w-0 flex-col gap-3">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+              <div className="flex min-w-0 flex-col gap-3 self-start">
               <form
                 id="loja-settings"
                 onSubmit={onSubmit}
@@ -884,7 +884,8 @@ export default function SettingsPage() {
               <TagManager />
               </div>
 
-            <aside className="w-full min-w-0 lg:sticky lg:top-4">
+            <aside className="w-full min-w-0">
+              <div className="lg:sticky lg:top-4">
               <div className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4">
                 <ShopAppPreview
                   name={name}
@@ -918,6 +919,7 @@ export default function SettingsPage() {
               >
                 {busy ? 'Salvando…' : 'Salvar perfil'}
               </button>
+              </div>
             </aside>
           </div>
 

@@ -162,6 +162,41 @@ Future<Map<String, dynamic>> deleteMyAccount() async {
   return _decode(res);
 }
 
+Future<Map<String, dynamic>> fetchMyConvite(String businessId) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.get(
+    Uri.parse('$apiBaseUrl/me/businesses/$businessId/convite'),
+    headers: headers,
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> submitMyConvite({
+  required String conviteId,
+  required List<Map<String, dynamic>> answers,
+  String? note,
+}) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.post(
+    Uri.parse('$apiBaseUrl/me/convites/$conviteId/submit'),
+    headers: headers,
+    body: jsonEncode({
+      'answers': answers,
+      'note': ?note,
+    }),
+  );
+  final body = jsonDecode(res.body);
+  if (body is! Map<String, dynamic>) {
+    throw Exception('Erro na API');
+  }
+  if (res.statusCode >= 400) {
+    throw Exception(
+      body['message'] as String? ?? body['error'] as String? ?? 'Erro na API',
+    );
+  }
+  return body;
+}
+
 Future<Map<String, dynamic>> deleteDeviceToken(String token) async {
   final headers = await customerAuthHeaders();
   final res = await http.delete(
