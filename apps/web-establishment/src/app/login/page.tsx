@@ -3,10 +3,11 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { isFirebaseConfigured, signInStaff } from '@/lib/firebase';
+import { signInStaff } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth-context';
 import { FregoWordmark } from '@/components/brand';
-import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
+import { AuthScreen, authCardClass } from '@/components/auth-screen';
+import { Alert, Button, FieldLabel, PasswordField, TextField } from '@/components/ui';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,10 +16,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordUpdated, setPasswordUpdated] = useState(false);
 
   useEffect(() => {
     if (!loading && user) router.replace('/dashboard');
   }, [loading, user, router]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setPasswordUpdated(params.get('senha') === 'atualizada');
+  }, []);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -59,71 +66,16 @@ export default function LoginPage() {
     );
   }
 
+  const recoverHref = email.trim()
+    ? `/recuperar-senha?email=${encodeURIComponent(email.trim())}`
+    : '/recuperar-senha';
+
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[var(--color-bg)]">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-[var(--color-primary-50)] to-transparent"
-        aria-hidden
-      />
-      <div className="relative mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 py-10">
-        <div className="mb-8">
-          <FregoWordmark height={28} href="/" />
-          <p className="mt-3 text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-neutral-500)]">
-            Estabelecimento
-          </p>
-        </div>
-
-        <h1 className="text-[32px] font-extrabold tracking-[-0.025em] text-[var(--color-ink)]">
-          Entrar
-        </h1>
-        <p className="mt-2 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Entre com o e-mail da equipe. No aplicativo, o cliente entra com o
-          telefone.
-        </p>
-
-        <form
-          onSubmit={onSubmit}
-          className="mt-8 flex flex-col gap-4 rounded-[20px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
-        >
-          <label className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
-            E-mail
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3.5 text-[16px] text-[var(--color-ink)]"
-              placeholder="voce@seucafe.com"
-              required
-            />
-          </label>
-          <label className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
-            Senha
-            <input
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-control)] bg-[var(--color-card)] px-3.5 text-[16px] text-[var(--color-ink)]"
-              required
-              minLength={6}
-            />
-          </label>
-          {error && (
-            <p className="text-[13px] text-[var(--color-danger)]" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={busy}
-          className="min-h-11 rounded-[8px] bg-[var(--color-primary-500)] text-[14px] font-extrabold text-[var(--color-on-primary)] transition-[transform,background] enabled:active:scale-[0.98] disabled:bg-[var(--color-neutral-100)] disabled:text-[var(--color-neutral-400)]"
-          >
-            {busy ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-[14px] text-[var(--color-neutral-500)]">
+    <AuthScreen
+      title="Entrar"
+      description="Entre com o e-mail da equipe. No aplicativo, o cliente entra com o telefone."
+      footer={
+        <p className="text-center text-[14px] text-[var(--color-neutral-500)]">
           Novo estabelecimento?{' '}
           <Link
             href="/register"
@@ -132,24 +84,45 @@ export default function LoginPage() {
             Cadastre sua loja
           </Link>
         </p>
-        <p className="mt-3 text-center text-[12px] text-[var(--color-neutral-400)]">
-          <Link href="/suporte" className="hover:text-[var(--color-ink)]">
-            Suporte
-          </Link>
-          {' · '}
-          <Link href="/privacidade" className="hover:text-[var(--color-ink)]">
-            Privacidade
-          </Link>
-          {' · '}
-          <Link href="/termos" className="hover:text-[var(--color-ink)]">
-            Termos
-          </Link>
-          {' · '}
-          <a href={CONTACT_MAILTO} className="hover:text-[var(--color-ink)]">
-            {CONTACT_EMAIL}
-          </a>
-        </p>
-      </div>
-    </main>
+      }
+    >
+      <form onSubmit={onSubmit} className={authCardClass}>
+        {passwordUpdated ? (
+          <Alert tone="success">Senha atualizada. Entre com a nova senha.</Alert>
+        ) : null}
+        <TextField
+          label="E-mail"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="voce@seucafe.com"
+          required
+        />
+        <div>
+          <div className="mb-1.5 flex items-baseline justify-between gap-3">
+            <FieldLabel className="mb-0">Senha</FieldLabel>
+            <Link
+              href={recoverHref}
+              className="shrink-0 text-[13px] font-semibold normal-case tracking-normal text-[var(--color-primary-500)]"
+            >
+              Esqueci minha senha
+            </Link>
+          </div>
+          <PasswordField
+            aria-label="Senha"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={6}
+          />
+        </div>
+        {error ? <Alert tone="danger">{error}</Alert> : null}
+        <Button type="submit" className="w-full" disabled={busy}>
+          {busy ? 'Entrando…' : 'Entrar'}
+        </Button>
+      </form>
+    </AuthScreen>
   );
 }

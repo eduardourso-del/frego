@@ -7,6 +7,9 @@ import {
   getAuth,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
   type Auth,
 } from 'firebase/auth';
 import {
@@ -50,6 +53,7 @@ export function getFirebaseApp() {
 export function getFirebaseAuth() {
   if (!auth) {
     auth = getAuth(getFirebaseApp());
+    auth.languageCode = 'pt';
   }
   return auth;
 }
@@ -75,6 +79,46 @@ export async function registerStaff(email: string, password: string) {
     email.trim(),
     password,
   );
+}
+
+/** Depois da página de redefinição, o link volta para o login. */
+export const PASSWORD_RESET_CONTINUE_PATH = '/login?senha=atualizada';
+
+export async function sendStaffPasswordReset(email: string) {
+  const auth = getFirebaseAuth();
+  const trimmed = email.trim();
+  const continueUrl = `${window.location.origin}${PASSWORD_RESET_CONTINUE_PATH}`;
+  try {
+    await sendPasswordResetEmail(auth, trimmed, { url: continueUrl });
+  } catch (err) {
+    const code = firebaseErrorCode(err);
+    if (
+      code === 'auth/unauthorized-continue-uri' ||
+      code === 'auth/invalid-continue-uri'
+    ) {
+      await sendPasswordResetEmail(auth, trimmed);
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function verifyStaffPasswordReset(code: string) {
+  return verifyPasswordResetCode(getFirebaseAuth(), code);
+}
+
+export async function confirmStaffPasswordReset(code: string, password: string) {
+  await confirmPasswordReset(getFirebaseAuth(), code, password);
+}
+
+export function firebaseErrorCode(err: unknown): string {
+  if (err && typeof err === 'object' && 'code' in err) {
+    return String((err as { code: unknown }).code);
+  }
+  if (err instanceof Error) {
+    return err.message.match(/auth\/[a-z0-9-]+/)?.[0] ?? '';
+  }
+  return '';
 }
 
 export async function getIdToken(forceRefresh = false): Promise<string | null> {
