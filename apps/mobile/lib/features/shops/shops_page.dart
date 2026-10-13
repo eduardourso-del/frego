@@ -1776,7 +1776,7 @@ class _InsightStrip extends StatelessWidget {
           icon: FregoIcons.promo(size: 22, color: FregoColors.ink),
           title: reward != null && reward.isNotEmpty
               ? reward
-              : 'Promoção da casa',
+              : 'Promoção do estabelecimento',
           subtitle: [
             'Promoção',
             if (shopName != null) shopName,

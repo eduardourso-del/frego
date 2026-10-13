@@ -31,7 +31,7 @@ export const metadata: Metadata = {
     default: 'Frego — Estabelecimento',
     template: '%s · Frego',
   },
-  description: 'Painel de fidelidade do seu negócio',
+  description: 'Painel do clube do seu negócio',
   icons: {
     icon: [
       { url: '/brand/png/frego-favicon-16.png', sizes: '16x16', type: 'image/png' },

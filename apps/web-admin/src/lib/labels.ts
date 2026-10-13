@@ -30,6 +30,7 @@ export const CAMPAIGN_TYPE_LABEL: Record<string, string> = {
   visits: 'Visitas',
   birthday: 'Aniversário',
   cashback: 'Cashback',
+  promo: 'Promoção',
 };
 
 export const CAMPAIGN_STATUS_LABEL: Record<string, string> = {

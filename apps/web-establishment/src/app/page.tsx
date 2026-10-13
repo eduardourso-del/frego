@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     'relacionamento com clientes',
     'negócio local',
     'inteligência comercial',
-    'campanha de fidelidade',
+    'campanha do clube',
     'carimbos pontos cashback',
     'whatsapp para loja',
     'pequeno negócio',

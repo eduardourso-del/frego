@@ -686,7 +686,7 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({
         error: 'TEMPLATE_NOT_APPROVED',
         message:
-          'Aguarde o template frego_earn_summary ser aprovado (ou sincronize o status).',
+          'Aguarde o aviso de acúmulo ser aprovado (ou sincronize o status).',
         connection: connectionPublic(row),
       });
     }

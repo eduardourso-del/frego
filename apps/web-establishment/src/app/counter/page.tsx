@@ -149,6 +149,56 @@ function stampDestinationsFrom(lookup: LookupResult | null): StampDestination[] 
   return raw.filter((d) => typeof d.label === 'string');
 }
 
+/** Active carimbo rows for this shop, used when the customer does not exist yet. */
+function stampDestinationsFromCampaigns(raw: unknown): StampDestination[] {
+  if (!Array.isArray(raw)) return [];
+  const active = raw.filter((row): row is {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    cartela?: boolean;
+  } => {
+    if (!row || typeof row !== 'object') return false;
+    const campaign = row as {
+      id?: unknown;
+      name?: unknown;
+      type?: unknown;
+      status?: unknown;
+      cartela?: unknown;
+    };
+    return (
+      typeof campaign.id === 'string' &&
+      typeof campaign.name === 'string' &&
+      typeof campaign.type === 'string' &&
+      campaign.status === 'active' &&
+      (campaign.type === 'stamps' || campaign.type === 'visits')
+    );
+  });
+  const shared = active.filter((c) => !(c.type === 'stamps' && c.cartela));
+  const cartelas = active.filter((c) => c.type === 'stamps' && c.cartela);
+  const rows: StampDestination[] = [];
+  if (shared.length > 0) {
+    rows.push({
+      campaignId: null,
+      label: shared.length === 1 ? shared[0]!.name : 'Carimbos',
+      balance: 0,
+      cartela: false,
+      earnable: true,
+    });
+  }
+  for (const cartela of cartelas) {
+    rows.push({
+      campaignId: cartela.id,
+      label: cartela.name,
+      balance: 0,
+      cartela: true,
+      earnable: true,
+    });
+  }
+  return rows;
+}
+
 function poolsFrom(lookup: LookupResult | null) {
   return (
     lookup?.pools ??
@@ -184,6 +234,9 @@ export default function CounterPage() {
   const [applyAmount, setApplyAmount] = useState('');
   const [fulfillingId, setFulfillingId] = useState<string | null>(null);
   const [fetchedKinds, setFetchedKinds] = useState<EarnMode[] | null>(null);
+  const [shopDestinations, setShopDestinations] = useState<StampDestination[]>(
+    [],
+  );
   const [catalog, setCatalog] = useState<CatalogTag[]>([]);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagBusy, setTagBusy] = useState(false);
@@ -260,11 +313,18 @@ export default function CounterPage() {
         const json = await res.json();
         if (cancelled || !res.ok) return;
         setFetchedKinds(parseEarnKinds(json.business?.activeEarnKinds));
-        const tagRes = await fetch(`${API_URL}/tags`, {
-          headers: await bizAuthHeaders(),
-        });
+        const [tagRes, campaignRes] = await Promise.all([
+          fetch(`${API_URL}/tags`, { headers: await bizAuthHeaders() }),
+          fetch(`${API_URL}/campaigns`, { headers: await bizAuthHeaders() }),
+        ]);
         const tagJson = await tagRes.json().catch(() => ({}));
         if (!cancelled && tagRes.ok) setCatalog(tagJson.tags ?? []);
+        const campaignJson = await campaignRes.json().catch(() => ({}));
+        if (!cancelled && campaignRes.ok) {
+          setShopDestinations(
+            stampDestinationsFromCampaigns(campaignJson.campaigns),
+          );
+        }
       } catch {
         // Keep kinds from session.
       }
@@ -473,6 +533,8 @@ export default function CounterPage() {
           last4: data.last4,
           phoneE164: data.phoneE164,
           matches: [],
+          activeEarnKinds: parseEarnKinds(data.activeEarnKinds),
+          stampDestinations: stampDestinationsFrom(data),
         });
         setFocus('none');
         phoneInputRef.current?.blur();
@@ -579,6 +641,11 @@ export default function CounterPage() {
       setFocus('amount');
       return;
     }
+    const earnable = stampDestinationsFrom(lookup).filter((d) => d.earnable);
+    if (canEarn && earnMode === 'stamps' && earnable.length > 1 && !stampTarget) {
+      setError('Escolha onde o carimbo entra.');
+      return;
+    }
     setPendingCreate(true);
   }
 
@@ -626,7 +693,11 @@ export default function CounterPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Não foi possível cadastrar.');
+      if (!res.ok) {
+        throw new Error(
+          data.message ?? data.error ?? 'Não foi possível cadastrar.',
+        );
+      }
       setLookup({
         found: true,
         associatedHere: true,
@@ -719,7 +790,11 @@ export default function CounterPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Não foi possível registrar.');
+      if (!res.ok) {
+        throw new Error(
+          data.message ?? data.error ?? 'Não foi possível registrar.',
+        );
+      }
       const sale = data.sale as CounterSale | undefined;
       setLookup((prev) => {
         if (!prev) return prev;
@@ -921,7 +996,9 @@ export default function CounterPage() {
     }
   }
 
-  const stampDestinations = stampDestinationsFrom(lookup);
+  const fromLookup = stampDestinationsFrom(lookup);
+  const stampDestinations =
+    fromLookup.length > 0 ? fromLookup : shopDestinations;
   const earnableStamps = stampDestinations.filter((d) => d.earnable);
   const needsStampPick =
     earnMode === 'stamps' && earnableStamps.length > 1 && !stampTarget;
@@ -1012,7 +1089,9 @@ export default function CounterPage() {
         ? 'cashback'
         : 'stamps';
   const stickyLabel =
-    voucherTask && voucherExpired
+    !voucherTask && needsStampPick
+      ? 'Escolha onde o carimbo entra'
+      : voucherTask && voucherExpired
       ? fulfillingId
         ? '…'
         : 'Aceitar mesmo assim'
@@ -1424,32 +1503,13 @@ export default function CounterPage() {
           </p>
         ) : null}
 
-        {earnMode === 'stamps' && earnableStamps.length > 1 && lookup ? (
-          <div className="mb-3 flex flex-col gap-1.5">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
-              Onde entra o carimbo
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {earnableStamps.map((dest) => {
-                const key = dest.campaignId ?? 'shared';
-                const selected = stampTarget === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setStampTarget(key)}
-                    className={`min-h-11 rounded-full px-3 text-[13px] font-semibold ${
-                      selected
-                        ? 'bg-[var(--color-stamps)] text-white'
-                        : 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]'
-                    }`}
-                  >
-                    {dest.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {earnMode === 'stamps' && customerResolved ? (
+          <StampPick
+            destinations={earnableStamps}
+            value={stampTarget}
+            onChange={setStampTarget}
+            className="mb-3"
+          />
         ) : null}
 
         {lookup ? null : (
@@ -1554,6 +1614,13 @@ export default function CounterPage() {
                 placeholder="Como o cliente se chama"
               />
             </label>
+            {earnMode === 'stamps' ? (
+              <StampPick
+                destinations={earnableStamps}
+                value={stampTarget}
+                onChange={setStampTarget}
+              />
+            ) : null}
             {showAmount && (
               <AmountField
                 amount={amount}
@@ -2084,6 +2151,13 @@ export default function CounterPage() {
                   placeholder="Como o cliente se chama"
                 />
               </label>
+              {earnMode === 'stamps' ? (
+                <StampPick
+                  destinations={earnableStamps}
+                  value={stampTarget}
+                  onChange={setStampTarget}
+                />
+              ) : null}
               <p className="mt-2 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
                 Confirma {createBenefitSummary}?
               </p>
@@ -2098,7 +2172,7 @@ export default function CounterPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={loading}
+                  disabled={loading || needsStampPick}
                   onClick={() => {
                     setPendingCreate(false);
                     void resolveFullPhoneAndEarn(createPhoneDigits);
@@ -2215,6 +2289,47 @@ export default function CounterPage() {
         ) : null}
       </main>
     </AppShell>
+  );
+}
+
+function StampPick({
+  destinations,
+  value,
+  onChange,
+  className = 'mt-4',
+}: {
+  destinations: StampDestination[];
+  value: string | null;
+  onChange: (key: string) => void;
+  className?: string;
+}) {
+  if (destinations.length < 2) return null;
+  return (
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+      <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+        Onde entra o carimbo
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {destinations.map((dest) => {
+          const key = dest.campaignId ?? 'shared';
+          const selected = value === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onChange(key)}
+              className={`min-h-11 rounded-full px-3 text-[13px] font-semibold ${
+                selected
+                  ? 'bg-[var(--color-stamps)] text-white'
+                  : 'bg-[var(--color-stamps-bg)] text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]'
+              }`}
+            >
+              {dest.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

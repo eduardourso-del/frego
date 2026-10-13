@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { AdminShell } from '@/components/admin-shell';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
@@ -77,12 +77,18 @@ type Detail = {
     status: string;
     stampsNeeded: number | null;
     rewardTitle: string | null;
+    cartela: boolean;
+    earns30d: number;
+    redeems30d: number;
   }>;
   stats: {
     customers: number;
-    stamps: number;
-    redeems: number;
     campaigns: number;
+    activeCampaigns: number;
+    earns30d: number;
+    redeems30d: number;
+    spendCents30d: number;
+    lastActivityAt: string | null;
   };
 };
 
@@ -100,6 +106,7 @@ function apiErrorMessage(error: string | undefined) {
 
 export default function BusinessDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { getToken } = useAuth();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -274,6 +281,29 @@ export default function BusinessDetailPage() {
     }
   }
 
+  async function remove() {
+    if (!id || !detail) return;
+    const ok = window.confirm(
+      `Excluir ${detail.business.name}?\n\nCampanhas, pesquisas, equipe e o histórico deste estabelecimento somem. A conta do cliente na Frego permanece.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(apiErrorMessage(json.error));
+      router.push('/businesses');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao excluir');
+      setBusy(false);
+    }
+  }
+
   async function act(action: 'approve' | 'reject') {
     if (!id) return;
     setBusy(true);
@@ -335,34 +365,74 @@ export default function BusinessDetailPage() {
                 {new Date(detail.business.updatedAt).toLocaleString('pt-BR')}
               </p>
             </div>
-            {detail.business.status === 'pending' && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act('approve')}
-                  className="min-h-10 rounded-[10px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
-                >
-                  Aprovar
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void act('reject')}
-                  className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold disabled:opacity-60"
-                >
-                  Recusar
-                </button>
-              </div>
-            )}
+            <div className="flex gap-2">
+              {detail.business.status === 'pending' && (
+                <>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void act('approve')}
+                    className="min-h-10 rounded-[10px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
+                  >
+                    Aprovar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void act('reject')}
+                    className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold disabled:opacity-60"
+                  >
+                    Recusar
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void remove()}
+                className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
+              >
+                Excluir
+              </button>
+            </div>
           </header>
 
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[
-              { label: 'Clientes', value: detail.stats.customers },
-              { label: 'Campanhas', value: detail.stats.campaigns },
-              { label: 'Carimbos', value: detail.stats.stamps },
-              { label: 'Resgates', value: detail.stats.redeems },
+              { label: 'Clientes', value: String(detail.stats.customers) },
+              {
+                label: 'Campanhas ativas',
+                value: `${detail.stats.activeCampaigns} de ${detail.stats.campaigns}`,
+              },
+              {
+                label: 'Acúmulos · 30 dias',
+                value: String(detail.stats.earns30d),
+              },
+              {
+                label: 'Resgates · 30 dias',
+                value: String(detail.stats.redeems30d),
+              },
+              {
+                label: 'Compras · 30 dias',
+                value: (detail.stats.spendCents30d / 100).toLocaleString(
+                  'pt-BR',
+                  { style: 'currency', currency: 'BRL' },
+                ),
+              },
+              {
+                label: 'Última atividade',
+                value: detail.stats.lastActivityAt
+                  ? new Date(detail.stats.lastActivityAt).toLocaleString(
+                      'pt-BR',
+                      {
+                        day: '2-digit',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      },
+                    )
+                  : 'Sem movimento',
+              },
             ].map((kpi) => (
               <div
                 key={kpi.label}
@@ -377,6 +447,60 @@ export default function BusinessDetailPage() {
               </div>
             ))}
           </div>
+
+          <section className="mb-8 overflow-x-auto rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
+            <p className="px-5 pt-5 text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+              Campanhas
+            </p>
+            {detail.campaigns.length === 0 ? (
+              <p className="px-5 py-4 text-[14px] text-[var(--color-neutral-500)]">
+                Nenhuma campanha.
+              </p>
+            ) : (
+              <table className="mt-3 w-full min-w-[720px] border-collapse text-left text-[14px]">
+                <thead>
+                  <tr className="border-b border-[var(--color-hairline)] text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                    <th className="px-5 py-3 font-semibold">Campanha</th>
+                    <th className="px-5 py-3 font-semibold">Tipo</th>
+                    <th className="px-5 py-3 font-semibold">Status</th>
+                    <th className="px-5 py-3 font-semibold">30 dias</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detail.campaigns.map((campaign) => (
+                    <tr
+                      key={campaign.id}
+                      className="border-b border-[var(--color-hairline)] last:border-0"
+                    >
+                      <td className="px-5 py-3">
+                        <p className="font-semibold">{campaign.name}</p>
+                        {campaign.rewardTitle && (
+                          <p className="text-[13px] text-[var(--color-neutral-500)]">
+                            {campaign.rewardTitle}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-[var(--color-neutral-700)]">
+                        {CAMPAIGN_TYPE_LABEL[campaign.type] ?? campaign.type}
+                        {campaign.cartela ? ' · cartela' : ''}
+                        {campaign.stampsNeeded
+                          ? ` · ${campaign.stampsNeeded}`
+                          : ''}
+                      </td>
+                      <td className="px-5 py-3">
+                        {CAMPAIGN_STATUS_LABEL[campaign.status] ??
+                          campaign.status}
+                      </td>
+                      <td className="px-5 py-3 tabular-nums text-[var(--color-neutral-700)]">
+                        {campaign.earns30d} acúmulos · {campaign.redeems30d}{' '}
+                        resgates
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
 
           <form onSubmit={onSubmit} className="flex max-w-2xl flex-col gap-5">
             <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
@@ -809,30 +933,6 @@ export default function BusinessDetailPage() {
             )}
           </section>
 
-          <section className="mt-4 max-w-2xl rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-            <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-              Campanhas
-            </p>
-            {detail.campaigns.length === 0 ? (
-              <p className="mt-3 text-[14px] text-[var(--color-neutral-500)]">
-                Nenhuma campanha.
-              </p>
-            ) : (
-              <ul className="mt-3 flex flex-col gap-2">
-                {detail.campaigns.map((campaign) => (
-                  <li key={campaign.id} className="text-[14px]">
-                    <span className="font-semibold">{campaign.name}</span>
-                    <span className="ml-2 text-[var(--color-neutral-500)]">
-                      {CAMPAIGN_TYPE_LABEL[campaign.type] ?? campaign.type} ·{' '}
-                      {CAMPAIGN_STATUS_LABEL[campaign.status] ??
-                        campaign.status}
-                      {campaign.rewardTitle ? ` · ${campaign.rewardTitle}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
         </>
       )}
     </AdminShell>

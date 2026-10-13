@@ -1,6 +1,6 @@
 # Frego
 
-Plataforma SaaS multi-tenant de fidelidade. O **telefone do cliente é a conta inteira** — carimbar/resgatar em menos de 10 segundos.
+Plataforma SaaS multi-tenant de clubes. O **telefone do cliente é a conta inteira** — carimbar/resgatar em menos de 10 segundos.
 
 | Superfície | Stack | Deploy |
 |---|---|---|

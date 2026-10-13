@@ -173,13 +173,13 @@ function badgeTitleForAudience(name: string, rules: Record<string, unknown>) {
     n === 'quem mais gastou' ||
     n === 'quem voltou'
   ) {
-    return 'Cliente da casa';
+    return 'Cliente do estabelecimento';
   }
-  if (n === 'em risco' || n === 'quem sumiu') return 'De volta à casa';
+  if (n === 'em risco' || n === 'quem sumiu') return 'De volta ao estabelecimento';
   if (n === 'quase prêmio' || n === 'quase premio') return 'Quase lá';
-  if (n === 'vip' || n === 'vips quietos') return 'VIP da casa';
+  if (n === 'vip' || n === 'vips quietos') return 'VIP do estabelecimento';
   if (name.trim()) return name.trim();
-  return typeof rules.spendCentsMin === 'number' ? 'Cliente da casa' : name;
+  return typeof rules.spendCentsMin === 'number' ? 'Cliente do estabelecimento' : name;
 }
 
 function matchesFilter(
@@ -509,7 +509,7 @@ function CampaignsPageContent() {
               showBadge: true,
               badgeTitle: badgeTitleForAudience(name, rules),
               badgeMessage:
-                'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
+                'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte do estabelecimento.',
             }),
           });
           const json = await res.json();
@@ -895,7 +895,7 @@ function CampaignsPageContent() {
                     className="min-h-11 w-full rounded-[14px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3.5 text-[13px] font-semibold text-[var(--color-ink)] outline-none transition-[border,box-shadow] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
                   >
                     <option value="">Todas as audiências</option>
-                    <option value="none">Toda a casa</option>
+                    <option value="none">Todo o estabelecimento</option>
                     {audiences.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} ({a.memberCount})

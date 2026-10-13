@@ -451,7 +451,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
         ? null
         : () {
             final b = badges.first;
-            final title = b['badgeTitle'] as String? ?? 'Cliente da casa';
+            final title = b['badgeTitle'] as String? ?? 'Cliente do estabelecimento';
             final message = b['badgeMessage'] as String? ??
                 'A loja reconhece você — condições especiais liberadas.';
             final unlocked =

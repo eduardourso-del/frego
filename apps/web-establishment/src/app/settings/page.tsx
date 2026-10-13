@@ -350,7 +350,7 @@ export default function SettingsPage() {
           Configurações
         </h1>
         <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Como a casa aparece no app do cliente: marca, endereço e regras do
+          Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
           saldo. A prévia ao lado atualiza na hora.
         </p>
         {loading && !business ? (
@@ -366,7 +366,7 @@ export default function SettingsPage() {
               >
                 <Section
                   Icon={Store}
-                  title="A casa"
+                  title="O estabelecimento"
                   hint="Nome, tipo e slogan no cartão da loja."
                 >
                   <div className="flex flex-wrap items-center gap-4">
@@ -663,7 +663,7 @@ export default function SettingsPage() {
 
                 <Section
                   Icon={Coins}
-                  title="Fidelidade"
+                  title="Benefícios"
                   hint="Taxa de pontos, teto de cashback e validade do saldo."
                 >
                   <label className="block text-[13px] font-semibold text-[var(--color-ink)]">

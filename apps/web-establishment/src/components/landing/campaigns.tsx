@@ -297,7 +297,7 @@ export function LandingCampaigns() {
           Quatro decisões. O Frego cuida do resto.
         </h3>
         <p className="mt-3 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Não existe um pacote único de fidelidade. Você combina as peças do
+          Não existe um pacote único de clube. Você combina as peças do
           jeito que a operação aguenta — e ajusta quando o movimento pede.
         </p>
       </Reveal>

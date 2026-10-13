@@ -1,12 +1,12 @@
 import { graphBase } from './meta-oauth.js';
 
-export const EARN_TEMPLATE_NAME = 'frego_earn_summary';
+export const EARN_TEMPLATE_NAME = 'frego_earn_summary_v3';
 export const EARN_TEMPLATE_LANG = 'pt_BR';
 
-export const WELCOME_TEMPLATE_NAME = 'frego_welcome';
+export const WELCOME_TEMPLATE_NAME = 'frego_welcome_v4';
 export const WELCOME_TEMPLATE_LANG = 'pt_BR';
 
-export const CAMPAIGN_TEMPLATE_NAME = 'frego_campaign_notice';
+export const CAMPAIGN_TEMPLATE_NAME = 'frego_campaign_notice_v3';
 export const CAMPAIGN_TEMPLATE_LANG = 'pt_BR';
 
 export type EarnTemplateStatus =
@@ -23,29 +23,20 @@ export type EarnTemplateState = {
   error?: string;
 };
 
-/** OneLink: abre a App Store ou a Play Store. */
-export const FREGO_APP_DOWNLOAD_URL = 'https://onelink.to/quvd8c';
-
-const APP_DOWNLOAD_LINE = `Baixe o app Frego em ${FREGO_APP_DOWNLOAD_URL} no celular.`;
-
 const EARN_BODY_TEXT =
-  'Olá! Atualização de fidelidade da *{{1}}*.\n\nVocê acabou de ganhar *{{2}}*.\nSeu saldo agora é: *{{3}}*.\n\n{{4}}\n\nAbra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.\n\n' +
-  APP_DOWNLOAD_LINE;
+  'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nEsta mensagem confirma o crédito desta compra.';
 
 const WELCOME_BODY_TEXT =
-  'Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.\n\nUse o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.\n\n' +
-  APP_DOWNLOAD_LINE;
+  'Olá, {{1}}. Cadastro confirmado na conta da *{{2}}*.\n\nEste número passa a receber as atualizações desta conta.';
 
 const CAMPAIGN_BODY_TEXT =
-  'Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.\n\n{{2}}\n\nAbra o app Frego para conferir os detalhes e participar.\n\n' +
-  APP_DOWNLOAD_LINE;
+  'Olá. Atualização da conta na *{{1}}*.\n\nFoi registrado na sua conta: {{2}}.\n\nO saldo desta conta não mudou com esta mensagem.';
 
-export const PESQUISA_TEMPLATE_NAME = 'frego_earn_pesquisa';
+export const PESQUISA_TEMPLATE_NAME = 'frego_earn_pesquisa_v3';
 export const PESQUISA_TEMPLATE_LANG = 'pt_BR';
 
 const PESQUISA_BODY_TEXT =
-  'Olá! Atualização de fidelidade da *{{1}}*.\n\nVocê acabou de ganhar *{{2}}*.\nSeu saldo agora é: *{{3}}*.\n\n{{4}}\n\n{{5}}\nResponda neste link: {{6}}\n\nAbra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.\n\n' +
-  APP_DOWNLOAD_LINE;
+  'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nPesquisa sobre esta compra: {{5}}.\n\nA pesquisa refere-se somente a esta compra.';
 
 function metaErrorMessage(error: {
   message?: string;
@@ -79,10 +70,14 @@ type MetaTemplate = {
   name?: string;
   language?: string;
   status?: string;
+  category?: string;
   components?: { type?: string; text?: string }[];
 };
 
-type FetchedTemplate = EarnTemplateState & { bodyText: string | null };
+type FetchedTemplate = EarnTemplateState & {
+  bodyText: string | null;
+  category: string | null;
+};
 
 function bodyComponent(spec: TemplateSpec) {
   return {
@@ -117,7 +112,7 @@ async function fetchTemplateState(
   url.searchParams.set('limit', '20');
   url.searchParams.set(
     'fields',
-    'id,name,language,status,rejected_reason,components',
+    'id,name,language,status,category,rejected_reason,components',
   );
 
   const res = await fetch(url, {
@@ -133,6 +128,7 @@ async function fetchTemplateState(
       status: 'missing',
       templateId: null,
       bodyText: null,
+      category: null,
       error: metaErrorMessage(body.error) ?? `list_templates_${res.status}`,
     };
   }
@@ -144,13 +140,14 @@ async function fetchTemplateState(
   );
 
   if (!match) {
-    return { status: 'missing', templateId: null, bodyText: null };
+    return { status: 'missing', templateId: null, bodyText: null, category: null };
   }
 
   return {
     status: normalizeStatus(match.status),
     templateId: match.id ?? null,
     bodyText: templateBodyText(match),
+    category: match.category?.toUpperCase() ?? null,
   };
 }
 
@@ -166,6 +163,7 @@ async function updateTemplateBody(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      category: 'UTILITY',
       components: [bodyComponent(spec)],
     }),
   });
@@ -177,7 +175,7 @@ async function updateTemplateBody(
   };
   if (!res.ok) {
     return {
-      status: 'pending',
+      status: 'missing',
       templateId,
       error: metaErrorMessage(body.error) ?? `update_template_${res.status}`,
     };
@@ -188,18 +186,20 @@ async function updateTemplateBody(
   };
 }
 
-async function refreshDownloadLink(
+function needsUtilityRestore(existing: FetchedTemplate): boolean {
+  if (!existing.templateId || existing.category === 'MARKETING') return false;
+  return existing.bodyText?.includes('Baixe o app Frego') === true;
+}
+
+async function restoreUtilityTemplate(
   accessToken: string,
   existing: FetchedTemplate,
   spec: TemplateSpec,
 ): Promise<EarnTemplateState> {
-  if (
-    existing.templateId &&
-    !existing.bodyText?.includes(FREGO_APP_DOWNLOAD_URL)
-  ) {
-    return updateTemplateBody(accessToken, existing.templateId, spec);
-  }
-  return existing;
+  if (!needsUtilityRestore(existing) || !existing.templateId) return existing;
+  const updated = await updateTemplateBody(accessToken, existing.templateId, spec);
+  if (updated.error) return { ...existing, error: updated.error };
+  return updated;
 }
 
 async function ensureTemplate(
@@ -214,7 +214,7 @@ async function ensureTemplate(
     spec.language,
   );
   if (existing.status !== 'missing') {
-    return refreshDownloadLink(accessToken, existing, spec);
+    return restoreUtilityTemplate(accessToken, existing, spec);
   }
 
   const res = await fetch(`${graphBase()}/${wabaId}/message_templates`, {
@@ -227,7 +227,7 @@ async function ensureTemplate(
       name: spec.name,
       language: spec.language,
       category: 'UTILITY',
-      allow_category_change: true,
+      allow_category_change: false,
       parameter_format: 'POSITIONAL',
       components: [bodyComponent(spec)],
     }),
@@ -266,7 +266,7 @@ async function ensureTemplate(
       spec.language,
     );
     if (again.status !== 'missing') {
-      return refreshDownloadLink(accessToken, again, spec);
+      return restoreUtilityTemplate(accessToken, again, spec);
     }
   }
 
@@ -312,8 +312,8 @@ export async function ensureEarnTemplate(
     exampleParams: [
       'Café Bloom',
       '+1 carimbo',
-      '3 carimbos · 0 pts',
-      'Café gratuito: faltam 2',
+      '3 carimbos',
+      'Almoço: 3 de 10',
     ],
   });
 }
@@ -380,9 +380,8 @@ export async function ensurePesquisaTemplate(
     exampleParams: [
       'Café Bloom',
       '+1 carimbo',
-      '3 carimbos · 0 pts',
-      '—',
-      'Responda e ganhe 1 carimbo.',
+      '3 carimbos',
+      'Almoço: 3 de 10',
       'https://frego.app.br/p/exemplo',
     ],
   });
@@ -407,7 +406,7 @@ export async function ensureCampaignTemplate(
     name,
     language,
     bodyText: CAMPAIGN_BODY_TEXT,
-    exampleParams: ['Café Bloom', '10 carimbos'],
+    exampleParams: ['Café Bloom', 'Almoço'],
   });
 }
 

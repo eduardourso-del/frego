@@ -29,6 +29,11 @@ export function roleFromMeta(metadata: unknown): LedgerRole | null {
   return null;
 }
 
+/** A Bônus credit. This role is not a LedgerRole. */
+export function isPesquisaCredit(metadata: unknown): boolean {
+  return metaString(metadata, 'role') === 'pesquisa';
+}
+
 export function isReversedTx(metadata: unknown): boolean {
   return metaString(metadata, 'reversedAt') != null;
 }

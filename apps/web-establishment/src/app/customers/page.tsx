@@ -7,19 +7,11 @@ import {
   useState,
   Suspense,
   type FormEvent,
+  type ReactNode,
 } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import {
-  Banknote,
-  Gift,
-  Link2,
-  Plus,
-  Search,
-  Stamp,
-  X,
-  Crown,
-} from 'lucide-react';
+import { Banknote, Crown, Gift, Link2, Plus, Search, Stamp, X } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { campaignCreateHref } from '@/components/audience-preset-cards';
 import { TagChipRow } from '@/components/tag-chips';
@@ -143,6 +135,7 @@ type ProfileResponse = {
     createdAt: string;
     voucherCode?: string | null;
     voucherDisplay?: string | null;
+    source: 'pesquisa' | null;
     actorTeamMember: { displayName: string; role: string } | null;
     location: { name: string } | null;
     campaign: { name: string; rewardTitle: string | null } | null;
@@ -233,18 +226,186 @@ function showPool(
   return kinds.includes(kind);
 }
 
-function poolGridClass(
-  kinds: Array<'stamps' | 'points' | 'cashback'> | undefined,
-  pools: { stamps: number; points: number; cashbackCents?: number },
-) {
-  const n = [
-    showPool(kinds, 'stamps', pools.stamps),
-    showPool(kinds, 'points', pools.points),
-    showPool(kinds, 'cashback', pools.cashbackCents ?? 0),
-  ].filter(Boolean).length;
-  if (n <= 1) return 'grid-cols-1';
-  if (n === 2) return 'grid-cols-2';
+function poolGridClass(count: number) {
+  if (count <= 1) return 'grid-cols-1';
+  if (count === 2) return 'grid-cols-2';
   return 'grid-cols-3';
+}
+
+function BalanceCard({
+  icon,
+  tone,
+  value,
+  label,
+}: {
+  icon: ReactNode;
+  tone: string;
+  value: string;
+  label: string;
+}) {
+  return (
+    <div className={`flex items-center gap-2 rounded-[11px] px-3 py-2.5 ${tone}`}>
+      {icon}
+      <div className="min-w-0">
+        <p className="truncate text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+          {value}
+        </p>
+        <p className="truncate text-[11px] text-[var(--color-neutral-500)]">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function ProfileBalances({
+  kinds,
+  pools,
+  destinations,
+}: {
+  kinds: Array<'stamps' | 'points' | 'cashback'> | undefined;
+  pools: { stamps: number; points: number; cashbackCents?: number };
+  destinations: Array<{ campaignId: string | null; label: string; balance: number }> | undefined;
+}) {
+  const rows = destinations ?? [];
+  const multiStamps = rows.length > 1;
+  const showStamps =
+    !multiStamps &&
+    (showPool(kinds, 'stamps', pools.stamps) || rows.length > 0);
+  const showPoints = showPool(kinds, 'points', pools.points);
+  const showCashback = showPool(kinds, 'cashback', pools.cashbackCents ?? 0);
+  const compactCount = [showStamps, showPoints, showCashback].filter(Boolean).length;
+
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {multiStamps ? (
+        <div className="rounded-[11px] bg-[var(--color-stamps-bg)] px-3 py-2.5">
+          <p className="mb-1.5 text-[11px] font-semibold text-[var(--color-stamps)]">
+            Carimbos
+          </p>
+          <ul className="flex flex-col gap-1">
+            {rows.map((dest) => (
+              <li
+                key={dest.campaignId ?? 'shared'}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <span className="min-w-0 truncate text-[13px] text-[var(--color-ink)]">
+                  {dest.label}
+                </span>
+                <span className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
+                  {dest.balance}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {compactCount > 0 ? (
+        <div className={`grid gap-2 ${poolGridClass(compactCount)}`}>
+          {showStamps ? (
+            <BalanceCard
+              icon={<Stamp className="h-4 w-4 shrink-0 text-[var(--color-stamps)]" />}
+              tone="bg-[var(--color-stamps-bg)]"
+              value={String(rows[0]?.balance ?? pools.stamps)}
+              label={rows[0]?.label ?? 'Carimbos'}
+            />
+          ) : null}
+          {showPoints ? (
+            <BalanceCard
+              icon={<Gift className="h-4 w-4 shrink-0 text-[var(--color-points)]" />}
+              tone="bg-[var(--color-points-bg)]"
+              value={pools.points.toLocaleString('pt-BR')}
+              label="Pontos"
+            />
+          ) : null}
+          {showCashback ? (
+            <BalanceCard
+              icon={<Banknote className="h-4 w-4 shrink-0 text-[var(--color-cashback)]" />}
+              tone="bg-[var(--color-cashback-bg)]"
+              value={formatMoney(pools.cashbackCents ?? 0)}
+              label="Cashback"
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileHistory({
+  stats,
+}: {
+  stats: {
+    stampsEarned: number;
+    pointsEarned: number;
+    redeems: number;
+    spendCents: number;
+    cashbackEarnedCents?: number;
+    cashbackSpentCents?: number;
+    lastVisitAt: string | null;
+  };
+}) {
+  const facts: Array<{ value: string; label: string }> = [];
+  if (stats.stampsEarned > 0) {
+    facts.push({
+      value: stats.stampsEarned.toLocaleString('pt-BR'),
+      label: 'carimbos ganhos',
+    });
+  }
+  if (stats.pointsEarned > 0) {
+    facts.push({
+      value: stats.pointsEarned.toLocaleString('pt-BR'),
+      label: 'pontos ganhos',
+    });
+  }
+  if ((stats.cashbackEarnedCents ?? 0) > 0) {
+    facts.push({
+      value: formatMoney(stats.cashbackEarnedCents ?? 0),
+      label: 'cashback ganho',
+    });
+  }
+  if ((stats.cashbackSpentCents ?? 0) > 0) {
+    facts.push({
+      value: formatMoney(stats.cashbackSpentCents ?? 0),
+      label: 'usados no caixa',
+    });
+  }
+  if (stats.redeems > 0) {
+    facts.push({
+      value: stats.redeems.toLocaleString('pt-BR'),
+      label: stats.redeems === 1 ? 'resgate' : 'resgates',
+    });
+  }
+  if (stats.spendCents > 0) {
+    facts.push({
+      value: formatMoney(stats.spendCents),
+      label: 'em compras',
+    });
+  }
+  if (facts.length === 0 && !stats.lastVisitAt) return null;
+
+  return (
+    <div className="mt-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.03em] text-[var(--color-neutral-400)]">
+        Histórico
+      </p>
+      {facts.length > 0 ? (
+        <ul className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2">
+          {facts.map((fact) => (
+            <li key={fact.label} className="min-w-0">
+              <p className="truncate text-[13px] font-semibold tabular-nums text-[var(--color-ink)]">
+                {fact.value}
+              </p>
+              <p className="text-[11px] text-[var(--color-neutral-500)]">{fact.label}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {stats.lastVisitAt ? (
+        <p className="mt-2 text-[12px] text-[var(--color-neutral-500)]">
+          Última visita {formatRelativeVisit(stats.lastVisitAt).toLowerCase()}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function formatWhen(iso: string) {
@@ -1192,7 +1353,7 @@ function CustomersPageContent() {
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] font-semibold text-[var(--color-ink)]">
                           {profile.membership.isVip
-                            ? 'VIP da casa'
+                            ? 'VIP do estabelecimento'
                             : 'Marcar como VIP'}
                         </span>
                         <span className="block text-[12px] text-[var(--color-neutral-500)]">
@@ -1281,85 +1442,12 @@ function CustomersPageContent() {
                       </div>
                     </div>
 
-                    <div
-                      className={`mt-3 grid gap-2 ${poolGridClass(business?.activeEarnKinds, profile.pools)}`}
-                    >
-                      {(showPool(business?.activeEarnKinds, 'stamps', profile.pools.stamps) ||
-                        (profile.wallet.stampDestinations?.length ?? 0) > 0) && (
-                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-stamps-bg)] px-3 py-2.5">
-                          <Stamp className="h-4 w-4 shrink-0 text-[var(--color-stamps)]" />
-                          <div className="min-w-0">
-                            <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                              {stampLine(
-                                profile.wallet.stampDestinations,
-                                profile.pools.stamps,
-                              )}
-                            </p>
-                            <p className="text-[11px] text-[var(--color-neutral-500)]">
-                              {(profile.wallet.stampDestinations?.length ?? 0) > 1
-                                ? 'Saldos'
-                                : 'Carimbos'}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {showPool(business?.activeEarnKinds, 'points', profile.pools.points) && (
-                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-points-bg)] px-3 py-2.5">
-                          <Gift className="h-4 w-4 shrink-0 text-[var(--color-points)]" />
-                          <div className="min-w-0">
-                            <p className="text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                              {profile.pools.points}
-                            </p>
-                            <p className="text-[11px] text-[var(--color-neutral-500)]">
-                              Pontos
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                      {showPool(
-                        business?.activeEarnKinds,
-                        'cashback',
-                        profile.pools.cashbackCents ?? 0,
-                      ) && (
-                        <div className="flex items-center gap-2 rounded-[11px] bg-[var(--color-cashback-bg)] px-3 py-2.5">
-                          <Banknote className="h-4 w-4 shrink-0 text-[var(--color-cashback)]" />
-                          <div className="min-w-0">
-                            <p className="truncate text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                              {formatMoney(profile.pools.cashbackCents ?? 0)}
-                            </p>
-                            <p className="text-[11px] text-[var(--color-neutral-500)]">
-                              Cashback
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {(profile.stats.stampsEarned > 0 ||
-                      profile.stats.pointsEarned > 0 ||
-                      profile.stats.redeems > 0 ||
-                      (profile.stats.cashbackEarnedCents ?? 0) > 0 ||
-                      (profile.stats.cashbackSpentCents ?? 0) > 0) && (
-                      <p className="mt-3 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
-                        Histórico: {profile.stats.stampsEarned} carimbos ·{' '}
-                        {profile.stats.pointsEarned} pontos
-                        {(profile.stats.cashbackEarnedCents ?? 0) > 0
-                          ? ` · ${formatMoney(profile.stats.cashbackEarnedCents ?? 0)} cashback`
-                          : ''}
-                        {(profile.stats.cashbackSpentCents ?? 0) > 0
-                          ? ` · ${formatMoney(profile.stats.cashbackSpentCents ?? 0)} usados no caixa`
-                          : ''}
-                        {profile.stats.redeems > 0
-                          ? ` · ${profile.stats.redeems} resgates`
-                          : ''}
-                        {profile.stats.spendCents > 0
-                          ? ` · ${formatMoney(profile.stats.spendCents)}`
-                          : ''}
-                        {profile.stats.lastVisitAt
-                          ? ` · última visita: ${formatRelativeVisit(profile.stats.lastVisitAt).toLowerCase()}`
-                          : ''}
-                      </p>
-                    )}
+                    <ProfileBalances
+                      kinds={business?.activeEarnKinds}
+                      pools={profile.pools}
+                      destinations={profile.wallet.stampDestinations}
+                    />
+                    <ProfileHistory stats={profile.stats} />
                   </div>
 
                   <div className="border-b border-[var(--color-hairline)] bg-[var(--color-primary-50)]/60 px-5 py-4">
@@ -1540,9 +1628,11 @@ function CustomersPageContent() {
                                 </p>
                                 <p className="text-[11px] text-[var(--color-neutral-400)]">
                                   {formatWhen(tx.createdAt)}
-                                  {tx.actorTeamMember?.displayName
-                                    ? ` · por ${tx.actorTeamMember.displayName}`
-                                    : ''}
+                                  {tx.source === 'pesquisa'
+                                    ? ' · Pesquisa'
+                                    : tx.actorTeamMember?.displayName
+                                      ? ` · por ${tx.actorTeamMember.displayName}`
+                                      : ''}
                                   {tx.location?.name
                                     ? ` · ${tx.location.name}`
                                     : ''}

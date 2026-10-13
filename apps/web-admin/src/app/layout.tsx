@@ -1,27 +1,13 @@
 import type { Metadata } from 'next';
-import { Instrument_Sans, Source_Code_Pro, Source_Serif_4 } from 'next/font/google';
+import { Instrument_Sans } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth-context';
 import './globals.css';
 
 const instrument = Instrument_Sans({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600', '700'],
+  subsets: ['latin'],
+  weight: ['400', '600', '700'],
   display: 'swap',
   variable: '--font-instrument',
-});
-
-const sourceSerif = Source_Serif_4({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600'],
-  display: 'swap',
-  variable: '--font-source-serif',
-});
-
-const sourceCode = Source_Code_Pro({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500'],
-  display: 'swap',
-  variable: '--font-source-code',
 });
 
 export const metadata: Metadata = {
@@ -44,7 +30,7 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${instrument.variable} ${sourceSerif.variable} ${sourceCode.variable}`}
+      className={instrument.variable}
     >
       <body className="min-h-screen antialiased">
         <AuthProvider>{children}</AuthProvider>

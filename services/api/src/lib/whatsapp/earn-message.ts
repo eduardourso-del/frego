@@ -4,6 +4,9 @@ export type EarnNotifyLines = {
   businessName: string;
   earnLine: string;
   balanceLine: string;
+  /** Balance detail for the utility template. No prize or app call to action. */
+  accountLine: string;
+  /** Push copy. May name a prize that is already available. */
   hintLine: string;
 };
 
@@ -86,6 +89,7 @@ export function buildEarnWhatsAppLines(input: {
 
   const redeemable = input.wallet.campaigns.filter((c) => c.canRedeem);
   let hintLine = '—';
+  let accountLine = 'Nenhum outro lançamento nesta compra.';
   if (redeemable.length === 1) {
     const name = redeemable[0]!.campaignName || 'campanha';
     hintLine = `1 prêmio disponível: ${name}`;
@@ -118,6 +122,7 @@ export function buildEarnWhatsAppLines(input: {
       const remain = best.unitsNeeded - have;
       if (remain > 0 && remain < best.unitsNeeded) {
         hintLine = `${best.campaignName}: faltam ${remain}`;
+        accountLine = `${best.campaignName}: ${have} de ${best.unitsNeeded}`;
       }
     }
   }
@@ -126,6 +131,7 @@ export function buildEarnWhatsAppLines(input: {
     businessName,
     earnLine: earnLine.slice(0, 120),
     balanceLine: balanceLine.slice(0, 120),
+    accountLine: accountLine.slice(0, 120),
     hintLine: hintLine.slice(0, 120),
   };
 }

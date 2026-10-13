@@ -3,16 +3,6 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Check } from 'lucide-react';
-import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import {
-  getAuth,
-  inMemoryPersistence,
-  RecaptchaVerifier,
-  setPersistence,
-  signInWithPhoneNumber,
-  signOut,
-  type ConfirmationResult,
-} from 'firebase/auth';
 import { API_URL } from '@/lib/api';
 import { FregoWordmark } from '@/components/brand';
 import { PesquisaBrandHeader, type PesquisaBrand } from '@/components/pesquisa-brand-header';
@@ -58,27 +48,6 @@ function brandFrom(json: Record<string, unknown>): PesquisaBrand {
   };
 }
 
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? '',
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? '',
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? '',
-};
-
-function pesquisaAuth() {
-  const existing = getApps().find((app) => app.name === 'pesquisa');
-  const app: FirebaseApp = existing ?? initializeApp(firebaseConfig, 'pesquisa');
-  return getAuth(app);
-}
-
-function toE164(raw: string): string | null {
-  const digits = raw.replace(/\D/g, '');
-  if (digits.startsWith('55') && digits.length >= 12) return `+${digits}`;
-  if (digits.length === 10 || digits.length === 11) return `+55${digits}`;
-  if (raw.trim().startsWith('+') && digits.length >= 10) return `+${digits}`;
-  return null;
-}
-
 export default function PesquisaPublicPage({
   params,
 }: {
@@ -88,9 +57,6 @@ export default function PesquisaPublicPage({
   const [view, setView] = useState<View>({ state: 'loading' });
   const [answers, setAnswers] = useState<Record<number, 'up' | 'down'>>({});
   const [note, setNote] = useState('');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [confirmation, setConfirmation] = useState<ConfirmationResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,32 +89,8 @@ export default function PesquisaPublicPage({
       .catch(() => setView({ state: 'missing' }));
   }, [token]);
 
-  async function sendCode() {
-    if (view.state !== 'open') return;
-    const e164 = toE164(phone);
-    if (!e164) {
-      setError('Informe o telefone com DDD.');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const auth = pesquisaAuth();
-      await setPersistence(auth, inMemoryPersistence);
-      const verifier = new RecaptchaVerifier(auth, 'pesquisa-recaptcha', {
-        size: 'invisible',
-      });
-      const result = await signInWithPhoneNumber(auth, e164, verifier);
-      setConfirmation(result);
-    } catch {
-      setError('Não foi possível enviar o código.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function submit() {
-    if (view.state !== 'open' || !confirmation || !token) return;
+    if (view.state !== 'open' || !token) return;
     const missing = view.snapshot.questions.some((q) => !answers[q.position]);
     if (missing) {
       setError('Responda todas as perguntas.');
@@ -157,14 +99,11 @@ export default function PesquisaPublicPage({
     setBusy(true);
     setError(null);
     try {
-      const credential = await confirmation.confirm(code.trim());
-      const idToken = await credential.user.getIdToken();
       const res = await fetch(`${API_URL}/public/convites/${token}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conviteId: view.conviteId,
-          idToken,
           note: note.trim() || null,
           answers: view.snapshot.questions.map((q) => ({
             position: q.position,
@@ -173,7 +112,6 @@ export default function PesquisaPublicPage({
         }),
       });
       const json = await res.json();
-      await signOut(pesquisaAuth()).catch(() => undefined);
       if (!res.ok) throw new Error(json.message ?? 'Não foi possível enviar.');
       const rawLabel =
         json.bonus?.landed && typeof json.bonus.label === 'string'
@@ -285,48 +223,15 @@ export default function PesquisaPublicPage({
               />
             </label>
           ) : null}
-          <label className="block">
-            <span className="mb-1 block text-[13px] font-semibold">Telefone da conta</span>
-            <input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              inputMode="tel"
-              placeholder="11 90000-0000"
-              className="min-h-11 w-full rounded-[12px] border border-[var(--color-hairline)] px-3"
-            />
-          </label>
-          {confirmation ? (
-            <label className="block">
-              <span className="mb-1 block text-[13px] font-semibold">Código</span>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                inputMode="numeric"
-                className="min-h-11 w-full rounded-[12px] border border-[var(--color-hairline)] px-3"
-              />
-            </label>
-          ) : null}
           {error ? <p className="text-[14px] font-semibold text-[var(--color-danger)]">{error}</p> : null}
-          <div id="pesquisa-recaptcha" />
-          {confirmation ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void submit()}
-              className="min-h-12 rounded-[12px] bg-[var(--color-ink)] font-extrabold text-white disabled:opacity-50"
-            >
-              Enviar resposta
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void sendCode()}
-              className="min-h-12 rounded-[12px] bg-[var(--color-ink)] font-extrabold text-white disabled:opacity-50"
-            >
-              Enviar código
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+            className="min-h-12 rounded-[12px] bg-[var(--color-ink)] font-extrabold text-white disabled:opacity-50"
+          >
+            Enviar resposta
+          </button>
         </>
       ) : null}
       </div>

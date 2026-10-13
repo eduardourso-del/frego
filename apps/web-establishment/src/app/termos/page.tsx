@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function TermosPage() {
   return (
-    <LegalDoc title="Termos de Uso" updatedAt="2 de setembro de 2026">
+    <LegalDoc title="Termos de Uso" updatedAt="9 de outubro de 2026">
       <p>
         Estes Termos de Uso (“Termos”) regem o acesso e o uso da plataforma{' '}
         <strong>Frego</strong>, operada pela <strong>Bearlabs</strong>{' '}
@@ -27,14 +27,14 @@ export default function TermosPage() {
 
       <h2>1. O serviço</h2>
       <p>
-        O Frego é uma plataforma SaaS multi-tenant de fidelidade que permite a
+        O Frego é uma plataforma SaaS multi-tenant de clubes que permite a
         estabelecimentos criar e operar programas de carimbos/pontos e a
         clientes acompanhar saldos, resgates e histórico. O telefone do cliente
         é o identificador principal da conta de consumidor.
       </p>
       <p>
         Recursos podem incluir autenticação por OTP, painel de balcão, campanhas,
-        relatórios, notificações e envio de mensagens de fidelidade pelo
+        relatórios, notificações e envio de mensagens do clube pelo
         WhatsApp Business da loja, quando conectado.
       </p>
 
@@ -63,7 +63,7 @@ export default function TermosPage() {
         </li>
       </ul>
 
-      <h2>3. Programas de fidelidade</h2>
+      <h2>3. Clubes</h2>
       <ul>
         <li>
           Regras de campanha (metas, prêmios, validade, expiração de saldo)
@@ -91,7 +91,7 @@ export default function TermosPage() {
         </li>
         <li>
           O Frego pode enviar, em nome da loja, avisos transacionais de
-          fidelidade (ex.: atualização de saldo), sujeitos a aprovação de
+          benefícios (ex.: atualização de saldo), sujeitos a aprovação de
           templates pela Meta.
         </li>
         <li>
@@ -155,7 +155,7 @@ export default function TermosPage() {
         O tratamento de dados pessoais segue a{' '}
         <Link href="/privacidade">Política de Privacidade</Link>. Ao usar o
         Frego, você também reconhece o papel das lojas no tratamento dos dados
-        de seus clientes no âmbito do programa de fidelidade.
+        de seus clientes no âmbito do clube.
       </p>
 
       <h2>9. Isenções e limitação de responsabilidade</h2>

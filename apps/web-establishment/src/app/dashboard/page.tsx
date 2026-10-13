@@ -509,8 +509,8 @@ export default function DashboardPage() {
             )}
 
             <PainelSection
-              title="A casa"
-              hint="Quem veio, quem voltou e como a fidelidade se mexeu neste período."
+              title="O estabelecimento"
+              hint="Quem veio, quem voltou e como o clube se mexeu neste período."
             >
               <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <KpiCard
@@ -577,7 +577,7 @@ export default function DashboardPage() {
 
                 <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
                   <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
-                    Funil de fidelidade
+                    Funil do clube
                   </div>
                   <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
                     Do cadastro ao retorno e ao resgate.
@@ -638,7 +638,7 @@ export default function DashboardPage() {
 
             <PainelSection
               title="Pessoas"
-              hint="Quem mais vale a casa e o que acontece agora no balcão."
+              hint="Quem mais vale o estabelecimento e o que acontece agora no balcão."
             >
               <div className="grid items-start gap-4 lg:grid-cols-2">
                 <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">

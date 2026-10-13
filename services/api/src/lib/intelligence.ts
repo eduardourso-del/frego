@@ -107,8 +107,8 @@ function campaignSlotName(weekday: number | null, hour: number | null): string {
   const day = weekday != null ? WEEKDAY_PT[weekday] : null;
   const part = hour != null ? partOfDay(hour) : null;
   if (day && part) return `${day} à ${part}`;
-  if (day) return `${day} na casa`;
-  if (part) return `${part[0]!.toUpperCase()}${part.slice(1)} na casa`;
+  if (day) return `${day} no estabelecimento`;
+  if (part) return `${part[0]!.toUpperCase()}${part.slice(1)} no estabelecimento`;
   return 'Horário parado';
 }
 
@@ -197,8 +197,8 @@ function highValueAction(
         : `Os ${count} que mais gastaram nos últimos 90 dias`,
     body:
       count === 1
-        ? 'Reconheça quem segura a casa. Uma campanha só para essa pessoa rende carinho — e mais visitas.'
-        : 'Reconheça quem segura a casa. Uma campanha só para eles rende carinho — e mais visitas.',
+        ? 'Reconheça quem segura o estabelecimento. Uma campanha só para essa pessoa rende carinho — e mais visitas.'
+        : 'Reconheça quem segura o estabelecimento. Uma campanha só para eles rende carinho — e mais visitas.',
     metric: { value: spendSum, format: 'money' },
     audience: {
       name: 'Quem mais gastou',
@@ -209,7 +209,7 @@ function highValueAction(
       },
     },
     campaign: {
-      suggestedName: 'Obrigado, casa',
+      suggestedName: 'Obrigado, estabelecimento',
       suggestedRewardTitle: 'Prêmio para quem mais gasta',
     },
   };
@@ -223,7 +223,7 @@ function quietHoursAction(txs: TxLite[]): IntelligenceAction | null {
   const hour = slot.hour;
   let title: string;
   if (dayName && hour != null) {
-    title = `${dayName} às ${hour}h é o buraco da casa`;
+    title = `${dayName} às ${hour}h é o buraco do estabelecimento`;
   } else if (dayName) {
     title = `${dayName} é o dia mais parado`;
   } else {
@@ -234,7 +234,7 @@ function quietHoursAction(txs: TxLite[]): IntelligenceAction | null {
     key: 'quiet_hours',
     tone: 'quiet_hours',
     title,
-    body: 'A casa esvazia nesse horário. Uma campanha com convite combinado enche essa faixa.',
+    body: 'O estabelecimento esvazia nesse horário. Uma campanha com convite combinado enche essa faixa.',
     metric: {
       value: hour ?? slot.weekday ?? 0,
       format: hour != null ? 'hour' : 'count',
@@ -270,7 +270,7 @@ export function buildIntelligence(input: {
         inactiveCount === 1
           ? '1 cliente sumiu há 30 dias ou mais'
           : `${inactiveCount} clientes sumiram há 30 dias ou mais`,
-      body: 'Eles já vieram na casa e não apareceram. Um convite agora traz de volta.',
+      body: 'Eles já vieram no estabelecimento e não apareceram. Um convite agora traz de volta.',
       metric: { value: inactiveCount, format: 'count' },
       audience: {
         name: 'Quem sumiu',
@@ -280,7 +280,7 @@ export function buildIntelligence(input: {
         },
       },
       campaign: {
-        suggestedName: 'Volta pra casa',
+        suggestedName: 'Volta ao estabelecimento',
         suggestedRewardTitle: 'Prêmio para quem volta',
       },
     });
@@ -369,7 +369,7 @@ export function buildIntelligence(input: {
   const empty: IntelligenceAction = {
     key: 'empty',
     tone: 'celebrate',
-    title: 'Ainda estamos conhecendo a casa',
+    title: 'Ainda estamos conhecendo o estabelecimento',
     body: 'Cada visita no balcão vira dado. Em pouco tempo o Frego aponta quem chamar de volta.',
     metric: { value: 0, format: 'count' },
   };

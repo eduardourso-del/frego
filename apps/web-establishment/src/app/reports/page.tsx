@@ -490,7 +490,7 @@ function downloadCsv(data: ReportsData) {
   lines.push(`Resgates;${data.kpis.redeems.value}`);
   lines.push(`Carimbos;${data.kpis.stamps.value}`);
   lines.push(`Pontos;${data.kpis.points.value}`);
-  lines.push(`Receita fidelidade (centavos);${data.kpis.revenueCents.value}`);
+  lines.push(`Receita do clube (centavos);${data.kpis.revenueCents.value}`);
   lines.push(`Taxa de retorno (%);${data.kpis.repeatRate.value}`);
   lines.push(`Base total;${data.kpis.base}`);
   lines.push('');

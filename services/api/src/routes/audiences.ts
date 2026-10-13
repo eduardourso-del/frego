@@ -98,18 +98,18 @@ export const audienceRoutes: FastifyPluginAsync = async (app) => {
           memberCount,
           suggestedBadgeTitle:
             p.key === 'high_value'
-              ? 'Cliente da casa'
+              ? 'Cliente do estabelecimento'
               : p.key === 'vip'
-                ? 'VIP da casa'
+                ? 'VIP do estabelecimento'
                 : p.key === 'near_reward'
                   ? 'Quase lá'
                   : p.key === 'at_risk'
-                    ? 'De volta à casa'
-                    : 'Cliente da casa',
+                    ? 'De volta ao estabelecimento'
+                    : 'Cliente do estabelecimento',
           suggestedBadgeMessage:
             p.key === 'at_risk'
-              ? 'Que bom te ver de novo — preparamos algo especial para quem faz parte da casa.'
-              : 'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
+              ? 'Que bom te ver de novo — preparamos algo especial para quem faz parte do estabelecimento.'
+              : 'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte do estabelecimento.',
         };
       }),
     );
@@ -150,7 +150,7 @@ export const audienceRoutes: FastifyPluginAsync = async (app) => {
         badgeMessage:
           body.badgeMessage === undefined
             ? showBadge
-              ? 'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.'
+              ? 'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte do estabelecimento.'
               : null
             : body.badgeMessage,
       },

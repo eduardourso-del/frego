@@ -1,16 +1,24 @@
 # Frego
 
-Loyalty at the till and in the Cliente's pocket. The phone number is the Cliente's account.
+The Clube, at the till and in the Cliente's pocket. The phone number is the Cliente's account.
 
 ## Language
 
 **Estabelecimento**:
 The business a Cliente visits.
-_Avoid_: shop, store, loja, business
+_Avoid_: shop, store, loja, business, casa
 
 **Cliente**:
 The person identified by a phone number. That number is the account.
 _Avoid_: client, user, consumer, customer
+
+**Clube**:
+The program a Cliente belongs to at one Estabelecimento.
+_Avoid_: fidelidade, loyalty, programa de fidelidade
+
+**Benefício**:
+What the Clube puts in the Cliente's wallet: carimbos, pontos, cashback, or a Prêmio.
+_Avoid_: fidelidade
 
 **Campanha**:
 A program an Estabelecimento defines that may entitle a Prêmio. Kinds: stamps, spend, birthday, cashback, Promoção.

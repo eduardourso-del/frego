@@ -31,7 +31,7 @@ export function LandingIntelligence() {
           <ProductFrame
             className="mx-auto w-full max-w-[720px]"
             src="/landing/inteligencia.png"
-            alt="Frego Inteligência: clientes que sumiram, quem está a um passo do prêmio, quem mais gastou e o horário vazio da casa"
+            alt="Frego Inteligência: clientes que sumiram, quem está a um passo do prêmio, quem mais gastou e o horário vazio do estabelecimento"
             label="frego.app.br/dashboard"
             caption="Ações para reter quem já veio e trazer de volta quem sumiu"
             width={1024}

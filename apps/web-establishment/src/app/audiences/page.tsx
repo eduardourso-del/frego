@@ -60,9 +60,9 @@ const emptyBuilder: AudienceRulesForm = {
   tagIds: [],
   tagMatch: 'any',
   showBadge: true,
-  badgeTitle: 'Cliente da casa',
+  badgeTitle: 'Cliente do estabelecimento',
   badgeMessage:
-    'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.',
+    'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte do estabelecimento.',
 };
 
 function Section({
@@ -274,7 +274,7 @@ export default function AudiencesPage() {
   }
 
   async function deleteAudience(id: string) {
-    if (!window.confirm('Excluir esta audiência? Campanhas que usam ela ficam para toda a casa.')) {
+    if (!window.confirm('Excluir esta audiência? Campanhas que usam ela ficam para todo o estabelecimento.')) {
       return;
     }
     setDeletingId(id);
@@ -313,11 +313,11 @@ export default function AudiencesPage() {
             <TermInfo info={TERM.audiencia}>Audiências</TermInfo>
           </h1>
           <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-            Recortes da casa para filtrar clientes e criar campanhas.
+            Recortes do estabelecimento para filtrar clientes e criar campanhas.
           </p>
         </div>
         <p className="mb-6 hidden text-[14px] text-[var(--color-neutral-500)] md:block">
-          Recortes da casa para filtrar clientes e criar campanhas.
+          Recortes do estabelecimento para filtrar clientes e criar campanhas.
         </p>
 
         {busy ? (
@@ -372,7 +372,7 @@ export default function AudiencesPage() {
 
             <Section
               title="Faixas de gasto"
-              hint="Quanto a casa gastou nos últimos 90 dias."
+              hint="Quanto o estabelecimento gastou nos últimos 90 dias."
             >
               <Card>
                 {spendTiers.length === 0 ? (
@@ -645,7 +645,7 @@ export default function AudiencesPage() {
                                 badgeTitle: e.target.value,
                               }))
                             }
-                            placeholder="Cliente da casa"
+                            placeholder="Cliente do estabelecimento"
                             className="mt-1 min-h-10 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[14px]"
                           />
                         </label>

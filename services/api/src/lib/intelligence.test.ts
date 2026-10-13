@@ -61,7 +61,7 @@ describe('buildIntelligence', () => {
     assert.ok(keys.includes('high_value'));
     const missing = result.actions.find((a) => a.key === 'missing');
     assert.equal(missing?.audience?.name, 'Quem sumiu');
-    assert.equal(missing?.campaign?.suggestedName, 'Volta pra casa');
+    assert.equal(missing?.campaign?.suggestedName, 'Volta ao estabelecimento');
     assert.equal(missing?.audience?.rules.inactiveDaysMin, INTEL_INACTIVE_DAYS);
     const high = result.actions.find((a) => a.key === 'high_value');
     assert.equal(high?.metric.format, 'money');

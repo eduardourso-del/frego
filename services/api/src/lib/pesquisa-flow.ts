@@ -200,7 +200,7 @@ export async function savePesquisa(input: {
       return {
         ok: false as const,
         error: 'AUDIENCE',
-        message: 'Escolha uma audiência desta casa.',
+        message: 'Escolha uma audiência deste estabelecimento.',
       };
     }
   }

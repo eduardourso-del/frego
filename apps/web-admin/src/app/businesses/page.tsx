@@ -1,40 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AdminShell } from '@/components/admin-shell';
+import { BusinessPerformanceTable } from '@/components/business-performance-table';
+import type { BusinessPerformanceRow } from '@/components/business-performance-table';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
-import { STATUS_LABEL, TYPE_LABEL } from '@/lib/labels';
-
-type BusinessRow = {
-  id: string;
-  name: string;
-  type: string;
-  status: string;
-  slug: string | null;
-  slogan: string | null;
-  logoUrl: string | null;
-  primaryColor: string;
-  createdAt: string;
-  owner: { email: string | null; displayName: string | null } | null;
-  location: { name: string; address: string | null } | null;
-  customers: number;
-  campaigns: number;
-};
 
 export default function BusinessesPage() {
   const { getToken } = useAuth();
   const [filter, setFilter] = useState<'pending' | 'all'>('all');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
-  const [rows, setRows] = useState<BusinessRow[]>([]);
+  const [rows, setRows] = useState<BusinessPerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const hasRows = useRef(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!hasRows.current) setLoading(true);
     setError(null);
     try {
       const token = await getToken();
@@ -47,9 +32,12 @@ export default function BusinessesPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Falha ao listar');
-      setRows(json.businesses ?? []);
+      const next = json.businesses ?? [];
+      hasRows.current = next.length > 0;
+      setRows(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro');
+      hasRows.current = false;
       setRows([]);
     } finally {
       setLoading(false);
@@ -64,6 +52,29 @@ export default function BusinessesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function remove(id: string, name: string) {
+    const ok = window.confirm(
+      `Excluir ${name}?\n\nCampanhas, pesquisas, equipe e o histórico deste estabelecimento somem. A conta do cliente na Frego permanece.`,
+    );
+    if (!ok) return;
+    setBusyId(id);
+    setError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error ?? 'Falha ao excluir');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function act(id: string, action: 'approve' | 'reject') {
     setBusyId(id);
@@ -91,7 +102,7 @@ export default function BusinessesPage() {
             Estabelecimentos
           </h1>
           <p className="mt-1 text-[15px] text-[var(--color-neutral-500)]">
-            Veja os dados de cada loja e edite o que precisar.
+            Campanhas ativas e o movimento dos últimos 30 dias.
           </p>
         </div>
         <div className="flex gap-2">
@@ -146,98 +157,12 @@ export default function BusinessesPage() {
               : 'Nenhum negócio cadastrado.'}
         </p>
       ) : (
-        <ul className="flex flex-col gap-3">
-          {rows.map((b) => (
-            <li
-              key={b.id}
-              className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex min-w-0 flex-1 gap-3">
-                  <div
-                    className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-[12px] text-[16px] font-bold text-white"
-                    style={{ background: b.primaryColor }}
-                  >
-                    {b.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={b.logoUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      b.name.trim().charAt(0).toUpperCase()
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-[18px] font-semibold">{b.name}</h2>
-                      <span className="rounded-[6px] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
-                        {STATUS_LABEL[b.status] ?? b.status}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-[14px] text-[var(--color-neutral-500)]">
-                      {TYPE_LABEL[b.type] ?? b.type}
-                      {b.slug ? ` · /${b.slug}` : ''}
-                      {` · ${b.customers} clientes`}
-                    </p>
-                    {b.slogan && (
-                      <p className="mt-1 text-[14px] text-[var(--color-neutral-600)]">
-                        {b.slogan}
-                      </p>
-                    )}
-                    {b.owner && (
-                      <p className="mt-2 text-[14px] text-[var(--color-neutral-700)]">
-                        Dono: {b.owner.displayName ?? '—'}{' '}
-                        <span className="text-[var(--color-neutral-400)]">
-                          ({b.owner.email})
-                        </span>
-                      </p>
-                    )}
-                    {b.location && (
-                      <p className="mt-1 text-[13px] text-[var(--color-neutral-400)]">
-                        {b.location.name}
-                        {b.location.address ? ` — ${b.location.address}` : ''}
-                      </p>
-                    )}
-                    <p className="mt-2 text-[12px] text-[var(--color-neutral-400)]">
-                      Cadastro:{' '}
-                      {new Date(b.createdAt).toLocaleString('pt-BR')}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Link
-                    href={`/businesses/${b.id}`}
-                    className="inline-flex min-h-10 items-center rounded-[10px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white"
-                  >
-                    Ver / editar
-                  </Link>
-                  {b.status === 'pending' && (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => act(b.id, 'approve')}
-                        className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold text-[var(--color-neutral-700)] disabled:opacity-60"
-                      >
-                        Aprovar
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busyId === b.id}
-                        onClick={() => act(b.id, 'reject')}
-                        className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold text-[var(--color-neutral-700)] disabled:opacity-60"
-                      >
-                        Recusar
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <BusinessPerformanceTable
+          rows={rows}
+          busyId={busyId}
+          onAct={(id, action) => void act(id, action)}
+          onDelete={(id, name) => void remove(id, name)}
+        />
       )}
     </AdminShell>
   );

@@ -70,15 +70,14 @@ export async function notifyEarnWhatsAppForBusiness(
           lines.businessName,
           lines.earnLine,
           lines.balanceLine,
-          lines.hintLine || '—',
-          input.pesquisa!.sentence,
+          lines.accountLine,
           input.pesquisa!.url,
         ]
       : [
           lines.businessName,
           lines.earnLine,
           lines.balanceLine,
-          lines.hintLine || '—',
+          lines.accountLine,
         ],
   });
 

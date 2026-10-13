@@ -14,7 +14,7 @@ import { foldLedgerTx } from '../lib/customer-stats.js';
 import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
-import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { isPesquisaCredit, shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { groupCounterSales, newSaleId } from '../lib/tx-reverse.js';
 import {
   filterMembershipsByRules,
@@ -645,6 +645,32 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
   app.post('/customers', async (request, reply) => {
     const auth = requireAuth(request);
     const body = createBody.parse(request.body);
+
+    // Resolve the carimbo before any write. A missing destination must not
+    // create the customer or send the welcome message.
+    let stampCampaignId: string | null = null;
+    let stampLocationId: string | null = null;
+    const earnDestinations = body.addFirstStamp
+      ? await loadEarnStampDestinations(auth.businessId)
+      : [];
+    if (body.addFirstStamp) {
+      const resolved = resolveStampEarnCampaignId(
+        earnDestinations,
+        body.campaignId,
+      );
+      if (!resolved.ok) {
+        return reply.code(400).send({
+          error: resolved.error,
+          message: resolved.message,
+        });
+      }
+      stampLocationId = body.locationId ?? auth.locationId ?? null;
+      if (!stampLocationId) {
+        return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
+      }
+      stampCampaignId = resolved.campaignId;
+    }
+
     const phoneE164 = toE164(body.phone);
     const last4 = phoneLast4(phoneE164);
 
@@ -720,25 +746,10 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
 
     let stampEarn: { cartela: boolean; label: string; balance: number } | null =
       null;
-    if (body.addFirstStamp) {
-      const destinations = await loadEarnStampDestinations(auth.businessId);
-      const resolved = resolveStampEarnCampaignId(
-        destinations,
-        body.campaignId,
-      );
-      if (!resolved.ok) {
-        return reply.code(400).send({
-          error: resolved.error,
-          message: resolved.message,
-        });
-      }
-      const locationId = body.locationId ?? auth.locationId;
-      if (!locationId) {
-        return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
-      }
-      const chosen = destinations.find((d) =>
-        resolved.campaignId
-          ? d.campaignId === resolved.campaignId
+    if (body.addFirstStamp && stampLocationId) {
+      const chosen = earnDestinations.find((d) =>
+        stampCampaignId
+          ? d.campaignId === stampCampaignId
           : !d.cartela && d.earnable,
       );
       stampEarn = chosen
@@ -749,8 +760,8 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         data: {
           businessId: auth.businessId,
           membershipId: membership.id,
-          campaignId: resolved.campaignId,
-          locationId,
+          campaignId: stampCampaignId,
+          locationId: stampLocationId,
           actorTeamMemberId: auth.teamMemberId,
           type: 'stamp',
           quantity: 1,
@@ -760,9 +771,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       });
       wallet = await deriveWallet(membership.id, auth.businessId);
       const matched = wallet.stampDestinations.find((d) =>
-        resolved.campaignId
-          ? d.campaignId === resolved.campaignId
-          : !d.cartela,
+        stampCampaignId ? d.campaignId === stampCampaignId : !d.cartela,
       );
       if (matched) {
         stampEarn = {
@@ -924,6 +933,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         });
         return {
           ...tx,
+          source: isPesquisaCredit(tx.metadata) ? 'pesquisa' : null,
           voucherCode: voucher?.voucherCode ?? null,
           voucherDisplay: voucher?.voucherDisplay ?? null,
           voucherStatus: voucher?.status ?? null,

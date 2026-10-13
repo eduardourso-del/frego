@@ -201,7 +201,8 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
         {};
     final balanceLine = _balanceLine(kind, pools, _wallet);
     final location = (item?['location'] as Map?)?['name'] as String?;
-    final actor = item?['actorName'] as String?;
+    final fromPesquisa = item?['source'] == 'pesquisa';
+    final actor = fromPesquisa ? null : item?['actorName'] as String?;
 
     return [
       Container(
@@ -250,11 +251,12 @@ class _EarnDetailPageState extends State<EarnDetailPage> {
                 ),
               ),
             ],
-            if (location != null || actor != null) ...[
+            if (location != null || actor != null || fromPesquisa) ...[
               const SizedBox(height: 4),
               Text(
                 [
                   ?location,
+                  if (fromPesquisa) 'Pesquisa',
                   if (actor != null) 'por $actor',
                 ].join(' · '),
                 textAlign: TextAlign.center,

@@ -57,7 +57,7 @@ NEXT_PUBLIC_META_EMBEDDED_CONFIG_ID=...
 3. Use **WhatsApp Business** (not personal WhatsApp). App version ≥ 2.24.17.
 4. Prefer a **Brazilian** business phone (US/test numbers often fail with error `130497` when messaging `+55`).
 5. Keep the WhatsApp Business app open for a few minutes after connect (Meta SMB sync).
-6. Frego **auto-creates** templates `frego_earn_summary`, `frego_welcome`, and `frego_campaign_notice` (`pt_BR`) on that WABA after connect. Wait until status is **Approved** (shown in Configurações). You can also tap **Criar / sincronizar template**.
+6. Frego **auto-creates** templates `frego_earn_summary_v3`, `frego_welcome_v4`, and `frego_campaign_notice_v3` (`pt_BR`) on that WABA after connect. Wait until status is **Approved** (shown in Configurações). You can also tap **Criar / sincronizar template**.
 7. Register a customer at the balcão → welcome WhatsApp. Stamp → earn WhatsApp from the **store’s** number once templates are approved.
 
 ### Coexistence (production)
@@ -92,57 +92,51 @@ If coexistence fails with `#2655111`, Advanced Access is not granted yet — use
 
 ### Earn template (auto)
 
-**Name:** `frego_earn_summary`  
+**Name:** `frego_earn_summary_v3`  
 **Language:** `pt_BR`  
 **Category:** Utility  
 
 **Body:**
 
 ```text
-Olá! Atualização de fidelidade da *{{1}}*.
+Olá. Registro da compra na *{{1}}*.
 
-Você acabou de ganhar *{{2}}*.
-Seu saldo agora é: *{{3}}*.
+Creditado nesta compra: *{{2}}*.
+Saldo da conta: *{{3}}*.
 
 {{4}}
 
-Abra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.
-
-Baixe o app Frego em https://onelink.to/quvd8c no celular.
+Esta mensagem confirma o crédito desta compra.
 ```
 
 ### Welcome template (auto)
 
-**Name:** `frego_welcome`  
+**Name:** `frego_welcome_v4`  
 **Language:** `pt_BR`  
 **Category:** Utility  
 
 **Body:**
 
 ```text
-Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.
+Olá, {{1}}. Cadastro confirmado na conta da *{{2}}*.
 
-Use o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.
-
-Baixe o app Frego em https://onelink.to/quvd8c no celular.
+Este número passa a receber as atualizações desta conta.
 ```
 
 ### Campaign template (auto)
 
-**Name:** `frego_campaign_notice`  
+**Name:** `frego_campaign_notice_v3`  
 **Language:** `pt_BR`  
 **Category:** Utility  
 
 **Body:**
 
 ```text
-Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.
+Olá. Atualização da conta na *{{1}}*.
 
-{{2}}
+Foi registrado na sua conta: {{2}}.
 
-Abra o app Frego para conferir os detalhes e participar.
-
-Baixe o app Frego em https://onelink.to/quvd8c no celular.
+O saldo desta conta não mudou com esta mensagem.
 ```
 
 Push uses the same announcement: title is the store name; body is “Lançou uma nova campanha: {nome}. Abra o app Frego para conferir os detalhes e participar.”
@@ -186,7 +180,7 @@ Earn paths (`POST /transactions`, customer `addFirstStamp`) call WhatsApp only i
 | `(#133010) Account not registered` | Cloud-only number not registered. Connect flow calls `/register` when not coexistence. Or `POST /whatsapp/register-phone`. Prefer a real BR number over Meta `+1 555…` test numbers for messaging `+55`. |
 | `META_NO_WABA_GRANTED` | Embedded Signup didn’t grant a WABA; retry flow |
 | `130497` country restricted | Use a BR sender number on that WABA |
-| Template errors | Approve `frego_earn_summary` on **that** WABA (auto-created; check status in settings) |
+| Template errors | Approve `frego_earn_summary_v3` on **that** WABA (auto-created; check status in settings) |
 | Earn works, no WhatsApp | Check Configurações → connected; API log `whatsapp_earn_skipped` / `_failed` |
 | Coexistence drops after ~24h | SMB sync must start on connect (`smb_app_data`). Check API logs `whatsapp_smb_sync_failed` and Meta webhook fields `history` / `smb_app_state_sync` |
 

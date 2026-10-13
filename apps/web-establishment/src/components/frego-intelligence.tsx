@@ -101,7 +101,7 @@ export function FregoIntelligence({
           {
             key: 'empty',
             tone: 'celebrate' as const,
-            title: 'Ainda estamos conhecendo a casa',
+            title: 'Ainda estamos conhecendo o estabelecimento',
             body: 'Cada visita no balcão vira dado. Em pouco tempo o Frego aponta quem chamar de volta.',
             metric: { value: 0, format: 'count' as const },
           },

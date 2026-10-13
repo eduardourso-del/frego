@@ -25,15 +25,15 @@ O Frego **não é isso**. Cada loja conecta a **própria** conta WhatsApp Busine
 
 | Momento | Template | Volume |
 |---|---|---|
-| Cliente cadastrado no balcão | `frego_welcome` | 1 mensagem por cadastro |
-| Carimbo / pontos no balcão | `frego_earn_summary` | 1 mensagem por acúmulo |
-| Uma Campanha **com Audience** fica **ativa** | `frego_campaign_notice` | 1 mensagem para **cada telefone da Audience** |
+| Cliente cadastrado no balcão | `frego_welcome_v4` | 1 mensagem por cadastro |
+| Carimbo / pontos no balcão | `frego_earn_summary_v3` | 1 mensagem por acúmulo |
+| Uma Campanha **com Audience** fica **ativa** | `frego_campaign_notice_v3` | 1 mensagem para **cada telefone da Audience** |
 
 Cadastro e acúmulo são 1:1 e ligados a algo que acabou de acontecer na loja. Esse é o padrão seguro.
 
 O aviso de Campanha é um disparo: quando a Campanha com Audience passa a ativa, o Frego manda o template para **todos os telefones da Audience**, em lotes de 8, **sem teto de tamanho**. O push do app respeita a preferência de notificação do cliente; o WhatsApp **não**.
 
-Os três templates entram na Meta como **Utility**. A Meta pode recategorizar — em especial o de Campanha, que parece marketing (“a loja lançou uma nova campanha, abra o app”).
+Os três templates entram na Meta como **Utility**. O texto é um registro da conta: crédito da compra, cadastro confirmado, ou uma alteração já registrada. A Meta recategoriza para Marketing se o texto pede para abrir o app, anuncia um prêmio, ou convida a participar de uma campanha.
 
 ---
 
@@ -67,7 +67,7 @@ Os termos do Frego já dizem: a conexão é opcional; a loja continua responsáv
 
 1. **Aviso de Campanha** é o vetor de volume e de qualidade. Sem cap e sem respeitar `notificationsEnabled`.
 2. **Coexistência** une o risco do Frego ao WhatsApp operacional da loja.
-3. Meta pode reclassificar `frego_campaign_notice` como Marketing mesmo tendo sido criado como Utility.
+3. Meta pode reclassificar `frego_campaign_notice_v3` como Marketing mesmo tendo sido criado como Utility.
 4. Loja movimentada no balcão pode bater o teto inicial de 250 clientes únicos/dia: isso é **throttle**, não ban — mas parece “parou de enviar”.
 
 Nada disso precisa virar decisão de produto agora. Serve para alinhar o discurso nas entrevistas e para não prometer “a Meta nunca mexe no número”.

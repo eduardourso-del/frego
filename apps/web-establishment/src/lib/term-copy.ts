@@ -17,5 +17,5 @@ export const TERM = {
   pessoas:
     'Clientes distintos que resgataram — não é o número de vouchers, é quantas pessoas.',
   audiencia:
-    'Recorte de clientes desta campanha. Sem audiência, vale para toda a casa.',
+    'Recorte de clientes desta campanha. Sem audiência, vale para todo o estabelecimento.',
 } as const;

@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdminShell } from '@/components/admin-shell';
+import { BusinessPerformanceTable } from '@/components/business-performance-table';
+import type { BusinessPerformanceRow } from '@/components/business-performance-table';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
@@ -24,16 +26,22 @@ function formatBrl(cents: number) {
 export default function AdminHomePage() {
   const { getToken } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [rows, setRows] = useState<BusinessPerformanceRow[]>([]);
 
   useEffect(() => {
     void (async () => {
       try {
         const token = await getToken();
-        const res = await fetch(`${API_URL}/admin/stats`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const json = await res.json();
-        if (res.ok) setStats(json.stats);
+        const headers: Record<string, string> = {};
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const [statsRes, businessesRes] = await Promise.all([
+          fetch(`${API_URL}/admin/stats`, { headers }),
+          fetch(`${API_URL}/admin/businesses`, { headers }),
+        ]);
+        const statsJson = await statsRes.json();
+        const businessesJson = await businessesRes.json();
+        if (statsRes.ok) setStats(statsJson.stats);
+        if (businessesRes.ok) setRows(businessesJson.businesses ?? []);
       } catch {
         /* ignore */
       }
@@ -42,7 +50,7 @@ export default function AdminHomePage() {
 
   const kpis = [
     {
-      label: 'Negócios ativos',
+      label: 'Estabelecimentos ativos',
       value: stats ? String(stats.activeBusinesses) : '—',
     },
     {
@@ -91,21 +99,18 @@ export default function AdminHomePage() {
           </div>
         ))}
       </div>
-      {stats && stats.pendingApprovals > 0 && (
-        <p className="mt-8 text-[15px] text-[var(--color-neutral-500)]">
-          Há{' '}
-          <Link
-            href="/businesses"
-            className="font-semibold text-[var(--color-primary-500)]"
-          >
-            {stats.pendingApprovals}{' '}
-            {stats.pendingApprovals === 1
-              ? 'estabelecimento pendente'
-              : 'estabelecimentos pendentes'}
-          </Link>
-          .
-        </p>
-      )}
+      <section className="mt-10">
+        <h2 className="mb-4 text-[20px] font-semibold tracking-[-0.02em]">
+          Movimento recente
+        </h2>
+        {rows.length === 0 ? (
+          <p className="text-[15px] text-[var(--color-neutral-500)]">
+            {stats ? 'Nenhum estabelecimento.' : 'Carregando…'}
+          </p>
+        ) : (
+          <BusinessPerformanceTable rows={rows} />
+        )}
+      </section>
     </AdminShell>
   );
 }

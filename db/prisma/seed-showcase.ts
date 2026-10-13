@@ -241,7 +241,7 @@ async function main() {
       rewardDescription: 'Um pão de queijo quentinho por nossa conta',
     },
     points: {
-      name: 'Pontos da casa',
+      name: 'Pontos do estabelecimento',
       type: CampaignType.spend,
       status: CampaignStatus.active,
       stampsNeeded: 300,
@@ -251,7 +251,7 @@ async function main() {
       rewardDescription: 'Um café e um pão francês',
     },
     bday: {
-      name: 'Aniversário da casa',
+      name: 'Aniversário do estabelecimento',
       type: CampaignType.birthday,
       status: CampaignStatus.active,
       stampsNeeded: 1,
@@ -318,9 +318,9 @@ async function main() {
   await prisma.audienceSegment.create({
     data: {
       businessId: business.id,
-      name: 'Fregueses da casa',
+      name: 'Fregueses do estabelecimento',
       showBadge: true,
-      badgeTitle: 'Da casa',
+      badgeTitle: 'Do estabelecimento',
       badgeMessage: 'Você é freguês da Bela Vista. Valeu por voltar.',
       rules: {
         version: 1,

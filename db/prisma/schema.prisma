@@ -382,7 +382,7 @@ model AudienceSegment {
   rules      Json
   /// Mostrar selo de reconhecimento no app do cliente quando elegível.
   showBadge    Boolean @default(false) @map("show_badge")
-  /// Título do selo no app (ex. "Cliente da casa").
+  /// Título do selo no app (ex. "Cliente do estabelecimento").
   badgeTitle   String? @map("badge_title")
   /// Mensagem curta (ex. "Você desbloqueou promoções exclusivas.").
   badgeMessage String? @map("badge_message")
@@ -599,25 +599,25 @@ model BusinessWhatsAppConnection {
   /// AES-GCM ciphertext of the access token (base64).
   tokenCiphertext    String                   @map("token_ciphertext")
   tokenKeyVersion    Int                      @default(1) @map("token_key_version")
-  templateEarnName   String                   @default("frego_earn_summary") @map("template_earn_name")
+  templateEarnName   String                   @default("frego_earn_summary_v3") @map("template_earn_name")
   templateEarnLang   String                   @default("pt_BR") @map("template_earn_lang")
   templateEarnStatus WhatsAppTemplateStatus   @default(missing) @map("template_earn_status")
   templateEarnId     String?                  @map("template_earn_id")
   templateEarnSyncedAt DateTime?              @map("template_earn_synced_at")
   /// Welcome when the store registers a customer phone.
-  templateWelcomeName   String                   @default("frego_welcome") @map("template_welcome_name")
+  templateWelcomeName   String                   @default("frego_welcome_v4") @map("template_welcome_name")
   templateWelcomeLang   String                   @default("pt_BR") @map("template_welcome_lang")
   templateWelcomeStatus WhatsAppTemplateStatus   @default(missing) @map("template_welcome_status")
   templateWelcomeId     String?                  @map("template_welcome_id")
   templateWelcomeSyncedAt DateTime?              @map("template_welcome_synced_at")
   /// Audience campaign announcement (same copy as push).
-  templateCampaignName   String                   @default("frego_campaign_notice") @map("template_campaign_name")
+  templateCampaignName   String                   @default("frego_campaign_notice_v3") @map("template_campaign_name")
   templateCampaignLang   String                   @default("pt_BR") @map("template_campaign_lang")
   templateCampaignStatus WhatsAppTemplateStatus   @default(missing) @map("template_campaign_status")
   templateCampaignId     String?                  @map("template_campaign_id")
   templateCampaignSyncedAt DateTime?              @map("template_campaign_synced_at")
   /// Earn message that names a Pesquisa and carries the signed page.
-  templatePesquisaName   String                   @default("frego_earn_pesquisa") @map("template_pesquisa_name")
+  templatePesquisaName   String                   @default("frego_earn_pesquisa_v3") @map("template_pesquisa_name")
   templatePesquisaLang   String                   @default("pt_BR") @map("template_pesquisa_lang")
   templatePesquisaStatus WhatsAppTemplateStatus   @default(missing) @map("template_pesquisa_status")
   templatePesquisaId     String?                  @map("template_pesquisa_id")

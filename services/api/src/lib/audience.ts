@@ -691,16 +691,27 @@ export type AudienceBadge = {
 
 /** Internal segment labels → customer-facing copy (never show ops names in-app). */
 const INTERNAL_BADGE_TITLES: Record<string, string> = {
-  'alto valor': 'Cliente da casa',
-  'em risco': 'De volta à casa',
+  'alto valor': 'Cliente do estabelecimento',
+  'em risco': 'De volta ao estabelecimento',
   'quase prêmio': 'Quase lá',
   'quase premio': 'Quase lá',
-  vip: 'VIP da casa',
+  vip: 'VIP do estabelecimento',
+  'cliente da casa': 'Cliente do estabelecimento',
+  'de volta à casa': 'De volta ao estabelecimento',
+  'vip da casa': 'VIP do estabelecimento',
+  'da casa': 'Do estabelecimento',
 };
 
-const DEFAULT_BADGE_TITLE = 'Cliente da casa';
+const DEFAULT_BADGE_TITLE = 'Cliente do estabelecimento';
 const DEFAULT_BADGE_MESSAGE =
-  'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.';
+  'A loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte do estabelecimento.';
+
+const LEGACY_BADGE_MESSAGES: Record<string, string> = {
+  'a loja reconhece você — desbloqueamos condições especiais para quem volta e faz parte da casa.':
+    DEFAULT_BADGE_MESSAGE,
+  'que bom te ver de novo — preparamos algo especial para quem faz parte da casa.':
+    'Que bom te ver de novo — preparamos algo especial para quem faz parte do estabelecimento.',
+};
 
 export function customerFacingBadgeTitle(
   badgeTitle: string | null | undefined,
@@ -729,7 +740,7 @@ export function customerFacingBadgeMessage(
 ): string {
   const msg = badgeMessage?.trim();
   if (!msg) return DEFAULT_BADGE_MESSAGE;
-  return msg;
+  return LEGACY_BADGE_MESSAGES[msg.toLowerCase()] ?? msg;
 }
 
 /**

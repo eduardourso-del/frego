@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { Banknote, ClipboardList, Coins, Gift, Stamp, ThumbsUp, Users, type LucideIcon } from 'lucide-react';
+import { Banknote, ClipboardList, Coins, Gift, Stamp, ThumbsDown, ThumbsUp, Users, type LucideIcon } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import {
   PesquisaPagePreview,
@@ -679,7 +679,7 @@ export default function PesquisasPage() {
                 hint={
                   selectedAudience
                     ? `${selectedAudience.name} · ${selectedAudience.memberCount} cliente${selectedAudience.memberCount === 1 ? '' : 's'}`
-                    : 'Toda a casa, ou só uma audiência.'
+                    : 'Todo o estabelecimento, ou só uma audiência.'
                 }
               >
                 <div className="mb-1 flex items-center justify-between gap-2">
@@ -898,11 +898,31 @@ export default function PesquisasPage() {
                                 <div className="text-[11px] font-medium text-[var(--color-neutral-400)]">
                                   {count.prompt}
                                 </div>
-                                <div className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--color-ink)]">
-                                  {count.up} para cima
-                                </div>
-                                <div className="text-[11px] text-[var(--color-neutral-400)]">
-                                  {count.down} para baixo
+                                <div className="mt-1 flex items-center gap-3">
+                                  <span
+                                    className="inline-flex items-center gap-1 text-[15px] font-semibold tabular-nums text-[var(--color-ink)]"
+                                    aria-label={`${count.up} para cima`}
+                                  >
+                                    <ThumbsUp
+                                      size={16}
+                                      strokeWidth={2.25}
+                                      className="text-[var(--color-success)]"
+                                      aria-hidden
+                                    />
+                                    {count.up}
+                                  </span>
+                                  <span
+                                    className="inline-flex items-center gap-1 text-[13px] font-semibold tabular-nums text-[var(--color-neutral-500)]"
+                                    aria-label={`${count.down} para baixo`}
+                                  >
+                                    <ThumbsDown
+                                      size={16}
+                                      strokeWidth={2.25}
+                                      className="text-[var(--color-danger)]"
+                                      aria-hidden
+                                    />
+                                    {count.down}
+                                  </span>
                                 </div>
                               </div>
                             ))}

@@ -23,7 +23,7 @@ class HomeShell extends StatelessWidget {
               const FregoWordmark(height: 28),
               const SizedBox(height: 16),
               const Text(
-                'O telefone é a conta de fidelidade.',
+                'O telefone é a conta do clube.',
                 style: TextStyle(fontSize: 17, color: FregoColors.neutral500),
               ),
               const Spacer(),

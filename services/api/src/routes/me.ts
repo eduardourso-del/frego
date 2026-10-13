@@ -9,7 +9,7 @@ import {
 } from '../lib/customer-stats.js';
 import { deriveWallet } from '../lib/wallet.js';
 import { createVoucherMeta, voucherFromMetadata } from '../lib/voucher.js';
-import { metaString, shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { isPesquisaCredit, metaString, shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import {
   membershipMatchesAudience,
   parseAudienceRules,
@@ -684,7 +684,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       const voucher = voucherFromMetadata(tx.metadata, {
         createdAt: tx.createdAt,
       });
-      const pesquisa = metaString(tx.metadata, 'role') === 'pesquisa';
+      const pesquisa = isPesquisaCredit(tx.metadata);
       const expireDays =
         tx.unitKind === 'points'
           ? tx.business.pointsExpireDays

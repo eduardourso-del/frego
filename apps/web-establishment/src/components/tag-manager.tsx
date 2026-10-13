@@ -193,7 +193,7 @@ export function TagManager() {
         <>
           {tags.length === 0 ? (
             <p className="text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
-              Nenhuma etiqueta ainda. Crie se a casa quiser recortar clientes
+              Nenhuma etiqueta ainda. Crie se o estabelecimento quiser recortar clientes
               (ex.: almoço, aniversariante). Não é obrigatório.
             </p>
           ) : (

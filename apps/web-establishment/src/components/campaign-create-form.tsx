@@ -137,7 +137,7 @@ const TYPES: TypeOption[] = [
   {
     value: 'promo',
     title: 'Promoção',
-    hint: 'Sem carimbos nem pontos. Calendário da casa e limite de resgates.',
+    hint: 'Sem carimbos nem pontos. Calendário do estabelecimento e limite de resgates.',
     Icon: Percent,
     color: 'var(--color-promo)',
     bg: 'var(--color-promo-bg)',
@@ -152,13 +152,13 @@ const TYPE_DEFAULTS: Record<
 > = {
   stamps: {
     stampsNeeded: 10,
-    name: 'Carimbo fidelidade',
+    name: 'Carimbo do clube',
     rewardTitle: 'Item grátis',
   },
   spend: {
     stampsNeeded: 100,
     name: 'Pontos por compra',
-    rewardTitle: 'Prêmio da casa',
+    rewardTitle: 'Prêmio do estabelecimento',
   },
   birthday: {
     stampsNeeded: 1,
@@ -614,7 +614,7 @@ export function CampaignCreateForm({
           <Section
             Icon={Gift}
             title="O prêmio"
-            hint="O que a casa oferece de volta."
+            hint="O que o estabelecimento oferece de volta."
           >
             <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
               O cliente ganha
@@ -741,7 +741,7 @@ export function CampaignCreateForm({
             hint={
               selectedAudience
                 ? `${selectedAudience.name} · ${selectedAudience.memberCount} cliente${selectedAudience.memberCount === 1 ? '' : 's'}`
-                : 'Toda a casa, ou só uma audiência.'
+                : 'Todo o estabelecimento, ou só uma audiência.'
             }
           >
             {selectedAudience ? (

@@ -68,6 +68,79 @@ function blankToNull(value: string | null | undefined) {
   return value;
 }
 
+const ACTIVITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+const CAMPAIGN_STATUS_RANK: Record<string, number> = {
+  active: 0,
+  paused: 1,
+  draft: 2,
+  archived: 3,
+};
+
+type WindowActivity = {
+  earns: number;
+  redeems: number;
+  spendCents: number;
+};
+
+function emptyActivity(): WindowActivity {
+  return { earns: 0, redeems: 0, spendCents: 0 };
+}
+
+function activitySince() {
+  return new Date(Date.now() - ACTIVITY_WINDOW_MS);
+}
+
+async function windowActivityByBusiness(businessIds: string[], since: Date) {
+  const map = new Map<string, WindowActivity>();
+  if (businessIds.length === 0) return map;
+  const rows = await prisma.transaction.groupBy({
+    by: ['businessId', 'type'],
+    where: { businessId: { in: businessIds }, createdAt: { gte: since } },
+    _count: { _all: true },
+    _sum: { amountCents: true },
+  });
+  for (const row of rows) {
+    const current = map.get(row.businessId) ?? emptyActivity();
+    if (row.type === 'stamp') {
+      current.earns += row._count._all;
+      current.spendCents += row._sum.amountCents ?? 0;
+    } else if (row.type === 'redeem') {
+      current.redeems += row._count._all;
+    }
+    map.set(row.businessId, current);
+  }
+  return map;
+}
+
+async function lastActivityByBusiness(businessIds: string[]) {
+  const map = new Map<string, string>();
+  if (businessIds.length === 0) return map;
+  const rows = await prisma.transaction.groupBy({
+    by: ['businessId'],
+    where: { businessId: { in: businessIds } },
+    _max: { createdAt: true },
+  });
+  for (const row of rows) {
+    if (row._max.createdAt) {
+      map.set(row.businessId, row._max.createdAt.toISOString());
+    }
+  }
+  return map;
+}
+
+async function activeCampaignsByBusiness(businessIds: string[]) {
+  const map = new Map<string, number>();
+  if (businessIds.length === 0) return map;
+  const rows = await prisma.campaign.groupBy({
+    by: ['businessId'],
+    where: { businessId: { in: businessIds }, status: 'active' },
+    _count: { _all: true },
+  });
+  for (const row of rows) map.set(row.businessId, row._count._all);
+  return map;
+}
+
 async function loadBusinessDetail(id: string) {
   const business = await prisma.business.findUnique({
     where: { id },
@@ -111,8 +184,8 @@ async function loadBusinessDetail(id: string) {
         },
       },
       campaigns: {
-        orderBy: { createdAt: 'desc' },
-        take: 30,
+        orderBy: { updatedAt: 'desc' },
+        take: 40,
         select: {
           id: true,
           name: true,
@@ -120,18 +193,40 @@ async function loadBusinessDetail(id: string) {
           status: true,
           stampsNeeded: true,
           rewardTitle: true,
+          cartela: true,
         },
       },
     },
   });
   if (!business) return null;
 
-  const [customers, stamps, redeems, campaignCount] = await Promise.all([
-    prisma.membership.count({ where: { businessId: id } }),
-    prisma.transaction.count({ where: { businessId: id, type: 'stamp' } }),
-    prisma.transaction.count({ where: { businessId: id, type: 'redeem' } }),
-    prisma.campaign.count({ where: { businessId: id } }),
-  ]);
+  const since = activitySince();
+  const [customers, campaignCount, activeCampaigns, activityByBusiness, lastByBusiness, campaignRows] =
+    await Promise.all([
+      prisma.membership.count({ where: { businessId: id } }),
+      prisma.campaign.count({ where: { businessId: id } }),
+      prisma.campaign.count({ where: { businessId: id, status: 'active' } }),
+      windowActivityByBusiness([id], since),
+      lastActivityByBusiness([id]),
+      prisma.transaction.groupBy({
+        by: ['campaignId', 'type'],
+        where: {
+          businessId: id,
+          createdAt: { gte: since },
+          campaignId: { not: null },
+        },
+        _count: { _all: true },
+      }),
+    ]);
+  const activity = activityByBusiness.get(id) ?? emptyActivity();
+  const campaignActivity = new Map<string, WindowActivity>();
+  for (const row of campaignRows) {
+    if (!row.campaignId) continue;
+    const current = campaignActivity.get(row.campaignId) ?? emptyActivity();
+    if (row.type === 'stamp') current.earns += row._count._all;
+    else if (row.type === 'redeem') current.redeems += row._count._all;
+    campaignActivity.set(row.campaignId, current);
+  }
 
   return {
     business: {
@@ -168,12 +263,30 @@ async function loadBusinessDetail(id: string) {
           connectedAt: business.whatsapp.connectedAt.toISOString(),
         }
       : null,
-    campaigns: business.campaigns,
+    campaigns: [...business.campaigns]
+      .sort(
+        (a, b) =>
+          (CAMPAIGN_STATUS_RANK[a.status] ?? 9) -
+            (CAMPAIGN_STATUS_RANK[b.status] ?? 9) ||
+          a.name.localeCompare(b.name, 'pt-BR'),
+      )
+      .map((campaign) => {
+        const performance =
+          campaignActivity.get(campaign.id) ?? emptyActivity();
+        return {
+          ...campaign,
+          earns30d: performance.earns,
+          redeems30d: performance.redeems,
+        };
+      }),
     stats: {
       customers,
-      stamps,
-      redeems,
       campaigns: campaignCount,
+      activeCampaigns,
+      earns30d: activity.earns,
+      redeems30d: activity.redeems,
+      spendCents30d: activity.spendCents,
+      lastActivityAt: lastByBusiness.get(id) ?? null,
     },
   };
 }
@@ -287,11 +400,29 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           select: { memberships: true, campaigns: true },
         },
       },
-      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [{ createdAt: 'desc' }],
     });
 
-    return {
-      businesses: businesses.map((b) => ({
+    const ids = businesses.map((b) => b.id);
+    const since = activitySince();
+    const [activityByBusiness, lastByBusiness, activeByBusiness] =
+      await Promise.all([
+        windowActivityByBusiness(ids, since),
+        lastActivityByBusiness(ids),
+        activeCampaignsByBusiness(ids),
+      ]);
+
+    const statusRank: Record<string, number> = {
+      pending: 0,
+      past_due: 1,
+      active: 2,
+      trial: 3,
+      suspended: 4,
+    };
+
+    const rows = businesses.map((b) => {
+      const activity = activityByBusiness.get(b.id) ?? emptyActivity();
+      return {
         id: b.id,
         name: b.name,
         type: b.type,
@@ -311,8 +442,30 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         billing: b.billing,
         customers: b._count.memberships,
         campaigns: b._count.campaigns,
-      })),
-    };
+        activeCampaigns: activeByBusiness.get(b.id) ?? 0,
+        performance: {
+          earns: activity.earns,
+          redeems: activity.redeems,
+          spendCents: activity.spendCents,
+          lastActivityAt: lastByBusiness.get(b.id) ?? null,
+        },
+      };
+    });
+
+    rows.sort((a, b) => {
+      const byStatus =
+        (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9);
+      if (byStatus !== 0) return byStatus;
+      const aTime = a.performance.lastActivityAt
+        ? Date.parse(a.performance.lastActivityAt)
+        : 0;
+      const bTime = b.performance.lastActivityAt
+        ? Date.parse(b.performance.lastActivityAt)
+        : 0;
+      return bTime - aTime;
+    });
+
+    return { businesses: rows };
   });
 
   app.get('/admin/businesses/:id', async (request, reply) => {
@@ -494,5 +647,34 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         status: updated.status,
       },
     };
+  });
+
+  app.delete('/admin/businesses/:id', async (request, reply) => {
+    requirePlatformAuth(request);
+    const { id } = request.params as { id: string };
+
+    const business = await prisma.business.findUnique({
+      where: { id },
+      select: { id: true, name: true },
+    });
+    if (!business) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.resposta.deleteMany({
+          where: { pesquisa: { businessId: id } },
+        });
+        await tx.convite.deleteMany({
+          where: { pesquisa: { businessId: id } },
+        });
+        await tx.transaction.deleteMany({ where: { businessId: id } });
+        await tx.business.delete({ where: { id } });
+      },
+      { timeout: 30_000 },
+    );
+
+    return { deleted: business };
   });
 };

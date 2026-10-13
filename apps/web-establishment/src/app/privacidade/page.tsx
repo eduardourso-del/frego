@@ -11,10 +11,10 @@ export const metadata: Metadata = {
 
 export default function PrivacidadePage() {
   return (
-    <LegalDoc title="Política de Privacidade" updatedAt="2 de setembro de 2026">
+    <LegalDoc title="Política de Privacidade" updatedAt="9 de outubro de 2026">
       <p>
         Esta Política de Privacidade descreve como o <strong>Frego</strong>,
-        plataforma de fidelidade operada pela <strong>Bearlabs</strong>{' '}
+        plataforma de clubes operada pela <strong>Bearlabs</strong>{' '}
         (“nós”, “nosso” ou “Frego”), coleta, usa, armazena e compartilha dados
         pessoais no Brasil, em conformidade com a Lei Geral de Proteção de Dados
         (Lei nº 13.709/2018 — LGPD) e demais normas aplicáveis.
@@ -39,7 +39,7 @@ export default function PrivacidadePage() {
         <li>
           Estabelecimentos (lojas) que usam o Frego também podem atuar como
           controladores ou operadores em relação aos dados dos próprios
-          clientes, conforme a finalidade do programa de fidelidade da loja.
+          clientes, conforme a finalidade do clube da loja.
         </li>
       </ul>
 
@@ -58,7 +58,7 @@ export default function PrivacidadePage() {
         </li>
         <li>
           Vínculos com lojas (membership), progresso de campanhas, carimbos,
-          pontos, resgates e histórico de transações de fidelidade.
+          pontos, resgates e histórico de transações de benefícios.
         </li>
         <li>
           Preferências básicas no app (ex.: loja favorita), quando aplicável.
@@ -99,7 +99,7 @@ export default function PrivacidadePage() {
           loja.
         </li>
         <li>
-          Status de templates (ex.: avisos de acúmulo de fidelidade) e eventos
+          Status de templates (ex.: avisos de acúmulo de benefícios) e eventos
           de entrega/falha via webhooks da Meta.
         </li>
         <li>
@@ -125,8 +125,8 @@ export default function PrivacidadePage() {
         <li>
           <strong>Prestação do serviço</strong> (execução de contrato /
           procedimentos preliminares): criar e autenticar contas, operar
-          programas de fidelidade, carimbar/resgatar, exibir carteira e
-          histórico, enviar avisos de fidelidade acordados com a loja.
+          clubes, carimbar/resgatar, exibir carteira e
+          histórico, enviar avisos do clube acordados com a loja.
         </li>
         <li>
           <strong>Cumprimento de obrigação legal</strong> ou regulatória, quando
@@ -149,8 +149,8 @@ export default function PrivacidadePage() {
       <p>Podemos compartilhar dados com:</p>
       <ul>
         <li>
-          <strong>Estabelecimentos participantes</strong>, para operar a
-          fidelidade daquela loja (ex.: telefone e progresso do cliente naquele
+          <strong>Estabelecimentos participantes</strong>, para operar o
+          clube daquela loja (ex.: telefone e progresso do cliente naquele
           negócio).
         </li>
         <li>
@@ -186,7 +186,7 @@ export default function PrivacidadePage() {
           com o Firebase Authentication (conta de login por SMS/OTP);
         </li>
         <li>
-          encerra o acesso à carteira de fidelidade — carimbos, pontos e
+          encerra o acesso à carteira de benefícios — carimbos, pontos e
           prêmios não resgatados são perdidos;
         </li>
         <li>apaga tokens de notificação push (FCM) associados à conta;</li>

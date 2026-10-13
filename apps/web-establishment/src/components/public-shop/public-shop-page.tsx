@@ -236,7 +236,7 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
       <main className="mx-auto max-w-lg px-5 pb-10 pt-8 sm:px-8 sm:pb-12 sm:pt-10">
         <section>
           <h2 className="text-[22px] font-semibold tracking-[-0.03em]">
-            Programa de fidelidade
+            Clube
           </h2>
           <p className="mt-1.5 text-[15px] text-[var(--color-neutral-500)]">
             Participe pelo app Frego e acumule recompensas nesta loja.

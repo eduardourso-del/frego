@@ -1,7 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
-import { verifyFirebaseIdToken } from '../lib/firebase.js';
 import { requireAuth, requireCustomerAuth } from '../plugins/auth.js';
 import {
   archivePesquisa,
@@ -40,7 +39,6 @@ const submitSchema = z.object({
   conviteId: z.string().min(1).optional(),
   answers: z.array(answerSchema).max(5),
   note: z.string().max(500).nullable().optional(),
-  idToken: z.string().min(1).optional(),
 });
 
 function writeFromBody(body: z.infer<typeof writeSchema>) {
@@ -159,35 +157,14 @@ export const pesquisaRoutes: FastifyPluginAsync = async (app) => {
   app.post('/public/convites/:token/submit', async (request, reply) => {
     const { token } = request.params as { token: string };
     const body = submitSchema.parse(request.body);
-    if (!body.idToken) {
-      return fail(reply, 401, 'CODE_REQUIRED', 'Confirme o código enviado ao seu telefone.');
-    }
-    let phone: string | null = null;
-    try {
-      const decoded = await verifyFirebaseIdToken(body.idToken);
-      phone = decoded.phone_number ?? null;
-    } catch {
-      return fail(reply, 401, 'INVALID_TOKEN', 'Código inválido.');
-    }
-    if (!phone) {
-      return fail(reply, 401, 'CODE_REQUIRED', 'Confirme o código enviado ao seu telefone.');
-    }
     const convite = await prisma.convite.findUnique({
       where: { token },
-      include: { customer: { select: { id: true, phoneE164: true } } },
+      select: { id: true, customerId: true, pesquisaId: true },
     });
     if (!convite) return reply.code(404).send({ error: 'NOT_FOUND' });
-    if (convite.customer.phoneE164 !== phone) {
-      return fail(
-        reply,
-        403,
-        'PHONE_MISMATCH',
-        'O código precisa ser do telefone desta conta.',
-      );
-    }
     const conviteId = body.conviteId ?? convite.id;
     const owned = await prisma.convite.findFirst({
-      where: { id: conviteId, customerId: convite.customer.id, pesquisaId: convite.pesquisaId },
+      where: { id: conviteId, customerId: convite.customerId, pesquisaId: convite.pesquisaId },
       select: { id: true },
     });
     if (!owned) {
@@ -195,7 +172,7 @@ export const pesquisaRoutes: FastifyPluginAsync = async (app) => {
     }
     const result = await submitConvite({
       conviteId,
-      customerId: convite.customer.id,
+      customerId: convite.customerId,
       answers: body.answers as { position: number; value: Polegar }[],
       note: body.note ?? null,
     });

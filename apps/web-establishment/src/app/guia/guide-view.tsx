@@ -283,7 +283,7 @@ export function GuideView() {
                   <Callout title="Visitas nesta semana">
                     Os últimos 7 dias, até hoje.
                   </Callout>
-                  <Callout title="Funil de fidelidade">
+                  <Callout title="Funil do clube">
                     Mostra a base de clientes, quem esteve ativo, quem voltou
                     (2 visitas ou mais) e quem resgatou um prêmio. Embaixo, os
                     inativos: quem está na base e não visitou neste período.
@@ -392,7 +392,7 @@ export function GuideView() {
                     pontos ele junta para ganhar o prêmio. A taxa — quanto o
                     cliente gasta para ganhar 1 ponto — fica em{' '}
                     <TextLink href="/settings">Configurações</TextLink>, na
-                    seção Fidelidade, e vale para o estabelecimento todo.
+                    seção Benefícios, e vale para o estabelecimento todo.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -678,7 +678,7 @@ export function GuideView() {
                   body="O link público do estabelecimento, no endereço /loja/…, com as campanhas ativas."
                 />
                 <Setting
-                  title="Fidelidade"
+                  title="Benefícios"
                   body="Reais para 1 ponto; teto e compra mínima do cashback; em quantos dias carimbos, pontos e cashback expiram depois do ganho. No resgate, o saldo mais antigo sai primeiro."
                 />
                 <Setting

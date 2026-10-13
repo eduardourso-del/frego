@@ -25,7 +25,7 @@ abstract final class FregoIcons {
   static const location = Icons.place_rounded;
   static const image = Icons.photo_outlined;
 
-  // Fidelidade (Lucide — iguais ao web do estabelecimento)
+  // Clube (Lucide — iguais ao web do estabelecimento)
   static Widget stamp({double size = 24, Color? color}) =>
       _lucide('stamp', size: size, color: color);
   static Widget stampFilled({double size = 24, Color? color}) =>

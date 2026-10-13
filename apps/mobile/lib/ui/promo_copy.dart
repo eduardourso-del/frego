@@ -103,7 +103,7 @@ String promoStatusLine({
     case 'audience':
       return 'Promo exclusiva para outro perfil de cliente';
     default:
-      return 'Promoção da casa';
+      return 'Promoção do estabelecimento';
   }
 }
 

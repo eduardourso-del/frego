@@ -117,7 +117,7 @@ export async function replaceMembershipTags(opts: {
       throw Object.assign(new Error('TAG_NOT_FOUND'), {
         code: 'TAG_NOT_FOUND',
         statusCode: 400,
-        message: 'Uma ou mais etiquetas não existem nesta casa.',
+        message: 'Uma ou mais etiquetas não existem neste estabelecimento.',
       });
     }
   }

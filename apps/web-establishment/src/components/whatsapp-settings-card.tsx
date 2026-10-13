@@ -82,22 +82,15 @@ function WhatsAppBold({ text }: { text: string }) {
   );
 }
 
-const APP_DOWNLOAD_LINE =
-  'Baixe o app Frego em https://onelink.to/quvd8c no celular.';
-
 const MESSAGE_BODIES = {
   earn:
-    'Olá! Atualização de fidelidade da *{{1}}*.\n\nVocê acabou de ganhar *{{2}}*.\nSeu saldo agora é: *{{3}}*.\n\n{{4}}\n\nAbra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.\n\n' +
-    APP_DOWNLOAD_LINE,
+    'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nEsta mensagem confirma o crédito desta compra.',
   welcome:
-    'Olá, {{1}}! Você foi cadastrado no programa de fidelidade da *{{2}}*.\n\nUse o app Frego com este mesmo número para acompanhar carimbos, pontos e prêmios.\n\n' +
-    APP_DOWNLOAD_LINE,
+    'Olá, {{1}}. Cadastro confirmado na conta da *{{2}}*.\n\nEste número passa a receber as atualizações desta conta.',
   campaign:
-    'Olá! A *{{1}}* lançou uma nova campanha no programa de fidelidade.\n\n{{2}}\n\nAbra o app Frego para conferir os detalhes e participar.\n\n' +
-    APP_DOWNLOAD_LINE,
+    'Olá. Atualização da conta na *{{1}}*.\n\nFoi registrado na sua conta: {{2}}.\n\nO saldo desta conta não mudou com esta mensagem.',
   pesquisa:
-    'Olá! Atualização de fidelidade da *{{1}}*.\n\nVocê acabou de ganhar *{{2}}*.\nSeu saldo agora é: *{{3}}*.\n\n{{4}}\n\n{{5}}\nResponda neste link: {{6}}\n\nAbra o app Frego para ver detalhes e resgatar prêmios quando disponíveis.\n\n' +
-    APP_DOWNLOAD_LINE,
+    'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nPesquisa sobre esta compra: {{5}}.\n\nA pesquisa refere-se somente a esta compra.',
 } as const;
 
 type MessageKey = keyof typeof MESSAGE_BODIES;
@@ -111,7 +104,7 @@ function messageSample(key: MessageKey, businessName: string) {
         shop,
         '+1 carimbo',
         '3 carimbos',
-        'Café gratuito: faltam 2',
+        'Almoço: 3 de 10',
       ]),
     },
     welcome: {
@@ -120,7 +113,7 @@ function messageSample(key: MessageKey, businessName: string) {
     },
     campaign: {
       label: 'Campanha',
-      body: fillTemplate(MESSAGE_BODIES.campaign, [shop, '10 carimbos — café gratuito']),
+      body: fillTemplate(MESSAGE_BODIES.campaign, [shop, 'Almoço']),
     },
     pesquisa: {
       label: 'Pesquisa',
@@ -128,8 +121,7 @@ function messageSample(key: MessageKey, businessName: string) {
         shop,
         '+1 carimbo',
         '3 carimbos',
-        'Café gratuito: faltam 2',
-        'Responda e ganhe 1 carimbo na cartela Almoço Grátis.',
+        'Almoço: 3 de 10',
         'https://frego.app.br/p/exemplo',
       ]),
     },

@@ -107,20 +107,12 @@ export function PesquisaPagePreview({ input }: { input: PesquisaPreviewInput }) 
               />
             </label>
           ) : null}
-          <label className="block">
-            <span className="mb-1 block text-[13px] font-semibold">Telefone da conta</span>
-            <input
-              readOnly
-              placeholder="11 90000-0000"
-              className="min-h-11 w-full rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-bg)] px-3 text-[14px]"
-            />
-          </label>
           <button
             type="button"
             disabled
             className="min-h-12 rounded-[12px] bg-[var(--color-ink)] font-extrabold text-white opacity-50"
           >
-            Enviar código
+            Enviar resposta
           </button>
         </div>
         <footer className="border-t border-[var(--color-hairline)] py-6">

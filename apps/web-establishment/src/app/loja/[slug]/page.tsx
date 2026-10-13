@@ -36,7 +36,7 @@ export async function generateMetadata({
     title: data.business.name,
     description:
       data.business.slogan ??
-      `Programa de fidelidade de ${data.business.name} no Frego`,
+      `Clube de ${data.business.name} no Frego`,
   };
 }
 

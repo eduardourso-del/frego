@@ -194,7 +194,7 @@ class _WalletPageState extends State<WalletPage> {
                           children: [
                             Text(
                               _error == 'NO_MEMBERSHIP'
-                                  ? 'Você ainda não tem fidelidade em nenhuma loja. Peça um carimbo no balcão.'
+                                  ? 'Você ainda não está em nenhum clube. Peça um carimbo no balcão.'
                                   : _error!,
                               style: const TextStyle(
                                 fontSize: 15,
