@@ -58,6 +58,7 @@ function normalizeToE164(raw: string): string | null {
 
 function connectionPublic(row: {
   status: string;
+  metaBusinessId: string | null;
   wabaId: string;
   phoneNumberId: string;
   displayPhoneNumber: string | null;
@@ -92,6 +93,7 @@ function connectionPublic(row: {
 }) {
   return {
     status: row.status,
+    metaBusinessId: row.metaBusinessId,
     wabaId: row.wabaId,
     phoneNumberId: row.phoneNumberId,
     displayPhoneNumber: row.displayPhoneNumber,

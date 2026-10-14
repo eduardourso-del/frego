@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Info, X } from 'lucide-react';
+import { ExternalLink, Info, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
@@ -13,6 +13,7 @@ import {
 
 type Connection = {
   status: string;
+  metaBusinessId?: string | null;
   wabaId: string;
   phoneNumberId: string;
   displayPhoneNumber: string | null;
@@ -146,6 +147,35 @@ function templateStatusLabel(status: string): { label: string; tone: string } {
   }
 }
 
+function noticeStatuses(connection: Connection): string[] {
+  return [
+    connection.templateEarnStatus,
+    connection.templateWelcomeStatus ?? 'missing',
+    connection.templateCampaignStatus ?? 'missing',
+    connection.templatePesquisaStatus ?? 'missing',
+  ];
+}
+
+/** Every notice is already with Meta: approved, or waiting on review. */
+function awaitingMetaReview(connection: Connection): boolean {
+  const statuses = noticeStatuses(connection);
+  return (
+    statuses.some((status) => status === 'pending') &&
+    statuses.every((status) => status === 'pending' || status === 'approved')
+  );
+}
+
+function whatsAppManagerTemplatesUrl(connection: Connection): string {
+  const params = new URLSearchParams({
+    asset_id: connection.wabaId,
+    tab: 'message-templates',
+  });
+  if (connection.metaBusinessId) {
+    params.set('business_id', connection.metaBusinessId);
+  }
+  return `https://business.facebook.com/latest/whatsapp_manager/message_templates?${params}`;
+}
+
 export function WhatsAppSettingsCard() {
   const { getToken, user } = useAuth();
   const { business } = useBusiness();
@@ -258,6 +288,7 @@ export function WhatsAppSettingsCard() {
   }
 
   async function ensureTemplate() {
+    const wasAwaiting = connection ? awaitingMetaReview(connection) : false;
     setBusy(true);
     setError(null);
     setToast(null);
@@ -277,13 +308,20 @@ export function WhatsAppSettingsCard() {
       }
       const conn = (body as { connection: Connection }).connection ?? null;
       setConnection(conn);
-      const st = conn?.templateEarnStatus;
-      if (st === 'approved') setToast('Avisos liberados.');
-      else if (st === 'pending')
-        setToast('Avisos enviados. Aguardando aprovação.');
-      else if (st === 'rejected')
+      const statuses = conn ? noticeStatuses(conn) : [];
+      if (statuses.length > 0 && statuses.every((status) => status === 'approved')) {
+        setToast('Avisos liberados.');
+      } else if (conn && awaitingMetaReview(conn)) {
+        setToast(
+          wasAwaiting
+            ? 'Status atualizado. Ainda em análise na Meta.'
+            : 'Avisos enviados. Aguardando aprovação.',
+        );
+      } else if (statuses.some((status) => status === 'rejected')) {
         setToast('Um aviso foi recusado. Tente ativar de novo.');
-      else setToast('Status dos avisos atualizado.');
+      } else {
+        setToast('Status dos avisos atualizado.');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro');
     } finally {
@@ -304,12 +342,9 @@ export function WhatsAppSettingsCard() {
     ? templateStatusLabel(connection.templatePesquisaStatus ?? 'missing')
     : null;
   const needsTemplate = Boolean(
-    connection &&
-      (connection.templateEarnStatus !== 'approved' ||
-        (connection.templateWelcomeStatus ?? 'missing') !== 'approved' ||
-        (connection.templateCampaignStatus ?? 'missing') !== 'approved' ||
-        (connection.templatePesquisaStatus ?? 'missing') !== 'approved'),
+    connection && noticeStatuses(connection).some((status) => status !== 'approved'),
   );
+  const awaitingReview = Boolean(connection && awaitingMetaReview(connection));
 
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
@@ -392,9 +427,21 @@ export function WhatsAppSettingsCard() {
             )}
           </div>
           {needsTemplate && (
-            <p className="text-[13px] text-[var(--color-neutral-500)]">
-              Cada aviso passa a sair quando estiver aprovado. A análise costuma levar de alguns minutos a algumas horas.
-            </p>
+            <div className="space-y-2">
+              <p className="text-[13px] text-[var(--color-neutral-500)]">
+                Cada aviso passa a sair quando estiver aprovado. A análise
+                costuma levar de alguns minutos a algumas horas.
+              </p>
+              <a
+                href={whatsAppManagerTemplatesUrl(connection)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[13px] font-semibold text-[var(--color-ink)]"
+              >
+                Acompanhar no WhatsApp Manager
+                <ExternalLink size={13} strokeWidth={2.25} aria-hidden />
+              </a>
+            </div>
           )}
 
           <p className="text-[12px] text-[var(--color-neutral-400)]">
@@ -403,7 +450,9 @@ export function WhatsAppSettingsCard() {
           </p>
           {connection.lastError && needsTemplate ? (
             <p className="text-[13px] text-[var(--color-danger)]" role="alert">
-              Não foi possível preparar os avisos. Tente ativar de novo.
+              {awaitingReview
+                ? 'Não foi possível atualizar o status. Tente de novo.'
+                : 'Não foi possível preparar os avisos. Tente ativar de novo.'}
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
@@ -414,7 +463,11 @@ export function WhatsAppSettingsCard() {
                 onClick={() => void ensureTemplate()}
                 className="min-h-10 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white disabled:opacity-60"
               >
-                {busy ? 'Aguarde…' : 'Ativar avisos'}
+                {busy
+                  ? 'Aguarde…'
+                  : awaitingReview
+                    ? 'Atualizar status'
+                    : 'Ativar avisos'}
               </button>
             )}
             <button
