@@ -77,6 +77,7 @@ class _TillPageState extends State<TillPage> {
   List<CustomerTag> _catalog = const [];
   bool _loading = false;
   bool _applyCashback = false;
+  bool _grantBenefitOnCreate = true;
   String? _error;
   LookupResult? _lookup;
   FulfillResult? _voucherResult;
@@ -111,6 +112,16 @@ class _TillPageState extends State<TillPage> {
       (!_canEarn && _cashbackBalance > 0);
 
   bool get _showAmount => _saleMode;
+
+  bool get _grantingCreateBenefit => _grantBenefitOnCreate && _canEarn;
+
+  bool get _showCreateAmount => _grantingCreateBenefit && _showAmount;
+
+  String get _createBenefitToggleLabel => switch (_mode) {
+        EarnMode.points => 'Registrar gasto',
+        EarnMode.cashback => 'Registrar cashback',
+        EarnMode.stamps => 'Dar carimbo',
+      };
 
   int? get _amountCents => parseMoneyToCents(_amount.text);
 
@@ -362,6 +373,7 @@ class _TillPageState extends State<TillPage> {
       _voucherResult = null;
       _lastSale = null;
       _applyCashback = false;
+      _grantBenefitOnCreate = true;
       _applyAmount.clear();
       _displayName.clear();
     });
@@ -517,7 +529,7 @@ class _TillPageState extends State<TillPage> {
 
   String get _notFoundCtaLabel {
     if (!_hasFullPhoneForCreate) return 'Informe o telefone';
-    if (!_canEarn) return 'Criar cliente';
+    if (!_grantingCreateBenefit) return 'Criar cliente';
     return _mode == EarnMode.points
         ? 'Criar e registrar gasto'
         : _mode == EarnMode.cashback
@@ -549,7 +561,7 @@ class _TillPageState extends State<TillPage> {
   }
 
   String get _createBenefitSummary {
-    if (!_canEarn) return 'cadastrar o cliente nesta loja';
+    if (!_grantingCreateBenefit) return 'cadastrar o cliente nesta loja';
     return switch (_mode) {
       EarnMode.points => 'cadastrar e registrar o gasto em pontos',
       EarnMode.cashback => 'cadastrar e registrar o cashback',
@@ -648,7 +660,7 @@ class _TillPageState extends State<TillPage> {
   }
 
   Color? _createActionColor() {
-    if (!_canEarn) return null;
+    if (!_grantingCreateBenefit) return null;
     return switch (_mode) {
       EarnMode.points => FregoColors.points,
       EarnMode.cashback => FregoColors.cashback,
@@ -808,9 +820,7 @@ class _TillPageState extends State<TillPage> {
       _fullPhoneFocus.requestFocus();
       return;
     }
-    if (_canEarn &&
-        (_mode == EarnMode.points || _mode == EarnMode.cashback) &&
-        _amountCents == null) {
+    if (_showCreateAmount && _amountCents == null) {
       setState(() => _error = 'Informe o valor da compra');
       _amountFocus.requestFocus();
       return;
@@ -888,14 +898,18 @@ class _TillPageState extends State<TillPage> {
           _lookup = result;
           _fullPhone.clear();
         });
+        if (!_grantingCreateBenefit) return;
         if (result.associatedHere && result.membershipId != null) {
           await _earn(result.membershipId);
         } else {
-          await _createCustomer(withEarn: _canEarn, phoneOverride: phone);
+          await _createCustomer(withEarn: true, phoneOverride: phone);
         }
         return;
       }
-      await _createCustomer(withEarn: _canEarn, phoneOverride: phone);
+      await _createCustomer(
+        withEarn: _grantingCreateBenefit,
+        phoneOverride: phone,
+      );
     } catch (e) {
       if (mounted) setState(() => _error = humanizeError(e));
     } finally {
@@ -1124,6 +1138,7 @@ class _TillPageState extends State<TillPage> {
       _voucherResult = null;
       _lastSale = null;
       _applyCashback = false;
+      _grantBenefitOnCreate = true;
       _fullPhone.clear();
       _query.clear();
       _displayName.clear();
@@ -1357,21 +1372,25 @@ class _TillPageState extends State<TillPage> {
                     const SizedBox(height: 6),
                     Text(
                       _queryIsFullPhone || _hasFullPhoneForCreate
-                          ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
+                          ? _grantingCreateBenefit
+                              ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
+                              : 'Ninguém com este telefone nesta loja. Confirme para só cadastrar.'
                           : 'Busca pelos 4 dígitos não achou. Informe o telefone completo com DDD para cadastrar.',
                       style: const TextStyle(color: FregoColors.neutral500),
                     ),
-                    if (_queryIsFullPhone ||
-                        digitsOnly(_fullPhone.text).length >= 10) ...[
+                    if (_canEarn) ...[
+                      const SizedBox(height: 12),
+                      _GrantToggle(
+                        grant: _grantBenefitOnCreate,
+                        benefitLabel: _createBenefitToggleLabel,
+                        onChanged: (grant) =>
+                            setState(() => _grantBenefitOnCreate = grant),
+                      ),
+                    ],
+                    if (_queryIsFullPhone) ...[
                       const SizedBox(height: 12),
                       Text(
-                        formatPhoneBr(
-                          digitsOnly(
-                            _fullPhone.text.isNotEmpty
-                                ? _fullPhone.text
-                                : _query.text,
-                          ),
-                        ),
+                        formatPhoneBr(digitsOnly(_query.text)),
                         style: const TextStyle(
                           fontFamily: 'monospace',
                           fontSize: 20,
@@ -1416,12 +1435,12 @@ class _TillPageState extends State<TillPage> {
                       controller: _displayName,
                       focusNode: _displayNameFocus,
                       textCapitalization: TextCapitalization.words,
-                      textInputAction: _showAmount
+                      textInputAction: _showCreateAmount
                           ? TextInputAction.next
                           : TextInputAction.done,
                       maxLength: 80,
                       onSubmitted: (_) {
-                        if (_showAmount) {
+                        if (_showCreateAmount) {
                           _amountFocus.requestFocus();
                         } else {
                           _confirmCreateNotFound();
@@ -1433,7 +1452,7 @@ class _TillPageState extends State<TillPage> {
                         counterText: '',
                       ),
                     ),
-                    if (_showAmount)
+                    if (_showCreateAmount)
                       _AmountField(
                         controller: _amount,
                         focusNode: _amountFocus,
@@ -1453,6 +1472,7 @@ class _TillPageState extends State<TillPage> {
             ],
             if (_lookup != null &&
                 _mode == EarnMode.stamps &&
+                (_lookup!.found || _grantingCreateBenefit) &&
                 _lookup!.stampDestinations.where((d) => d.earnable).length >
                     1) ...[
               const Text(
@@ -1604,6 +1624,76 @@ class _TaskToggle extends StatelessWidget {
                   color: selected
                       ? FregoColors.ink
                       : FregoColors.neutral500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GrantToggle extends StatelessWidget {
+  const _GrantToggle({
+    required this.grant,
+    required this.benefitLabel,
+    required this.onChanged,
+  });
+
+  final bool grant;
+  final String benefitLabel;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: FregoColors.neutral100,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          _option(
+            label: 'Só cadastrar',
+            selected: !grant,
+            onTap: () => onChanged(false),
+          ),
+          _option(
+            label: benefitLabel,
+            selected: grant,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _option({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: Material(
+        color: selected ? FregoColors.card : Colors.transparent,
+        elevation: selected ? 1 : 0,
+        shadowColor: Colors.black26,
+        borderRadius: BorderRadius.circular(11),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: SizedBox(
+            height: 44,
+            child: Center(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: selected ? FregoColors.ink : FregoColors.neutral500,
                 ),
               ),
             ),

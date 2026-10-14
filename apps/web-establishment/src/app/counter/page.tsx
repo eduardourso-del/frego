@@ -213,6 +213,7 @@ export default function CounterPage() {
   const [query, setQuery] = useState('');
   const [fullPhone, setFullPhone] = useState('');
   const [createName, setCreateName] = useState('');
+  const [grantBenefitOnCreate, setGrantBenefitOnCreate] = useState(true);
   const [amount, setAmount] = useState('');
   const [earnMode, setEarnMode] = useState<EarnMode>('stamps');
   const [stampTarget, setStampTarget] = useState<string | null>(null);
@@ -277,6 +278,14 @@ export default function CounterPage() {
     earnMode === 'cashback' ||
     (!canEarn && cashbackBalance > 0);
   const showAmount = saleMode;
+  const grantingCreateBenefit = grantBenefitOnCreate && canEarn;
+  const showCreateAmount = grantingCreateBenefit && showAmount;
+  const createBenefitToggleLabel =
+    earnMode === 'points'
+      ? 'Registrar gasto'
+      : earnMode === 'cashback'
+        ? 'Registrar cashback'
+        : 'Dar carimbo';
   const pools = useMemo(() => poolsFrom(lookup), [lookup]);
   const qDigits = digitsOnly(query);
   const isLast4 = qDigits.length === 4;
@@ -511,6 +520,7 @@ export default function CounterPage() {
     setLastSale(null);
     setPendingUndo(null);
     setCreateName('');
+    setGrantBenefitOnCreate(true);
     try {
       const payload =
         qDigits.length === 4
@@ -612,14 +622,18 @@ export default function CounterPage() {
       if (res.ok && data.found && data.customer) {
         setLookup(data);
         setFullPhone('');
+        if (!grantingCreateBenefit) {
+          setLoading(false);
+          return;
+        }
         if (data.associatedHere && data.membership) {
-          if (canEarn) await earn(data.membership.id);
+          await earn(data.membership.id);
         } else {
-          await createCustomer(canEarn, phone);
+          await createCustomer(true, phone);
         }
         return;
       }
-      await createCustomer(canEarn, phone);
+      await createCustomer(grantingCreateBenefit, phone);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível buscar.');
       setLoading(false);
@@ -632,17 +646,18 @@ export default function CounterPage() {
       setFocus('fullPhone');
       return;
     }
-    if (
-      canEarn &&
-      (earnMode === 'points' || earnMode === 'cashback') &&
-      amountCents == null
-    ) {
+    if (showCreateAmount && amountCents == null) {
       setError('Informe o valor da compra.');
       setFocus('amount');
       return;
     }
     const earnable = stampDestinationsFrom(lookup).filter((d) => d.earnable);
-    if (canEarn && earnMode === 'stamps' && earnable.length > 1 && !stampTarget) {
+    if (
+      grantingCreateBenefit &&
+      earnMode === 'stamps' &&
+      earnable.length > 1 &&
+      !stampTarget
+    ) {
       setError('Escolha onde o carimbo entra.');
       return;
     }
@@ -1035,7 +1050,7 @@ export default function CounterPage() {
       digitsOnly(query).length >= 10 ||
       digitsOnly(lookup?.phoneE164 ?? '').length >= 10;
     if (!hasFull) return 'Informe o telefone';
-    if (!canEarn) return 'Criar cliente';
+    if (!grantingCreateBenefit) return 'Criar cliente';
     return earnMode === 'points'
       ? 'Criar e registrar gasto'
       : earnMode === 'cashback'
@@ -1054,7 +1069,7 @@ export default function CounterPage() {
     if (digitsOnly(q).length >= 10) return q;
     return phoneDigitsForApi(lookup?.phoneE164 ?? '');
   })();
-  const createBenefitSummary = !canEarn
+  const createBenefitSummary = !grantingCreateBenefit
     ? 'cadastrar o cliente nesta loja'
     : earnMode === 'points'
       ? 'cadastrar e registrar o gasto em pontos'
@@ -1088,8 +1103,10 @@ export default function CounterPage() {
       : earnMode === 'cashback'
         ? 'cashback'
         : 'stamps';
+  const stampPickBlocksAction =
+    needsStampPick && !(awaitingCreate && !grantingCreateBenefit);
   const stickyLabel =
-    !voucherTask && needsStampPick
+    !voucherTask && stampPickBlocksAction
       ? 'Escolha onde o carimbo entra'
       : voucherTask && voucherExpired
       ? fulfillingId
@@ -1120,8 +1137,13 @@ export default function CounterPage() {
                       ? 'Buscando…'
                       : notFoundAction
                     : foundAction;
-  const stickyTone: StickyTone =
-    customerResolved || awaitingCreate ? actionTone : 'primary';
+  const stickyTone: StickyTone = customerResolved
+    ? actionTone
+    : awaitingCreate
+      ? grantingCreateBenefit
+        ? actionTone
+        : 'primary'
+      : 'primary';
   const phoneDigits = digitsOnly(query);
   const phoneReady = phoneDigits.length === 4 || phoneDigits.length >= 10;
   const stickyDisabled =
@@ -1142,7 +1164,7 @@ export default function CounterPage() {
             !canEarn &&
             !canApplyLeftover,
         ) ||
-        needsStampPick));
+        stampPickBlocksAction));
 
   function startNewSearch() {
     setLookup(null);
@@ -1154,6 +1176,7 @@ export default function CounterPage() {
     setQuery('');
     setCreateName('');
     setFullPhone('');
+    setGrantBenefitOnCreate(true);
     setFocus('none');
   }
 
@@ -1575,16 +1598,40 @@ export default function CounterPage() {
             <h2 className="text-[22px] font-semibold">Cliente não encontrado</h2>
             <p className="mt-2 text-[15px] text-[var(--color-neutral-500)]">
               {queryIsFullPhone || hasFullPhoneForCreate
-                ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
+                ? grantingCreateBenefit
+                  ? 'Ninguém com este telefone nesta loja. Confirme para cadastrar e registrar o benefício.'
+                  : 'Ninguém com este telefone nesta loja. Confirme para só cadastrar.'
                 : 'Busca pelos 4 dígitos não achou. Informe o telefone completo com DDD para cadastrar.'}
             </p>
-            {queryIsFullPhone || digitsOnly(fullPhone).length >= 10 ? (
+            {canEarn ? (
+              <div className="mt-4 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
+                {(
+                  [
+                    { grant: false, label: 'Só cadastrar' },
+                    { grant: true, label: createBenefitToggleLabel },
+                  ] as const
+                ).map((opt) => {
+                  const selected = grantBenefitOnCreate === opt.grant;
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => setGrantBenefitOnCreate(opt.grant)}
+                      className={`flex min-h-11 flex-1 items-center justify-center rounded-[11px] px-2 text-center text-[13px] font-semibold ${
+                        selected
+                          ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
+                          : 'text-[var(--color-neutral-500)]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+            {queryIsFullPhone ? (
               <p className="mt-4 font-mono text-[28px] font-semibold tracking-wide text-[var(--color-ink)] md:text-[36px]">
-                {formatPhoneBr(
-                  digitsOnly(
-                    digitsOnly(fullPhone).length >= 10 ? fullPhone : query,
-                  ),
-                )}
+                {formatPhoneBr(digitsOnly(query))}
               </p>
             ) : (
               <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
@@ -1614,14 +1661,14 @@ export default function CounterPage() {
                 placeholder="Como o cliente se chama"
               />
             </label>
-            {earnMode === 'stamps' ? (
+            {grantingCreateBenefit && earnMode === 'stamps' ? (
               <StampPick
                 destinations={earnableStamps}
                 value={stampTarget}
                 onChange={setStampTarget}
               />
             ) : null}
-            {showAmount && (
+            {showCreateAmount && (
               <AmountField
                 amount={amount}
                 setAmount={setAmount}
@@ -2151,7 +2198,7 @@ export default function CounterPage() {
                   placeholder="Como o cliente se chama"
                 />
               </label>
-              {earnMode === 'stamps' ? (
+              {grantingCreateBenefit && earnMode === 'stamps' ? (
                 <StampPick
                   destinations={earnableStamps}
                   value={stampTarget}
@@ -2172,7 +2219,7 @@ export default function CounterPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={loading || needsStampPick}
+                  disabled={loading || (grantingCreateBenefit && needsStampPick)}
                   onClick={() => {
                     setPendingCreate(false);
                     void resolveFullPhoneAndEarn(createPhoneDigits);
