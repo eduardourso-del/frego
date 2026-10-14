@@ -9,7 +9,7 @@ The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
 **Cliente**:
-The person identified by a phone number. That number is the account.
+The person identified by a phone number. That number is the account. Staff may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
 _Avoid_: client, user, consumer, customer
 
 **Clube**:

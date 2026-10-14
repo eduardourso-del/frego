@@ -31,6 +31,36 @@ import {
   normalizeVoucherCode,
 } from '@/lib/voucher';
 
+function localPhoneDigits(e164: string) {
+  const digits = e164.replace(/\D/g, '');
+  return digits.startsWith('55') && digits.length > 11
+    ? digits.slice(2)
+    : digits;
+}
+
+function displayPhone(e164: string | null | undefined) {
+  if (!e164) return '';
+  return formatPhoneBr(localPhoneDigits(e164)) || e164;
+}
+
+function correctionBalanceHint(lookup: LookupResult): string {
+  const destinations = stampDestinationsFrom(lookup);
+  const stampSum = destinations.reduce((sum, dest) => sum + dest.balance, 0);
+  const pools = poolsFrom(lookup);
+  const stamps = destinations.length > 0 ? stampSum : (pools.stamps ?? 0);
+  const parts: string[] = [];
+  if (stamps > 0) {
+    parts.push(`${stamps} ${stamps === 1 ? 'carimbo' : 'carimbos'}`);
+  }
+  if (pools.points > 0) {
+    parts.push(`${pools.points} ${pools.points === 1 ? 'ponto' : 'pontos'}`);
+  }
+  const cash = pools.cashbackCents ?? 0;
+  if (cash > 0) parts.push(formatBrl(cash));
+  if (parts.length === 0) return 'O cadastro desta loja passa para esse número.';
+  return `O saldo desta loja passa para esse número (${parts.join(', ')}).`;
+}
+
 function formatSaleClock(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
@@ -49,7 +79,14 @@ function formatSaleClock(iso: string): string {
 type EarnMode = 'stamps' | 'points' | 'cashback';
 type TillFocus = 'none' | 'voucher' | 'phone' | 'fullPhone' | 'amount' | 'apply';
 type TillTask = 'earn' | 'voucher';
-type CounterOverlay = 'matches' | 'vouchers' | 'sales' | 'tags' | 'scan' | null;
+type CounterOverlay =
+  | 'matches'
+  | 'vouchers'
+  | 'sales'
+  | 'tags'
+  | 'scan'
+  | 'correct'
+  | null;
 
 type StampDestination = {
   campaignId: string | null;
@@ -129,6 +166,8 @@ type LookupResult = {
   activeEarnKinds?: EarnMode[];
   stampDestinations?: StampDestination[];
   error?: string;
+  message?: string;
+  moved?: boolean;
 };
 
 const EARN_MODE_OPTIONS = [
@@ -241,6 +280,10 @@ export default function CounterPage() {
   const [catalog, setCatalog] = useState<CatalogTag[]>([]);
   const [tagDraft, setTagDraft] = useState<string[]>([]);
   const [tagBusy, setTagBusy] = useState(false);
+  const [correctName, setCorrectName] = useState('');
+  const [correctPhone, setCorrectPhone] = useState('');
+  const [correctBusy, setCorrectBusy] = useState(false);
+  const [correctError, setCorrectError] = useState<string | null>(null);
   const [pendingVoucher, setPendingVoucher] = useState<{
     voucherCode: string;
     voucherDisplay: string;
@@ -400,6 +443,62 @@ export default function CounterPage() {
     if (catalog.length === 0 || !lookup?.associatedHere) return;
     setTagDraft((lookup.tags ?? []).map((t) => t.id));
     setOverlay('tags');
+  }
+
+  function openCorrect() {
+    const customer = lookup?.customer;
+    if (!customer || !lookup?.associatedHere) return;
+    setCorrectName(customer.displayName ?? '');
+    setCorrectPhone(displayPhone(customer.phoneE164));
+    setCorrectError(null);
+    setOverlay('correct');
+  }
+
+  async function saveCorrect() {
+    const customer = lookup?.customer;
+    if (!customer || correctBusy) return;
+    const phoneDigits = digitsOnly(correctPhone);
+    if (phoneDigits.length < 10) {
+      setCorrectError('Informe o telefone completo com DDD.');
+      return;
+    }
+    const previousPhone = customer.phoneE164;
+    const previousName = customer.displayName ?? '';
+    setCorrectBusy(true);
+    setCorrectError(null);
+    try {
+      const res = await fetch(`${API_URL}/customers/${customer.id}/correct`, {
+        method: 'POST',
+        headers: await authHeaders(),
+        body: JSON.stringify({
+          displayName: correctName.trim(),
+          phone: phoneDigitsForApi(correctPhone),
+        }),
+      });
+      const data = (await res.json()) as LookupResult;
+      if (!res.ok) {
+        throw new Error(
+          data.message ?? data.error ?? 'Não foi possível corrigir.',
+        );
+      }
+      setLookup(data);
+      setOverlay(null);
+      const phoneNow = data.customer?.phoneE164 ?? previousPhone;
+      const nameNow = data.customer?.displayName ?? '';
+      setToast(
+        data.moved || phoneNow !== previousPhone
+          ? 'Saldo passado para o número certo.'
+          : nameNow !== previousName
+            ? 'Nome atualizado.'
+            : 'Cadastro atualizado.',
+      );
+    } catch (err) {
+      setCorrectError(
+        err instanceof Error ? err.message : 'Não foi possível corrigir.',
+      );
+    } finally {
+      setCorrectBusy(false);
+    }
   }
 
   async function saveTags() {
@@ -1103,10 +1202,14 @@ export default function CounterPage() {
       : earnMode === 'cashback'
         ? 'cashback'
         : 'stamps';
-  const stampPickBlocksAction =
-    needsStampPick && !(awaitingCreate && !grantingCreateBenefit);
+  // Only when the destination chips are on screen. Before a lookup, this
+  // must not replace Buscar — blurring the phone (the tap itself) would
+  // gray the button out and swallow the search.
+  const stampChoiceOnScreen =
+    needsStampPick &&
+    (customerResolved || (awaitingCreate && grantingCreateBenefit));
   const stickyLabel =
-    !voucherTask && stampPickBlocksAction
+    !voucherTask && stampChoiceOnScreen
       ? 'Escolha onde o carimbo entra'
       : voucherTask && voucherExpired
       ? fulfillingId
@@ -1163,8 +1266,7 @@ export default function CounterPage() {
             lookup.associatedHere &&
             !canEarn &&
             !canApplyLeftover,
-        ) ||
-        stampPickBlocksAction));
+        )));
 
   function startNewSearch() {
     setLookup(null);
@@ -1688,12 +1790,25 @@ export default function CounterPage() {
 
         {lookup?.found && lookup.customer && !lookup.multiple && (
           <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]">
-            <h2 className="truncate text-[20px] font-semibold">
-              {lookup.customer.displayName ?? 'Cliente'}
-            </h2>
-            <p className="truncate font-mono text-[15px] text-[var(--color-neutral-500)]">
-              {lookup.customer.phoneE164}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="truncate text-[20px] font-semibold">
+                  {lookup.customer.displayName ?? 'Cliente'}
+                </h2>
+                <p className="truncate font-mono text-[15px] text-[var(--color-neutral-500)]">
+                  {displayPhone(lookup.customer.phoneE164)}
+                </p>
+              </div>
+              {lookup.associatedHere ? (
+                <button
+                  type="button"
+                  onClick={openCorrect}
+                  className="inline-flex min-h-11 shrink-0 items-center rounded-[10px] px-2 text-[14px] font-semibold text-[var(--color-primary-500)]"
+                >
+                  Corrigir
+                </button>
+              ) : null}
+            </div>
             {catalog.length > 0 && lookup.associatedHere ? (
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {lookup.customer && lookup.membership?.isVip ? (
@@ -2107,6 +2222,68 @@ export default function CounterPage() {
                 </li>
               ))}
             </ul>
+          </CounterSheet>
+        ) : null}
+
+        {overlay === 'correct' && lookup?.customer ? (
+          <CounterSheet
+            title="Corrigir cadastro"
+            subtitle="O telefone é a conta."
+            onClose={() => {
+              if (!correctBusy) setOverlay(null);
+            }}
+          >
+            <label className="block text-[13px] font-semibold uppercase tracking-[0.04em]">
+              Nome
+              <input
+                value={correctName}
+                onChange={(e) => setCorrectName(e.target.value.slice(0, 80))}
+                maxLength={80}
+                autoComplete="name"
+                autoCapitalize="words"
+                className="mt-2 min-h-14 w-full rounded-[12px] border border-[var(--color-neutral-200)] px-3 text-[20px]"
+                placeholder="Como o cliente se chama"
+              />
+            </label>
+            <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
+              Telefone
+              <input
+                value={correctPhone}
+                onChange={(e) => setCorrectPhone(formatPhoneBr(e.target.value))}
+                inputMode="tel"
+                autoComplete="tel"
+                className="mt-2 min-h-14 w-full rounded-[12px] border border-[var(--color-neutral-200)] px-3 text-[22px] font-semibold tracking-wide"
+                placeholder="(19) 99488-5914"
+              />
+            </label>
+            {digitsOnly(correctPhone) !==
+            localPhoneDigits(lookup.customer.phoneE164) ? (
+              <p className="mt-3 text-[13px] leading-relaxed text-[var(--color-neutral-600)]">
+                {correctionBalanceHint(lookup)} Só vale se este cadastro ainda
+                não entrou no aplicativo. Se o número já for cliente, o saldo
+                entra na conta dele.
+              </p>
+            ) : null}
+            {correctError ? (
+              <p className="mt-3 text-[13px] font-semibold text-[var(--color-danger)]">
+                {correctError}
+              </p>
+            ) : null}
+            <button
+              type="button"
+              disabled={
+                correctBusy || digitsOnly(correctPhone).length < 10
+              }
+              onClick={() => void saveCorrect()}
+              className="mt-4 mb-1 min-h-[52px] w-full shrink-0 rounded-[12px] bg-[var(--color-primary-500)] text-[15px] font-semibold text-white disabled:opacity-60"
+            >
+              {correctBusy
+                ? 'Salvando…'
+                : digitsOnly(correctPhone) !==
+                    localPhoneDigits(lookup.customer.phoneE164)
+                  ? 'Passar para este número'
+                  : 'Salvar nome'}
+            </button>
           </CounterSheet>
         ) : null}
 

@@ -20,3 +20,18 @@ String formatPhoneBr(String value) {
 
 /// Valor pronto para a API (só dígitos com DDD).
 String phoneDigitsForApi(String value) => _clipPhone(value);
+
+/// National digits from an E.164 number (`+55…` drops the country code).
+String localPhoneDigits(String e164) {
+  var digits = digitsOnly(e164);
+  if (digits.startsWith('55') && digits.length > 11) {
+    digits = digits.substring(2);
+  }
+  return digits;
+}
+
+String displayPhoneBr(String? e164) {
+  if (e164 == null || e164.isEmpty) return '';
+  final formatted = formatPhoneBr(localPhoneDigits(e164));
+  return formatted.isEmpty ? e164 : formatted;
+}

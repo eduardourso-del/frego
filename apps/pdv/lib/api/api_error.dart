@@ -19,6 +19,17 @@ class ApiException implements Exception {
         return 'Esta loja não está ativa';
       case 'MEMBERSHIP_NOT_FOUND':
         return 'Cliente não encontrado nesta loja';
+      case 'PHONE_IS_ACCOUNT':
+        return message ??
+            'Este telefone já é a conta do cliente. '
+                'Desfaça o lançamento e busque o número certo.';
+      case 'INVALID_PHONE':
+        return message ?? 'Telefone inválido. Informe DDD e número.';
+      case 'PHONE_TAKEN':
+        return message ??
+            'Esse número acabou de ser cadastrado. Busque de novo.';
+      case 'PHONE_UNAVAILABLE':
+        return message ?? 'Esse número não pode receber o cadastro.';
       case 'INVALID_LOCATION':
         return 'Unidade inválida para este usuário';
       case 'VOUCHER_NOT_FOUND':

@@ -292,6 +292,9 @@ class _TillPageState extends State<TillPage> {
           stamps: result.stamps,
           points: result.points,
           cashbackCents: result.cashbackCents,
+          stampDestinations: result.stampDestinations.isEmpty
+              ? null
+              : result.stampDestinations,
           recentSales: (_lookup?.recentSales ?? const [])
               .where(
                 (s) =>
@@ -787,6 +790,56 @@ class _TillPageState extends State<TillPage> {
       if (!mounted) return;
       setState(() => _error = e.message ?? e.code);
     }
+  }
+
+  Future<void> _openCorrectSheet() async {
+    final lookup = _lookup;
+    if (lookup == null || !lookup.associatedHere || lookup.customerId == null) {
+      return;
+    }
+    final previousPhone = lookup.phoneE164;
+    final previousName = lookup.displayName ?? '';
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: FregoColors.card,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
+          child: _CorrectCustomerSheet(
+            initialName: lookup.displayName ?? '',
+            initialPhone: displayPhoneBr(lookup.phoneE164),
+            balanceHint: correctionBalanceHint(lookup),
+            onSave: (name, phone) async {
+              final result = await _api.correctCustomer(
+                customerId: lookup.customerId!,
+                displayName: name,
+                phone: phone,
+              );
+              if (!mounted) return;
+              if (previousPhone != null) {
+                _recents.removeWhere((r) => r.phoneE164 == previousPhone);
+              }
+              _remember(result);
+              setState(() {
+                _lookup = result;
+                _error = null;
+              });
+              final phoneChanged = result.phoneE164 != previousPhone;
+              final nameChanged = (result.displayName ?? '') != previousName;
+              _toast(
+                phoneChanged
+                    ? 'Saldo passado para o número certo'
+                    : nameChanged
+                    ? 'Nome atualizado'
+                    : 'Cadastro atualizado',
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _selectMatch(CustomerMatch match) async {
@@ -1507,6 +1560,7 @@ class _TillPageState extends State<TillPage> {
                 lookup: _lookup!,
                 catalog: _catalog,
                 onEditTags: _openTagsSheet,
+                onCorrect: _openCorrectSheet,
                 mode: _mode,
                 earnKinds: _earnKinds,
                 amount: _amount,
@@ -2036,6 +2090,7 @@ class _CustomerCard extends StatelessWidget {
     required this.lookup,
     required this.catalog,
     required this.onEditTags,
+    this.onCorrect,
     required this.mode,
     required this.earnKinds,
     required this.amount,
@@ -2064,6 +2119,7 @@ class _CustomerCard extends StatelessWidget {
   final LookupResult lookup;
   final List<CustomerTag> catalog;
   final VoidCallback onEditTags;
+  final VoidCallback? onCorrect;
   final EarnMode mode;
   final List<String> earnKinds;
   final TextEditingController amount;
@@ -2105,16 +2161,42 @@ class _CustomerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            lookup.displayName ?? 'Cliente',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-          ),
-          Text(
-            lookup.phoneE164 ?? '',
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              color: FregoColors.neutral500,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      lookup.displayName ?? 'Cliente',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Text(
+                      displayPhoneBr(lookup.phoneE164),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        color: FregoColors.neutral500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (lookup.associatedHere && onCorrect != null)
+                TextButton(
+                  onPressed: onCorrect,
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Corrigir'),
+                ),
+            ],
           ),
           if (catalog.isNotEmpty && lookup.associatedHere) ...[
             const SizedBox(height: 8),
@@ -3505,6 +3587,176 @@ class _TagPickerSheetState extends State<_TagPickerSheet> {
               child: FilledButton(
                 onPressed: () => Navigator.pop(context, _selected),
                 child: const Text('Pronto'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String correctionBalanceHint(LookupResult lookup) {
+  final destinations = lookup.stampDestinations;
+  final stampSum = destinations.fold<int>(0, (sum, dest) => sum + dest.balance);
+  final stamps = destinations.isNotEmpty ? stampSum : lookup.stamps;
+  final parts = <String>[];
+  if (stamps > 0) {
+    parts.add('$stamps ${stamps == 1 ? 'carimbo' : 'carimbos'}');
+  }
+  if (lookup.points > 0) {
+    parts.add(
+      '${lookup.points} ${lookup.points == 1 ? 'ponto' : 'pontos'}',
+    );
+  }
+  if (lookup.cashbackCents > 0) {
+    parts.add(formatBrl(lookup.cashbackCents));
+  }
+  if (parts.isEmpty) return 'O cadastro desta loja passa para esse número.';
+  return 'O saldo desta loja passa para esse número (${parts.join(', ')}).';
+}
+
+class _CorrectCustomerSheet extends StatefulWidget {
+  const _CorrectCustomerSheet({
+    required this.initialName,
+    required this.initialPhone,
+    required this.balanceHint,
+    required this.onSave,
+  });
+
+  final String initialName;
+  final String initialPhone;
+  final String balanceHint;
+  final Future<void> Function(String name, String phone) onSave;
+
+  @override
+  State<_CorrectCustomerSheet> createState() => _CorrectCustomerSheetState();
+}
+
+class _CorrectCustomerSheetState extends State<_CorrectCustomerSheet> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.initialName,
+  );
+  late final TextEditingController _phone = TextEditingController(
+    text: widget.initialPhone,
+  );
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  bool get _phoneChanged =>
+      digitsOnly(_phone.text) != digitsOnly(widget.initialPhone);
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    if (digitsOnly(_phone.text).length < 10) {
+      setState(() => _error = 'Informe o telefone completo com DDD');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onSave(_name.text, _phone.text);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = humanizeError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final phoneReady = digitsOnly(_phone.text).length >= 10;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Corrigir cadastro',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'O telefone é a conta.',
+              style: TextStyle(color: FregoColors.neutral500),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _name,
+              textCapitalization: TextCapitalization.words,
+              textInputAction: TextInputAction.next,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                labelText: 'Nome',
+                hintText: 'Como o cliente se chama',
+                counterText: '',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              textInputAction: TextInputAction.done,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+              onChanged: (value) {
+                final formatted = formatPhoneBr(value);
+                if (formatted != value) {
+                  _phone.value = TextEditingValue(
+                    text: formatted,
+                    selection: TextSelection.collapsed(offset: formatted.length),
+                  );
+                }
+                setState(() {});
+              },
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Telefone',
+                hintText: '(19) 99488-5914',
+              ),
+            ),
+            if (_phoneChanged) ...[
+              const SizedBox(height: 12),
+              Text(
+                '${widget.balanceHint} Só vale se este cadastro ainda não entrou no aplicativo. Se o número já for cliente, o saldo entra na conta dele.',
+                style: const TextStyle(color: FregoColors.neutral500),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: FregoColors.danger,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: _busy || !phoneReady ? null : _submit,
+                child: Text(
+                  _busy
+                      ? 'Salvando…'
+                      : _phoneChanged
+                      ? 'Passar para este número'
+                      : 'Salvar nome',
+                ),
               ),
             ),
           ],

@@ -27,6 +27,10 @@ import {
   replaceMembershipTags,
   type TagDto,
 } from '../lib/tags.js';
+import {
+  CorrectCustomerError,
+  correctCustomerIdentity,
+} from '../lib/correct-customer.js';
 
 const lookupBody = z
   .object({
@@ -64,6 +68,15 @@ const patchBody = z
   })
   .refine((b) => b.isVip !== undefined || b.tagIds !== undefined, {
     message: 'Informe isVip ou tagIds',
+  });
+
+const correctBody = z
+  .object({
+    displayName: z.string().max(80).nullable().optional(),
+    phone: z.string().min(8).max(32).optional(),
+  })
+  .refine((b) => b.displayName !== undefined || b.phone !== undefined, {
+    message: 'Informe o nome ou o telefone',
   });
 
 async function serializeCustomerLookup(
@@ -992,6 +1005,73 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       membership: { id: membership.id, isVip },
       tags,
     };
+  });
+
+  /**
+   * Correct a wrong name, or move an unclaimed registration onto the right phone
+   * so this loja's benefício follows.
+   */
+  app.post('/customers/:id/correct', async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = request.params as { id: string };
+    const body = correctBody.parse(request.body);
+
+    try {
+      const result = await correctCustomerIdentity({
+        businessId: auth.businessId,
+        customerId: id,
+        displayName: body.displayName,
+        phone: body.phone,
+      });
+
+      const customer = await prisma.customer.findUnique({
+        where: { id: result.customerId },
+        include: {
+          memberships: {
+            include: {
+              business: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+      if (!customer) {
+        return reply.code(404).send({ error: 'CUSTOMER_NOT_FOUND' });
+      }
+
+      if (result.welcomePhone) {
+        const business = await prisma.business.findUnique({
+          where: { id: auth.businessId },
+          select: { name: true },
+        });
+        queueWelcomeWhatsAppForBusiness({
+          businessId: auth.businessId,
+          businessName: business?.name ?? 'Frego',
+          toE164: result.welcomePhone,
+          customerName: customer.displayName,
+          log: (msg, extra) => request.log.info(extra ?? {}, msg),
+        });
+      }
+
+      request.log.info(
+        {
+          fromCustomerId: id,
+          toCustomerId: result.customerId,
+          moved: result.moved,
+        },
+        'customer_identity_corrected',
+      );
+
+      const lookup = await serializeCustomerLookup(customer, auth.businessId);
+      return { ...lookup, moved: result.moved };
+    } catch (err) {
+      if (err instanceof CorrectCustomerError) {
+        return reply.code(err.statusCode).send({
+          error: err.code,
+          message: err.message,
+        });
+      }
+      throw err;
+    }
   });
 
   /** Derived wallet for a customer within the authenticated business. */

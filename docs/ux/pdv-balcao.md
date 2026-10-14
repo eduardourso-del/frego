@@ -47,6 +47,7 @@ Overlays (não empilhar na coluna principal):
 | Mais de 3 lançamentos | Folha com histórico do cliente neste turno |
 | Escanear QR (PDV e web mobile, com câmera) | Folha com viewfinder; preenche o Código; **Usar** continua o sticky |
 | Desfazer | Diálogo de confirmação (já existente) |
+| Nome ou telefone errado no cadastro desta loja | Folha **Corrigir**: nome e telefone. O saldo desta loja passa para o número certo só enquanto o cadastro não é conta (sem app e só nesta loja) |
 
 ## Hierarquia visual
 

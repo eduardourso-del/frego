@@ -392,12 +392,14 @@ class ReverseResult {
     required this.stamps,
     required this.points,
     this.cashbackCents = 0,
+    this.stampDestinations = const [],
   });
 
   final String message;
   final int stamps;
   final int points;
   final int cashbackCents;
+  final List<StampDestination> stampDestinations;
 }
 
 class FulfillResult {
@@ -454,6 +456,18 @@ class PdvApi {
   Future<List<CustomerTag>> listTags() async {
     final json = await _get('/tags');
     return parseTags(json['tags']);
+  }
+
+  Future<LookupResult> correctCustomer({
+    required String customerId,
+    required String displayName,
+    required String phone,
+  }) async {
+    final json = await _post('/customers/$customerId/correct', {
+      'displayName': displayName.trim(),
+      'phone': phone,
+    });
+    return LookupResult.fromJson(json);
   }
 
   Future<List<CustomerTag>> patchCustomerTags({
@@ -564,6 +578,7 @@ class PdvApi {
             : null) ??
         json['pools'] as Map<String, dynamic>?;
     final cashback = json['cashback'] as Map<String, dynamic>?;
+    final wallet = json['wallet'];
     return ReverseResult(
       message: json['message'] as String? ?? 'Lançamento desfeito.',
       stamps: (pools?['stamps'] as num?)?.toInt() ?? 0,
@@ -572,6 +587,9 @@ class PdvApi {
           (cashback?['balanceCents'] as num?)?.toInt() ??
           (pools?['cashbackCents'] as num?)?.toInt() ??
           0,
+      stampDestinations: StampDestination.parse(
+        wallet is Map ? wallet['stampDestinations'] : null,
+      ),
     );
   }
 

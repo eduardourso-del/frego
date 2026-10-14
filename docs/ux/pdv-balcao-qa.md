@@ -26,6 +26,9 @@ Testar no aparelho real ou em viewport ≤ 480px com teclado virtual. Alvos ≥ 
 
 ## Cliente encontrado
 - [ ] Nome, telefone e saldos visíveis sem rolar demais.
+- [ ] **Corrigir** abre a folha com nome e telefone. Salvar o nome atualiza a identidade.
+- [ ] Trocar o telefone de um cadastro sem app (só nesta loja) deixa o saldo no número certo. Se o número já existe, o saldo entra nessa conta.
+- [ ] Cliente que já usa o app, ou de outra loja: o telefone não muda; a mensagem pede para desfazer e buscar o número certo.
 - [ ] Sticky: **Carimbar** / **Registrar gasto** / **Registrar cashback** / **Adicionar à loja…**.
 - [ ] Foco no valor ou no cashback a usar: sticky continua a ação de registrar (não vira Buscar).
 - [ ] Sem campanha e sem cashback: CTA desabilitado (“Sem campanha ativa”).
