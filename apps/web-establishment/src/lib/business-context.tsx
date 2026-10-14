@@ -22,6 +22,8 @@ export type BusinessBrand = {
   primaryColorDark: string;
   slogan: string | null;
   slug: string | null;
+  /** 14 dígitos, ou null se o cadastro ficou sem CNPJ. */
+  cnpj?: string | null;
   status: string;
   pointsPerReal?: number;
   cashbackPercent?: number;

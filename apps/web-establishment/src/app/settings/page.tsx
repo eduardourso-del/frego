@@ -14,6 +14,7 @@ import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
 import { BusinessTypePicker } from '@/components/business-type-picker';
+import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
 
 const HERO_ASPECT = 16 / 9;
 
@@ -59,9 +60,20 @@ function Section({
 const inputClass =
   'mt-1.5 min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[15px] font-normal normal-case tracking-normal text-[var(--color-ink)] outline-none focus:border-[var(--color-primary-500)]';
 
+function settingsSaveError(err: unknown) {
+  const message = err instanceof Error ? err.message : '';
+  if (message === 'INVALID_CNPJ') return 'CNPJ inválido.';
+  if (message === 'CNPJ_TAKEN') return 'Este CNPJ já está cadastrado.';
+  if (message === 'CNPJ_ALREADY_SET') {
+    return 'O CNPJ já foi informado e não pode ser alterado aqui.';
+  }
+  return message || 'Não foi possível salvar.';
+}
+
 export default function SettingsPage() {
   const { business, loading, updateBusiness, authHeaders } = useBusiness();
   const [name, setName] = useState('');
+  const [cnpj, setCnpj] = useState('');
   const [type, setType] = useState('café');
   const [slogan, setSlogan] = useState('');
   const [slug, setSlug] = useState('');
@@ -91,6 +103,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!business) return;
     setName(business.name);
+    setCnpj(formatCnpj(business.cnpj ?? ''));
     setType(business.type);
     setSlogan(business.slogan ?? '');
     setSlug(business.slug ?? '');
@@ -172,6 +185,10 @@ export default function SettingsPage() {
     setError(null);
     setToast(null);
     try {
+      const cnpjLocked = Boolean(business?.cnpj);
+      const cnpjError = cnpjLocked ? null : cnpjFieldError(cnpj);
+      if (cnpjError) throw new Error(cnpjError);
+
       for (const loc of locations) {
         const trimmedName = loc.name.trim();
         const trimmedAddress = loc.address.trim();
@@ -186,6 +203,7 @@ export default function SettingsPage() {
       await updateBusiness({
         name,
         type,
+        ...(cnpjLocked || !cnpj.trim() ? {} : { cnpj }),
         slogan: slogan || null,
         slug: slug || null,
         logoUrl: logoUrl || null,
@@ -240,7 +258,7 @@ export default function SettingsPage() {
 
       setToast('Perfil da loja salvo.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível salvar.');
+      setError(settingsSaveError(err));
     } finally {
       setBusy(false);
     }
@@ -430,6 +448,43 @@ export default function SettingsPage() {
                       className={inputClass}
                       required
                     />
+                  </label>
+
+                  <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+                    {business?.cnpj ? 'CNPJ' : 'CNPJ (opcional)'}
+                    <input
+                      id="cnpj"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="00.000.000/0000-00"
+                      value={cnpj}
+                      onChange={(e) => setCnpj(formatCnpj(e.target.value))}
+                      disabled={Boolean(business?.cnpj)}
+                      aria-invalid={cnpjFieldError(cnpj) ? true : undefined}
+                      aria-describedby="cnpj-hint"
+                      className={`${inputClass} disabled:cursor-default disabled:bg-[var(--color-bg)] disabled:text-[var(--color-neutral-500)]`}
+                    />
+                    {business?.cnpj ? (
+                      <p
+                        id="cnpj-hint"
+                        className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-400)]"
+                      >
+                        Informado. Para alterar, fale com a equipe Frego.
+                      </p>
+                    ) : (
+                      <p
+                        id="cnpj-hint"
+                        className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-400)]"
+                      >
+                        Não entrou no cadastro. Depois de salvar, não dá para
+                        alterar por aqui.
+                      </p>
+                    )}
+                    {!business?.cnpj && cnpjFieldError(cnpj) ? (
+                      <p className="mt-1 text-[12px] font-normal text-[var(--color-danger)]">
+                        {cnpjFieldError(cnpj)}
+                      </p>
+                    ) : null}
                   </label>
 
                   <div className="mt-3">

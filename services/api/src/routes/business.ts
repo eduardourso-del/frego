@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
 
 const hexColor = z
@@ -39,6 +40,8 @@ const updateBody = z.object({
     .max(60)
     .nullable()
     .optional(),
+  /** Preenchido só se o cadastro ficou sem CNPJ. Não apaga nem troca um já salvo. */
+  cnpj: z.string().trim().max(18).optional(),
 });
 
 const updateLocationBody = z.object({
@@ -57,6 +60,7 @@ function publicBusiness(b: {
   primaryColorDark: string;
   slogan: string | null;
   slug: string | null;
+  cnpj: string | null;
   status: string;
   pointsPerReal: number;
   cashbackPercent: number;
@@ -76,6 +80,7 @@ function publicBusiness(b: {
     primaryColorDark: b.primaryColorDark,
     slogan: b.slogan,
     slug: b.slug,
+    cnpj: b.cnpj,
     status: b.status,
     pointsPerReal: b.pointsPerReal,
     cashbackPercent: b.cashbackPercent,
@@ -116,6 +121,30 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    let cnpj: string | undefined;
+    if (body.cnpj?.trim()) {
+      const parsed = normalizeCnpj(body.cnpj);
+      if (parsed === 'invalid' || !parsed) {
+        return reply.code(400).send({ error: 'INVALID_CNPJ' });
+      }
+      const current = await prisma.business.findUniqueOrThrow({
+        where: { id: auth.businessId },
+        select: { cnpj: true },
+      });
+      if (current.cnpj && current.cnpj !== parsed) {
+        return reply.code(409).send({ error: 'CNPJ_ALREADY_SET' });
+      }
+      if (!current.cnpj) {
+        const taken = await prisma.business.findUnique({
+          where: { cnpj: parsed },
+        });
+        if (taken) {
+          return reply.code(409).send({ error: 'CNPJ_TAKEN' });
+        }
+        cnpj = parsed;
+      }
+    }
+
     const business = await prisma.business.update({
       where: { id: auth.businessId },
       data: {
@@ -150,6 +179,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
             ? undefined
             : body.cashbackExpireDays,
         slug: body.slug === undefined ? undefined : body.slug,
+        cnpj,
       },
     });
 

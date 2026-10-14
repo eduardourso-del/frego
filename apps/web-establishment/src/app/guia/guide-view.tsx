@@ -671,7 +671,7 @@ export function GuideView() {
               <ul className="grid gap-3 sm:grid-cols-2">
                 <Setting
                   title="Nome, marca, capa e onde encontrar"
-                  body="Nome, cores, logo e endereço que o cliente vê."
+                  body="Nome, cores, logo e endereço que o cliente vê. O CNPJ, se ficou de fora no cadastro, entra aqui."
                 />
                 <Setting
                   title="Página pública"
