@@ -20,6 +20,8 @@ type AuthContextValue = {
   user: User | null;
   loading: boolean;
   configured: boolean;
+  /** Session restored, or Firebase is off (local API bypass). */
+  ready: boolean;
   getToken: () => Promise<string | null>;
   logout: () => Promise<void>;
 };
@@ -53,9 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(getFirebaseAuth());
   }, [configured]);
 
+  const ready = !loading && (!configured || user !== null);
+
   const value = useMemo(
-    () => ({ user, loading, configured, getToken, logout }),
-    [user, loading, configured, getToken, logout],
+    () => ({ user, loading, configured, ready, getToken, logout }),
+    [user, loading, configured, ready, getToken, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { AdminShell } from '@/components/admin-shell';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import { BusinessCustomers } from '@/components/business-customers';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import {
   CAMPAIGN_STATUS_LABEL,
@@ -107,7 +108,7 @@ function apiErrorMessage(error: string | undefined) {
 export default function BusinessDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { getToken, ready } = useAuth();
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -162,7 +163,7 @@ export default function BusinessDetailPage() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id || !ready) return;
     setLoading(true);
     setError(null);
     try {
@@ -179,7 +180,7 @@ export default function BusinessDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id, getToken, applyDetail]);
+  }, [id, getToken, applyDetail, ready]);
 
   useEffect(() => {
     void load();
@@ -399,7 +400,11 @@ export default function BusinessDetailPage() {
 
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[
-              { label: 'Clientes', value: String(detail.stats.customers) },
+              {
+                label: 'Clientes',
+                value: String(detail.stats.customers),
+                href: '#clientes',
+              },
               {
                 label: 'Campanhas ativas',
                 value: `${detail.stats.activeCampaigns} de ${detail.stats.campaigns}`,
@@ -433,19 +438,25 @@ export default function BusinessDetailPage() {
                     )
                   : 'Sem movimento',
               },
-            ].map((kpi) => (
-              <div
-                key={kpi.label}
-                className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]"
-              >
-                <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                  {kpi.label}
-                </p>
-                <p className="mt-1 text-[24px] font-semibold tracking-[-0.02em]">
-                  {kpi.value}
-                </p>
-              </div>
-            ))}
+            ].map((kpi) => {
+              const card = (
+                <div className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 shadow-[var(--shadow-card)]">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                    {kpi.label}
+                  </p>
+                  <p className="mt-1 text-[24px] font-semibold tracking-[-0.02em]">
+                    {kpi.value}
+                  </p>
+                </div>
+              );
+              return 'href' in kpi && kpi.href ? (
+                <Link key={kpi.label} href={kpi.href} className="block">
+                  {card}
+                </Link>
+              ) : (
+                <div key={kpi.label}>{card}</div>
+              );
+            })}
           </div>
 
           <section className="mb-8 overflow-x-auto rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
@@ -501,6 +512,8 @@ export default function BusinessDetailPage() {
               </table>
             )}
           </section>
+
+          <BusinessCustomers key={id} businessId={id} />
 
           <form onSubmit={onSubmit} className="flex max-w-2xl flex-col gap-5">
             <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">

@@ -1,8 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { prisma, type BusinessStatus } from '@frego/db';
+import { Prisma, prisma, type BusinessStatus } from '@frego/db';
 import { requirePlatformAuth } from '../plugins/auth.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
+import { foldLedgerTx } from '../lib/customer-stats.js';
+import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { loadTagsByMembershipIds } from '../lib/tags.js';
 
 const STATUSES = [
   'pending',
@@ -20,6 +23,27 @@ const listQuery = z.object({
   status: z.enum(STATUSES).optional(),
   q: z.string().trim().max(80).optional(),
 });
+
+const CUSTOMER_SORTS = [
+  'name',
+  'phone',
+  'visits',
+  'spend',
+  'lastVisit',
+  'associatedAt',
+] as const;
+
+const customerListQuery = z.object({
+  q: z.string().trim().max(80).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).optional(),
+  sort: z.enum(CUSTOMER_SORTS).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
+});
+
+const CUSTOMER_PAGE_SIZE = 25;
+
+type CustomerSort = (typeof CUSTOMER_SORTS)[number];
+type SortDir = 'asc' | 'desc';
 
 const updateBusinessBody = z.object({
   name: z.string().min(1).max(80).optional(),
@@ -203,7 +227,9 @@ async function loadBusinessDetail(id: string) {
   const since = activitySince();
   const [customers, campaignCount, activeCampaigns, activityByBusiness, lastByBusiness, campaignRows] =
     await Promise.all([
-      prisma.membership.count({ where: { businessId: id } }),
+      prisma.membership.count({
+        where: { businessId: id, customer: { deletedAt: null } },
+      }),
       prisma.campaign.count({ where: { businessId: id } }),
       prisma.campaign.count({ where: { businessId: id, status: 'active' } }),
       windowActivityByBusiness([id], since),
@@ -288,6 +314,247 @@ async function loadBusinessDetail(id: string) {
       spendCents30d: activity.spendCents,
       lastActivityAt: lastByBusiness.get(id) ?? null,
     },
+  };
+}
+
+const customerSelect = {
+  id: true,
+  displayName: true,
+  phoneE164: true,
+} as const;
+
+function customerWhere(businessId: string, rawQ: string) {
+  const digits = rawQ.replace(/\D/g, '');
+  const activeCustomer = { deletedAt: null };
+  return {
+    total: { businessId, customer: activeCustomer },
+    match: {
+      businessId,
+      customer: activeCustomer,
+      ...(rawQ
+        ? {
+            OR: [
+              {
+                customer: {
+                  displayName: { contains: rawQ, mode: 'insensitive' as const },
+                },
+              },
+              ...(digits.length >= 4
+                ? [
+                    { customer: { phoneE164: { contains: digits } } },
+                    { customer: { phoneLast4: digits.slice(-4) } },
+                  ]
+                : digits.length > 0
+                  ? [{ customer: { phoneE164: { contains: digits } } }]
+                  : []),
+            ],
+          }
+        : {}),
+    },
+  };
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+function customerSearchSql(rawQ: string): Prisma.Sql {
+  if (!rawQ) return Prisma.sql`TRUE`;
+  const digits = rawQ.replace(/\D/g, '');
+  const name = Prisma.sql`c.display_name ILIKE ${`%${escapeLike(rawQ)}%`} ESCAPE '\\'`;
+  if (!digits) return name;
+  const phone = Prisma.sql`c.phone_e164 LIKE ${`%${escapeLike(digits)}%`} ESCAPE '\\'`;
+  if (digits.length >= 4) {
+    return Prisma.sql`(${name} OR ${phone} OR c.phone_last4 = ${digits.slice(-4)})`;
+  }
+  return Prisma.sql`(${name} OR ${phone})`;
+}
+
+/**
+ * Ledger rows that count toward visits, spend, and last visit.
+ * Mirrors shouldOmitFromLedger. Missing keys are unknown in SQL, so coalesce to false.
+ */
+const keptTxSql = Prisma.sql`(
+  t.id IS NOT NULL
+  AND NOT COALESCE(
+    (jsonb_typeof(t.metadata->'reversedAt') = 'string' AND length(t.metadata->>'reversedAt') > 0)
+    OR (jsonb_typeof(t.metadata->'reversalOf') = 'string' AND length(t.metadata->>'reversalOf') > 0)
+    OR (jsonb_typeof(t.metadata->'reversalOf') = 'array' AND jsonb_array_length(t.metadata->'reversalOf') > 0),
+    false
+  )
+)`;
+
+function statOrderSql(sort: 'visits' | 'spend' | 'lastVisit'): Prisma.Sql {
+  if (sort === 'visits') {
+    return Prisma.sql`COUNT(DISTINCT CASE WHEN ${keptTxSql} THEN to_char(t.created_at, 'YYYY-MM-DD') END)`;
+  }
+  if (sort === 'spend') {
+    return Prisma.sql`COALESCE(SUM(CASE WHEN ${keptTxSql} AND t.unit_kind IS DISTINCT FROM 'cashback_cents' AND t.type::text <> 'redeem' AND COALESCE(t.amount_cents, 0) <> 0 THEN t.amount_cents ELSE 0 END), 0)`;
+  }
+  return Prisma.sql`MAX(CASE WHEN ${keptTxSql} THEN t.created_at END)`;
+}
+
+function isStatSort(
+  sort: CustomerSort,
+): sort is 'visits' | 'spend' | 'lastVisit' {
+  return sort === 'visits' || sort === 'spend' || sort === 'lastVisit';
+}
+
+async function membershipPageByStats(
+  businessId: string,
+  rawQ: string,
+  sort: 'visits' | 'spend' | 'lastVisit',
+  dir: SortDir,
+  skip: number,
+) {
+  const direction = dir === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+  const ordered = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT m.id
+    FROM memberships m
+    INNER JOIN customers c ON c.id = m.customer_id
+    LEFT JOIN transactions t
+      ON t.membership_id = m.id AND t.business_id = m.business_id
+    WHERE m.business_id = ${businessId}
+      AND c.deleted_at IS NULL
+      AND ${customerSearchSql(rawQ)}
+    GROUP BY m.id, m.associated_at
+    ORDER BY ${statOrderSql(sort)} ${direction} NULLS LAST,
+      m.associated_at DESC,
+      m.id ASC
+    LIMIT ${CUSTOMER_PAGE_SIZE} OFFSET ${skip}
+  `;
+  if (ordered.length === 0) return [];
+
+  const rows = await prisma.membership.findMany({
+    where: { id: { in: ordered.map((row) => row.id) } },
+    include: { customer: { select: customerSelect } },
+  });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return ordered.flatMap((row) => {
+    const membership = byId.get(row.id);
+    return membership ? [membership] : [];
+  });
+}
+
+async function withCustomerStats(
+  businessId: string,
+  memberships: Awaited<ReturnType<typeof membershipPageByStats>>,
+) {
+  const membershipIds = memberships.map((m) => m.id);
+  const [transactions, tagsByMembership] = await Promise.all([
+    membershipIds.length === 0
+      ? Promise.resolve([])
+      : prisma.transaction.findMany({
+          where: { businessId, membershipId: { in: membershipIds } },
+          select: {
+            membershipId: true,
+            type: true,
+            quantity: true,
+            unitKind: true,
+            amountCents: true,
+            createdAt: true,
+            metadata: true,
+          },
+        }),
+    loadTagsByMembershipIds(membershipIds),
+  ]);
+
+  type Agg = {
+    visitDays: Set<string>;
+    spendCents: number;
+    lastVisitAt: Date | null;
+    stampsEarned: number;
+    pointsEarned: number;
+    redeems: number;
+    cashbackEarnedCents: number;
+    cashbackSpentCents: number;
+  };
+  const byMember = new Map<string, Agg>();
+  for (const membershipId of membershipIds) {
+    byMember.set(membershipId, {
+      visitDays: new Set(),
+      spendCents: 0,
+      lastVisitAt: null,
+      stampsEarned: 0,
+      pointsEarned: 0,
+      redeems: 0,
+      cashbackEarnedCents: 0,
+      cashbackSpentCents: 0,
+    });
+  }
+
+  for (const tx of transactions) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
+    const agg = byMember.get(tx.membershipId);
+    if (!agg) continue;
+    if (!agg.lastVisitAt || tx.createdAt > agg.lastVisitAt) {
+      agg.lastVisitAt = tx.createdAt;
+    }
+    agg.visitDays.add(tx.createdAt.toISOString().slice(0, 10));
+    foldLedgerTx(agg, tx);
+  }
+
+  return memberships.map((membership) => {
+    const agg = byMember.get(membership.id)!;
+    return {
+      customerId: membership.customer.id,
+      membershipId: membership.id,
+      displayName: membership.customer.displayName,
+      phoneE164: membership.customer.phoneE164,
+      isVip: membership.isVip,
+      associatedAt: membership.associatedAt.toISOString(),
+      tags: tagsByMembership.get(membership.id) ?? [],
+      stats: {
+        visits: agg.visitDays.size,
+        lastVisitAt: agg.lastVisitAt?.toISOString() ?? null,
+        spendCents: agg.spendCents,
+      },
+    };
+  });
+}
+
+async function listBusinessCustomers(
+  businessId: string,
+  opts: { q: string; page: number; sort: CustomerSort; dir: SortDir },
+) {
+  const { total, match } = customerWhere(businessId, opts.q);
+  const [totalCount, matchCount] = await Promise.all([
+    prisma.membership.count({ where: total }),
+    prisma.membership.count({ where: match }),
+  ]);
+  const pageCount = Math.max(1, Math.ceil(matchCount / CUSTOMER_PAGE_SIZE));
+  const page = Math.min(Math.max(1, opts.page), pageCount);
+  const skip = (page - 1) * CUSTOMER_PAGE_SIZE;
+
+  const memberships = isStatSort(opts.sort)
+    ? await membershipPageByStats(businessId, opts.q, opts.sort, opts.dir, skip)
+    : await prisma.membership.findMany({
+        where: match,
+        include: { customer: { select: customerSelect } },
+        orderBy: [
+          opts.sort === 'name'
+            ? {
+                customer: {
+                  displayName: { sort: opts.dir, nulls: 'last' },
+                },
+              }
+            : opts.sort === 'phone'
+              ? { customer: { phoneE164: opts.dir } }
+              : { associatedAt: opts.dir },
+          { associatedAt: 'desc' },
+          { id: 'asc' },
+        ],
+        skip,
+        take: CUSTOMER_PAGE_SIZE,
+      });
+
+  const customers = await withCustomerStats(businessId, memberships);
+  return {
+    totalCount,
+    matchCount,
+    page,
+    pageSize: CUSTOMER_PAGE_SIZE,
+    customers,
   };
 }
 
@@ -397,7 +664,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           select: { status: true, mrrCents: true },
         },
         _count: {
-          select: { memberships: true, campaigns: true },
+          select: {
+            memberships: { where: { customer: { deletedAt: null } } },
+            campaigns: true,
+          },
         },
       },
       orderBy: [{ createdAt: 'desc' }],
@@ -476,6 +746,25 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
     return detail;
+  });
+
+  app.get('/admin/businesses/:id/customers', async (request, reply) => {
+    requirePlatformAuth(request);
+    const { id } = request.params as { id: string };
+    const query = customerListQuery.parse(request.query);
+    const business = await prisma.business.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!business) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+    return listBusinessCustomers(id, {
+      q: query.q?.trim() ?? '',
+      page: query.page ?? 1,
+      sort: query.sort ?? 'associatedAt',
+      dir: query.dir ?? 'desc',
+    });
   });
 
   app.patch('/admin/businesses/:id', async (request, reply) => {

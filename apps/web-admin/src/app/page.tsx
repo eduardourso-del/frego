@@ -24,11 +24,12 @@ function formatBrl(cents: number) {
 }
 
 export default function AdminHomePage() {
-  const { getToken } = useAuth();
+  const { getToken, ready } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [rows, setRows] = useState<BusinessPerformanceRow[]>([]);
 
   useEffect(() => {
+    if (!ready) return;
     void (async () => {
       try {
         const token = await getToken();
@@ -46,7 +47,7 @@ export default function AdminHomePage() {
         /* ignore */
       }
     })();
-  }, [getToken]);
+  }, [getToken, ready]);
 
   const kpis = [
     {

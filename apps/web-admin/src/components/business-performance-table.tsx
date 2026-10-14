@@ -101,7 +101,14 @@ export function BusinessPerformanceTable({
                   {STATUS_LABEL[b.status] ?? b.status}
                 </span>
               </td>
-              <td className="px-4 py-3 tabular-nums">{b.customers}</td>
+              <td className="px-4 py-3 tabular-nums">
+                <Link
+                  href={`/businesses/${b.id}#clientes`}
+                  className="font-semibold text-[var(--color-primary-600)]"
+                >
+                  {b.customers}
+                </Link>
+              </td>
               <td className="px-4 py-3 tabular-nums">
                 <span className="font-semibold">{b.activeCampaigns}</span>
                 <span className="text-[var(--color-neutral-500)]">

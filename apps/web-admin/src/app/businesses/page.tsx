@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
 
 export default function BusinessesPage() {
-  const { getToken } = useAuth();
+  const { getToken, ready } = useAuth();
   const [filter, setFilter] = useState<'pending' | 'all'>('all');
   const [q, setQ] = useState('');
   const [debouncedQ, setDebouncedQ] = useState('');
@@ -19,6 +19,7 @@ export default function BusinessesPage() {
   const hasRows = useRef(false);
 
   const load = useCallback(async () => {
+    if (!ready) return;
     if (!hasRows.current) setLoading(true);
     setError(null);
     try {
@@ -42,7 +43,7 @@ export default function BusinessesPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, debouncedQ, getToken]);
+  }, [filter, debouncedQ, getToken, ready]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQ(q), 300);

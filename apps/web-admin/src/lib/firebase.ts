@@ -60,7 +60,11 @@ export async function registerStaff(email: string, password: string) {
 }
 
 export async function getIdToken(forceRefresh = false): Promise<string | null> {
-  const user = getFirebaseAuth().currentUser;
+  const auth = getFirebaseAuth();
+  // currentUser stays null until persistence is restored. Reading it earlier
+  // sends API calls with no Authorization header (MISSING_BEARER_TOKEN).
+  await auth.authStateReady();
+  const user = auth.currentUser;
   if (!user) return null;
   return user.getIdToken(forceRefresh);
 }
