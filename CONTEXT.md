@@ -8,6 +8,14 @@ The Clube, at the till and in the Cliente's pocket. The phone number is the Clie
 The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
+**Plano**:
+The monthly subscription an Estabelecimento holds. The two Planos are Starter and Growth. The days before the first charge are not a Plano.
+_Avoid_: tier, package, assinatura (the brand mark is already called that)
+
+**Cortesia**:
+A Plano a Frego operator sets on an Estabelecimento with no charge. It does not expire on its own.
+_Avoid_: grant, comp, free plan, trial
+
 **Cliente**:
 The person identified by a phone number. That number is the account. Staff may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
 _Avoid_: client, user, consumer, customer
