@@ -43,6 +43,8 @@ function formatWhen(iso: string | null) {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -291,10 +293,10 @@ export function BusinessCustomers({ businessId }: { businessId: string }) {
                   <td className="px-5 py-3 tabular-nums text-[var(--color-neutral-700)]">
                     {formatBrl(customer.stats.spendCents)}
                   </td>
-                  <td className="px-5 py-3 text-[var(--color-neutral-700)]">
+                  <td className="px-5 py-3 whitespace-nowrap text-[var(--color-neutral-700)]">
                     {formatWhen(customer.stats.lastVisitAt)}
                   </td>
-                  <td className="px-5 py-3 text-[var(--color-neutral-700)]">
+                  <td className="px-5 py-3 whitespace-nowrap text-[var(--color-neutral-700)]">
                     {formatWhen(customer.associatedAt)}
                   </td>
                 </tr>
