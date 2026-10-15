@@ -599,6 +599,10 @@ model BusinessWhatsAppConnection {
   /// AES-GCM ciphertext of the access token (base64).
   tokenCiphertext    String                   @map("token_ciphertext")
   tokenKeyVersion    Int                      @default(1) @map("token_key_version")
+  /// When Meta says this business token stops working. Null means no expiry.
+  tokenExpiresAt     DateTime?                @map("token_expires_at")
+  /// Last time we asked Meta whether this token can still send.
+  tokenCheckedAt     DateTime?                @map("token_checked_at")
   templateEarnName   String                   @default("frego_earn_summary_v3") @map("template_earn_name")
   templateEarnLang   String                   @default("pt_BR") @map("template_earn_lang")
   templateEarnStatus WhatsAppTemplateStatus   @default(missing) @map("template_earn_status")

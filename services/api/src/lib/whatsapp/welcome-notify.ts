@@ -1,6 +1,9 @@
 import { prisma } from '@frego/db';
 import { sendWhatsAppTemplate } from './client.js';
-import { decryptToken } from './crypto.js';
+import {
+  maintainStoredConnection,
+  recordWhatsAppSendFailure,
+} from './token-maintain.js';
 
 export type WelcomeNotifyInput = {
   businessId: string;
@@ -32,23 +35,20 @@ export async function notifyWelcomeWhatsAppForBusiness(
     return { sent: false, skipped: 'not_connected' };
   }
 
+  const ready = await maintainStoredConnection(conn.id, { log: input.log });
+  if (ready.grantLost) {
+    return { sent: false, skipped: 'grant_lost' };
+  }
+  if (!ready.accessToken) {
+    return { sent: false, error: ready.error ?? 'decrypt_failed' };
+  }
+  const accessToken = ready.accessToken;
+
   if (conn.templateWelcomeStatus !== 'approved') {
     return {
       sent: false,
       skipped: `template_${conn.templateWelcomeStatus}`,
     };
-  }
-
-  let accessToken: string;
-  try {
-    accessToken = decryptToken(conn.tokenCiphertext, conn.tokenKeyVersion);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'decrypt_failed';
-    await prisma.businessWhatsAppConnection.update({
-      where: { id: conn.id },
-      data: { status: 'error', lastError: message },
-    });
-    return { sent: false, error: message };
   }
 
   const result = await sendWhatsAppTemplate({
@@ -64,11 +64,12 @@ export async function notifyWelcomeWhatsAppForBusiness(
   });
 
   if (!result.ok) {
-    await prisma.businessWhatsAppConnection.update({
-      where: { id: conn.id },
-      data: { lastError: result.error ?? 'send_failed' },
-    });
-    return { sent: false, error: result.error };
+    const failure = await recordWhatsAppSendFailure(conn.id, result, input.log);
+    return {
+      sent: false,
+      error: result.error,
+      skipped: failure === 'grant_lost' ? 'grant_lost' : undefined,
+    };
   }
 
   await prisma.businessWhatsAppConnection.update({

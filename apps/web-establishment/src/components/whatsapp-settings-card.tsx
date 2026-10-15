@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { ExternalLink, Info, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
@@ -176,6 +177,64 @@ function whatsAppManagerTemplatesUrl(connection: Connection): string {
   return `https://business.facebook.com/latest/whatsapp_manager/message_templates?${params}`;
 }
 
+/** Painel notice when Meta dropped the shop's permission to send. */
+export function WhatsAppAttentionBanner() {
+  const { businessId, business, authHeaders, loading: businessLoading } =
+    useBusiness();
+  const [needsReconnect, setNeedsReconnect] = useState(false);
+
+  useEffect(() => {
+    if (businessLoading || !businessId) return;
+    if (business?.status === 'pending' || business?.status === 'suspended') {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${API_URL}/whatsapp/connection`, { headers });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          connection: { status: string } | null;
+        };
+        if (!cancelled) {
+          setNeedsReconnect(data.connection?.status === 'error');
+        }
+      } catch {
+        // The painel still loads if this check fails.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, business?.status, businessId, businessLoading]);
+
+  if (!needsReconnect) return null;
+
+  return (
+    <div
+      className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 px-4 py-3"
+      role="alert"
+    >
+      <div className="min-w-0">
+        <p className="text-[14px] font-semibold text-[var(--color-ink)]">
+          Os avisos do WhatsApp pararam
+        </p>
+        <p className="mt-1 max-w-xl text-[13px] text-[var(--color-neutral-500)]">
+          A Meta retirou o acesso deste número. Cadastro, acúmulo, campanha e
+          pesquisa ficam parados até alguém da loja reconectar.
+        </p>
+      </div>
+      <Link
+        href="/settings#whatsapp"
+        className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white"
+      >
+        Reconectar WhatsApp
+      </Link>
+    </div>
+  );
+}
+
 export function WhatsAppSettingsCard() {
   const { getToken, user } = useAuth();
   const { business } = useBusiness();
@@ -213,6 +272,12 @@ export function WhatsAppSettingsCard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (window.location.hash !== '#whatsapp') return;
+    document.getElementById('whatsapp')?.scrollIntoView({ block: 'start' });
+  }, [loading]);
 
   async function connect(mode: WhatsAppSignupMode) {
     setBusy(true);
@@ -345,9 +410,13 @@ export function WhatsAppSettingsCard() {
     connection && noticeStatuses(connection).some((status) => status !== 'approved'),
   );
   const awaitingReview = Boolean(connection && awaitingMetaReview(connection));
+  const grantLost = connection?.status === 'error';
 
   return (
-    <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+    <section
+      id="whatsapp"
+      className="scroll-mt-6 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
           <span
@@ -368,8 +437,14 @@ export function WhatsAppSettingsCard() {
           </div>
         </div>
         {connection && (
-          <span className="rounded-full bg-[var(--color-success)]/10 px-2.5 py-1 text-[12px] font-semibold text-[var(--color-success)]">
-            Conectado
+          <span
+            className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+              grantLost
+                ? 'bg-[var(--color-danger)]/10 text-[var(--color-danger)]'
+                : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+            }`}
+          >
+            {grantLost ? 'Reconectar' : 'Conectado'}
           </span>
         )}
       </div>
@@ -380,6 +455,18 @@ export function WhatsAppSettingsCard() {
         </p>
       ) : connection ? (
         <div className="mt-4 space-y-2 text-[14px]">
+          {grantLost && (
+            <div className="rounded-[12px] border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/5 p-3 text-[13px]">
+              <p className="font-semibold text-[var(--color-ink)]">
+                Os avisos pararam
+              </p>
+              <p className="mt-1 text-[var(--color-neutral-500)]">
+                A Meta retirou o acesso a este WhatsApp. Cadastro, acúmulo,
+                campanha e pesquisa ficam parados até alguém da loja conectar
+                de novo.
+              </p>
+            </div>
+          )}
           <p>
             <span className="text-[var(--color-neutral-500)]">Número: </span>
             <span className="font-medium text-[var(--color-ink)]">
@@ -456,7 +543,20 @@ export function WhatsAppSettingsCard() {
             </p>
           ) : null}
           <div className="mt-3 flex flex-wrap justify-end gap-2">
-            {needsTemplate && (
+            {grantLost && (
+              <button
+                type="button"
+                disabled={busy || !configured}
+                onClick={() =>
+                  void connect(connection.coexistence ? 'coexistence' : 'cloud')
+                }
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white disabled:opacity-60"
+              >
+                {!busy && <WhatsAppGlyph className="h-4 w-4" />}
+                {busy ? 'Conectando…' : 'Reconectar WhatsApp'}
+              </button>
+            )}
+            {needsTemplate && !grantLost && (
               <button
                 type="button"
                 disabled={busy}

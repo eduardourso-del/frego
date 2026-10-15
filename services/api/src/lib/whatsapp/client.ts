@@ -15,7 +15,13 @@ function digitsOnlyPhone(e164: string): string {
 
 export async function sendWhatsAppTemplate(
   input: TemplateSendInput,
-): Promise<{ ok: boolean; error?: string; messageId?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  errorCode?: number;
+  errorSubcode?: number;
+  messageId?: string;
+}> {
   const to = digitsOnlyPhone(input.toE164);
   if (to.length < 10) {
     return { ok: false, error: 'invalid_phone' };
@@ -54,7 +60,7 @@ export async function sendWhatsAppTemplate(
     );
     const body = (await res.json().catch(() => ({}))) as {
       messages?: Array<{ id?: string }>;
-      error?: { message?: string; code?: number };
+      error?: { message?: string; code?: number; error_subcode?: number };
     };
     if (!res.ok) {
       return {
@@ -62,6 +68,8 @@ export async function sendWhatsAppTemplate(
         error:
           body.error?.message ??
           `meta_${res.status}:${JSON.stringify(body).slice(0, 300)}`,
+        errorCode: body.error?.code,
+        errorSubcode: body.error?.error_subcode,
       };
     }
     return { ok: true, messageId: body.messages?.[0]?.id };
