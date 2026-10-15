@@ -55,6 +55,16 @@ html {
   scroll-behavior: smooth;
 }
 
+/* The painel is a fixed frame. Without this, a trackpad flick at the
+   bottom of a long page (Configurações) scrolls the document and
+   pulls the sidebar off the top of the window. */
+html.app-shell-lock,
+html.app-shell-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-ink);
