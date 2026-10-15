@@ -11,6 +11,8 @@ import {
   WELCOME_TEMPLATE_NAME,
   mapWebhookTemplateEvent,
 } from '../lib/whatsapp/templates.js';
+import { isPartnerOffboardEvent } from '../lib/whatsapp/token-grant.js';
+import { markWhatsAppGrantLostByWaba } from '../lib/whatsapp/token-maintain.js';
 
 function eventKeyFromPayload(payload: unknown): string {
   const raw = JSON.stringify(payload);
@@ -67,6 +69,23 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
             const phoneNumberId =
               change.value?.metadata?.phone_number_id ?? null;
             let businessId: string | null = null;
+
+            if (
+              change.field === 'account_update' &&
+              entry.id &&
+              isPartnerOffboardEvent(change.value?.event)
+            ) {
+              const conn = await prisma.businessWhatsAppConnection.findFirst({
+                where: { wabaId: entry.id },
+                select: { businessId: true },
+              });
+              businessId = conn?.businessId ?? null;
+              await markWhatsAppGrantLostByWaba(entry.id);
+              request.log.info(
+                { wabaId: entry.id, event: change.value?.event },
+                'whatsapp_grant_lost',
+              );
+            }
 
             if (change.field === 'message_template_status_update') {
               const wabaId = entry.id;

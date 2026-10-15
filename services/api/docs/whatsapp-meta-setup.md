@@ -28,7 +28,7 @@ Earn notifications (carimbos/pontos) and welcome (novo cadastro) use that busine
 6. Configure the app webhook:
    - Callback URL: `https://<your-api>/webhooks/meta`
    - Verify token: same as `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
-   - Subscribe to: `messages`, `message_template_status_update`, `history`, `smb_app_state_sync`, `smb_message_echoes` (and `account_update` if available)
+   - Subscribe to: `messages`, `message_template_status_update`, `history`, `smb_app_state_sync`, `smb_message_echoes`, `account_update`
 
 ## 2. Environment variables
 
@@ -76,7 +76,7 @@ Subscribe the Meta app webhook to (in addition to `messages` / `message_template
 - `history`
 - `smb_app_state_sync`
 - `smb_message_echoes`
-- `account_update` (optional; detects app-side disconnect)
+- `account_update` (required; a removal in the WhatsApp app marks the shop as needing reconnect)
 
 ### Production smoke test
 
@@ -183,6 +183,7 @@ Earn paths (`POST /transactions`, customer `addFirstStamp`) call WhatsApp only i
 | Template errors | Approve `frego_earn_summary_v3` on **that** WABA (auto-created; check status in settings) |
 | Earn works, no WhatsApp | Check Configurações → connected; API log `whatsapp_earn_skipped` / `_failed` |
 | Coexistence drops after ~24h | SMB sync must start on connect (`smb_app_data`). Check API logs `whatsapp_smb_sync_failed` and Meta webhook fields `history` / `smb_app_state_sync` |
+| Avisos param com a loja ainda “conectada” | The grant was removed or the token is inside 14 days of expiry. Opening Configurações, the next stamp, or `POST /internal/whatsapp/maintain` (`x-maintenance-secret`) renews a healthy token or sets status `error` so the shop sees **Reconectar WhatsApp**. Subscribe the app webhook to `account_update`. |
 
 ## 7. Out of scope (later)
 

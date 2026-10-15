@@ -118,6 +118,13 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
+    document.documentElement.classList.add('app-shell-lock');
+    return () => {
+      document.documentElement.classList.remove('app-shell-lock');
+    };
+  }, []);
+
+  useEffect(() => {
     if (!moreOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setMoreOpen(false);
@@ -230,7 +237,7 @@ export function AppShell({
 
   return (
     <div
-      className="flex h-dvh overflow-hidden bg-[var(--color-bg)] [--app-sidebar-w:228px]"
+      className="fixed inset-0 flex overflow-hidden overscroll-none bg-[var(--color-bg)] [--app-sidebar-w:228px]"
     >
       {/* Desktop sidebar */}
       <aside className="hidden h-full w-[228px] shrink-0 flex-col border-r border-[var(--color-hairline)] bg-[var(--color-card)] px-3.5 py-5 md:flex">
@@ -240,7 +247,7 @@ export function AppShell({
         </div>
 
         <nav
-          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-y-contain"
           aria-label="Principal"
         >
           {mainNav.map((item) => (
@@ -308,7 +315,7 @@ export function AppShell({
           <div className="hidden shrink-0 md:block">{topbar}</div>
         ) : null}
 
-        <div className="min-h-0 flex-1 scroll-smooth overflow-auto">
+        <div className="min-h-0 flex-1 scroll-smooth overflow-auto overscroll-y-contain">
           <div className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
             {skipPendingGate ? (
               children

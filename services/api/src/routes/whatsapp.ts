@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
@@ -16,6 +17,13 @@ import {
   registerCloudApiPhone,
   subscribeWabaWebhooks,
 } from '../lib/whatsapp/meta-oauth.js';
+import { WHATSAPP_GRANT_LOST_MESSAGE } from '../lib/whatsapp/token-grant.js';
+import {
+  adoptBusinessToken,
+  maintainAllWhatsAppConnections,
+  maintainStoredConnection,
+  recordWhatsAppSendFailure,
+} from '../lib/whatsapp/token-maintain.js';
 import {
   CAMPAIGN_TEMPLATE_LANG,
   CAMPAIGN_TEMPLATE_NAME,
@@ -260,6 +268,25 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     if (!row || row.status === 'disconnected') {
       return { connected: false, connection: null };
     }
+    if (row.status === 'connected') {
+      try {
+        await maintainStoredConnection(row.id, {
+          log: (msg, extra) => request.log.info(extra ?? {}, msg),
+        });
+      } catch (err) {
+        request.log.warn(
+          { err, businessId: auth.businessId },
+          'whatsapp_maintain_failed',
+        );
+      }
+      const fresh = await prisma.businessWhatsAppConnection.findUnique({
+        where: { id: row.id },
+      });
+      if (!fresh || fresh.status === 'disconnected') {
+        return { connected: false, connection: null };
+      }
+      return { connected: true, connection: connectionPublic(fresh) };
+    }
     return { connected: true, connection: connectionPublic(row) };
   });
 
@@ -306,6 +333,19 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         message: err instanceof Error ? err.message : 'waba_resolve_failed',
       });
     }
+
+    const adopted = await adoptBusinessToken(
+      accessToken,
+      shared.phoneNumberId,
+      (msg, extra) => request.log.info(extra ?? {}, msg),
+    );
+    if (!adopted.ok) {
+      return reply.code(400).send({
+        error: 'WHATSAPP_MESSAGING_NOT_GRANTED',
+        message: WHATSAPP_GRANT_LOST_MESSAGE,
+      });
+    }
+    accessToken = adopted.accessToken;
 
     let encrypted;
     try {
@@ -413,6 +453,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         messagingLimitTier: shared.messagingLimitTier,
         tokenCiphertext: encrypted.ciphertext,
         tokenKeyVersion: encrypted.keyVersion || currentTokenKeyVersion(),
+        tokenExpiresAt: adopted.expiresAt,
+        tokenCheckedAt: adopted.inspected ? new Date() : null,
         templateEarnName: EARN_TEMPLATE_NAME,
         templateEarnLang: EARN_TEMPLATE_LANG,
         templateEarnStatus: 'missing',
@@ -435,6 +477,8 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
         messagingLimitTier: shared.messagingLimitTier,
         tokenCiphertext: encrypted.ciphertext,
         tokenKeyVersion: encrypted.keyVersion || currentTokenKeyVersion(),
+        tokenExpiresAt: adopted.expiresAt,
+        tokenCheckedAt: adopted.inspected ? new Date() : null,
         templateEarnName: EARN_TEMPLATE_NAME,
         templateEarnLang: EARN_TEMPLATE_LANG,
         coexistence,
@@ -593,15 +637,22 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'NOT_CONNECTED' });
     }
 
-    let accessToken: string;
-    try {
-      accessToken = decryptToken(row.tokenCiphertext, row.tokenKeyVersion);
-    } catch (err) {
-      return reply.code(503).send({
-        error: 'TOKEN_DECRYPT_FAILED',
-        message: err instanceof Error ? err.message : 'decrypt_failed',
+    const ready = await maintainStoredConnection(row.id, {
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
+    });
+    if (ready.grantLost || !ready.accessToken) {
+      const fresh = await prisma.businessWhatsAppConnection.findUnique({
+        where: { id: row.id },
+      });
+      return reply.code(400).send({
+        error: ready.grantLost ? 'WHATSAPP_GRANT_LOST' : 'TOKEN_DECRYPT_FAILED',
+        message: ready.grantLost
+          ? WHATSAPP_GRANT_LOST_MESSAGE
+          : (ready.error ?? 'decrypt_failed'),
+        connection: fresh ? connectionPublic(fresh) : connectionPublic(row),
       });
     }
+    const accessToken = ready.accessToken;
 
     try {
       const updated = await applyAllTemplateStates(
@@ -633,15 +684,22 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(400).send({ error: 'NOT_CONNECTED' });
     }
 
-    let accessToken: string;
-    try {
-      accessToken = decryptToken(row.tokenCiphertext, row.tokenKeyVersion);
-    } catch (err) {
-      return reply.code(503).send({
-        error: 'TOKEN_DECRYPT_FAILED',
-        message: err instanceof Error ? err.message : 'decrypt_failed',
+    const ready = await maintainStoredConnection(row.id, {
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
+    });
+    if (ready.grantLost || !ready.accessToken) {
+      const fresh = await prisma.businessWhatsAppConnection.findUnique({
+        where: { id: row.id },
+      });
+      return reply.code(400).send({
+        error: ready.grantLost ? 'WHATSAPP_GRANT_LOST' : 'TOKEN_DECRYPT_FAILED',
+        message: ready.grantLost
+          ? WHATSAPP_GRANT_LOST_MESSAGE
+          : (ready.error ?? 'decrypt_failed'),
+        connection: fresh ? connectionPublic(fresh) : connectionPublic(row),
       });
     }
+    const accessToken = ready.accessToken;
 
     try {
       const updated = await applyAllTemplateStates(
@@ -684,22 +742,28 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     if (!row || row.status === 'disconnected' || !row.tokenCiphertext) {
       return reply.code(400).send({ error: 'NOT_CONNECTED' });
     }
+    const ready = await maintainStoredConnection(row.id, {
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
+    });
+    if (ready.grantLost || !ready.accessToken) {
+      const fresh = await prisma.businessWhatsAppConnection.findUnique({
+        where: { id: row.id },
+      });
+      return reply.code(400).send({
+        error: ready.grantLost ? 'WHATSAPP_GRANT_LOST' : 'TOKEN_DECRYPT_FAILED',
+        message: ready.grantLost
+          ? WHATSAPP_GRANT_LOST_MESSAGE
+          : (ready.error ?? 'decrypt_failed'),
+        connection: fresh ? connectionPublic(fresh) : connectionPublic(row),
+      });
+    }
+    const accessToken = ready.accessToken;
     if (row.templateEarnStatus !== 'approved') {
       return reply.code(400).send({
         error: 'TEMPLATE_NOT_APPROVED',
         message:
           'Aguarde o aviso de acúmulo ser aprovado (ou sincronize o status).',
         connection: connectionPublic(row),
-      });
-    }
-
-    let accessToken: string;
-    try {
-      accessToken = decryptToken(row.tokenCiphertext, row.tokenKeyVersion);
-    } catch (err) {
-      return reply.code(503).send({
-        error: 'TOKEN_DECRYPT_FAILED',
-        message: err instanceof Error ? err.message : 'decrypt_failed',
       });
     }
 
@@ -723,14 +787,17 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (!result.ok) {
-      const updated = await prisma.businessWhatsAppConnection.update({
+      const failure = await recordWhatsAppSendFailure(row.id, result, (msg, extra) =>
+        request.log.info(extra ?? {}, msg),
+      );
+      const updated = await prisma.businessWhatsAppConnection.findUnique({
         where: { id: row.id },
-        data: { lastError: result.error ?? 'test_send_failed' },
       });
       return reply.code(400).send({
-        error: 'TEST_SEND_FAILED',
-        message: result.error,
-        connection: connectionPublic(updated),
+        error: failure === 'grant_lost' ? 'WHATSAPP_GRANT_LOST' : 'TEST_SEND_FAILED',
+        message:
+          failure === 'grant_lost' ? WHATSAPP_GRANT_LOST_MESSAGE : result.error,
+        connection: updated ? connectionPublic(updated) : connectionPublic(row),
       });
     }
 
@@ -745,4 +812,27 @@ export const whatsappRoutes: FastifyPluginAsync = async (app) => {
       toE164,
     };
   });
+
+  /**
+   * Daily renewal for shops that are not opening Configurações or stamping.
+   * Cloud Scheduler should POST with header x-maintenance-secret.
+   */
+  app.post('/internal/whatsapp/maintain', async (request, reply) => {
+    const expected = process.env.WHATSAPP_MAINTENANCE_SECRET?.trim();
+    const provided = request.headers['x-maintenance-secret'];
+    if (!expected || typeof provided !== 'string' || !secretMatches(provided, expected)) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
+    const results = await maintainAllWhatsAppConnections((msg, extra) =>
+      request.log.info(extra ?? {}, msg),
+    );
+    return { ok: true, count: results.length, results };
+  });
 };
+
+function secretMatches(provided: string, expected: string): boolean {
+  const left = Buffer.from(provided);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
+}

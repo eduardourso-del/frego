@@ -1,8 +1,12 @@
 import { prisma } from '@frego/db';
 import { sendWhatsAppTemplate } from './client.js';
-import { decryptToken } from './crypto.js';
 import { campaignNotifyCopy } from '../notify/campaign-copy.js';
 import { whatsappSendingAllowed } from '../billing.js';
+import {
+  maintainStoredConnection,
+  markWhatsAppGrantLost,
+} from './token-maintain.js';
+import { isGrantLostSend } from './token-grant.js';
 
 const WA_SEND_CONCURRENCY = 8;
 
@@ -64,6 +68,25 @@ export async function notifyCampaignAudienceWhatsApp(input: {
       skipped: 'not_connected',
     };
   }
+  const ready = await maintainStoredConnection(conn.id);
+  if (ready.grantLost) {
+    return {
+      sent: false,
+      sentCount: 0,
+      failedCount: 0,
+      skipped: 'grant_lost',
+    };
+  }
+  if (!ready.accessToken) {
+    return {
+      sent: false,
+      sentCount: 0,
+      failedCount: 0,
+      error: ready.error ?? 'decrypt_failed',
+    };
+  }
+  const accessToken = ready.accessToken;
+
   if (conn.templateCampaignStatus !== 'approved') {
     return {
       sent: false,
@@ -73,29 +96,14 @@ export async function notifyCampaignAudienceWhatsApp(input: {
     };
   }
 
-  let accessToken: string;
-  try {
-    accessToken = decryptToken(conn.tokenCiphertext, conn.tokenKeyVersion);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'decrypt_failed';
-    await prisma.businessWhatsAppConnection.update({
-      where: { id: conn.id },
-      data: { status: 'error', lastError: message },
-    });
-    return {
-      sent: false,
-      sentCount: 0,
-      failedCount: 0,
-      error: message,
-    };
-  }
-
   const copy = campaignNotifyCopy(input.businessName, input.campaignName);
   let sentCount = 0;
   let failedCount = 0;
   let lastError: string | undefined;
+  let grantLost = false;
 
   await mapPool(phones, WA_SEND_CONCURRENCY, async (toE164) => {
+    if (grantLost) return;
     const result = await sendWhatsAppTemplate({
       accessToken,
       phoneNumberId: conn.phoneNumberId,
@@ -106,11 +114,31 @@ export async function notifyCampaignAudienceWhatsApp(input: {
     });
     if (result.ok) {
       sentCount += 1;
-    } else {
-      failedCount += 1;
-      lastError = result.error;
+      return;
+    }
+    failedCount += 1;
+    lastError = result.error;
+    if (
+      isGrantLostSend({
+        code: result.errorCode,
+        subcode: result.errorSubcode,
+        message: result.error,
+      })
+    ) {
+      grantLost = true;
     }
   });
+
+  if (grantLost) {
+    await markWhatsAppGrantLost(conn.id);
+    return {
+      sent: sentCount > 0,
+      sentCount,
+      failedCount,
+      skipped: 'grant_lost',
+      error: lastError,
+    };
+  }
 
   await prisma.businessWhatsAppConnection.update({
     where: { id: conn.id },

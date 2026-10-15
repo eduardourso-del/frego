@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { TERM } from '@/lib/term-copy';
+import { WhatsAppAttentionBanner } from '@/components/whatsapp-settings-card';
 import {
   PeriodPicker,
   periodSearchParams,
@@ -475,6 +476,7 @@ export default function DashboardPage() {
             <PeriodPicker presets={RANGES} value={period} onChange={setPeriod} />
           </div>
         </div>
+        <WhatsAppAttentionBanner />
         {error && (
           <div
             className="mb-4 rounded-[12px] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-[14px] text-[var(--color-danger)]"

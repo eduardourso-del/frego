@@ -259,6 +259,138 @@ export async function initiateSmbAppDataSync(
   }
 }
 
+export type AccessTokenInspection = {
+  valid: boolean;
+  scopes: string[];
+  hasMessaging: boolean;
+  expiresAt: Date | null;
+  neverExpires: boolean;
+};
+
+/** Read expiry and WhatsApp scopes. Does not log the token. */
+export async function inspectAccessToken(
+  accessToken: string,
+): Promise<
+  { ok: true; inspection: AccessTokenInspection } | { ok: false; error: string }
+> {
+  const appId = process.env.META_APP_ID?.trim();
+  const appSecret = process.env.META_APP_SECRET?.trim();
+  if (!appId || !appSecret) {
+    return { ok: false, error: 'META_APP_NOT_CONFIGURED' };
+  }
+
+  const debugUrl = new URL(`${graphBase()}/debug_token`);
+  debugUrl.searchParams.set('input_token', accessToken);
+  debugUrl.searchParams.set('access_token', `${appId}|${appSecret}`);
+
+  try {
+    const res = await fetch(debugUrl);
+    const body = (await res.json().catch(() => ({}))) as {
+      data?: {
+        is_valid?: boolean;
+        scopes?: string[];
+        expires_at?: number;
+        granular_scopes?: Array<{ scope?: string }>;
+      };
+      error?: { message?: string };
+    };
+    if (!res.ok || !body.data) {
+      return {
+        ok: false,
+        error: body.error?.message ?? `debug_token_${res.status}`,
+      };
+    }
+    const scopes = [
+      ...(body.data.scopes ?? []),
+      ...(body.data.granular_scopes ?? []).map((scope) => scope.scope ?? ''),
+    ].filter((scope) => scope.length > 0);
+    const expiresAtRaw = body.data.expires_at;
+    const neverExpires = expiresAtRaw === 0;
+    return {
+      ok: true,
+      inspection: {
+        valid: Boolean(body.data.is_valid),
+        scopes,
+        hasMessaging: scopes.includes('whatsapp_business_messaging'),
+        neverExpires,
+        expiresAt:
+          typeof expiresAtRaw === 'number' && expiresAtRaw > 0
+            ? new Date(expiresAtRaw * 1000)
+            : null,
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'debug_token_failed',
+    };
+  }
+}
+
+/**
+ * Issue a new business token from one that still works.
+ * A revoked grant comes back without WhatsApp scopes — caller must discard it.
+ */
+export async function exchangeLongLivedToken(
+  accessToken: string,
+): Promise<{ ok: true; accessToken: string } | { ok: false; error: string }> {
+  const appId = process.env.META_APP_ID?.trim();
+  const appSecret = process.env.META_APP_SECRET?.trim();
+  if (!appId || !appSecret) {
+    return { ok: false, error: 'META_APP_NOT_CONFIGURED' };
+  }
+
+  const url = new URL(`${graphBase()}/oauth/access_token`);
+  url.searchParams.set('grant_type', 'fb_exchange_token');
+  url.searchParams.set('client_id', appId);
+  url.searchParams.set('client_secret', appSecret);
+  url.searchParams.set('fb_exchange_token', accessToken);
+
+  try {
+    const res = await fetch(url);
+    const body = (await res.json().catch(() => ({}))) as {
+      access_token?: string;
+      error?: { message?: string };
+    };
+    if (!res.ok || !body.access_token) {
+      return {
+        ok: false,
+        error: body.error?.message ?? `token_exchange_${res.status}`,
+      };
+    }
+    return { ok: true, accessToken: body.access_token };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'token_exchange_failed',
+    };
+  }
+}
+
+/** Whether this token can still see the shop phone. */
+export async function probePhoneAccess(
+  phoneNumberId: string,
+  accessToken: string,
+): Promise<'ok' | 'lost' | 'unknown'> {
+  try {
+    const res = await fetch(
+      `${graphBase()}/${phoneNumberId}?fields=id`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (res.ok) return 'ok';
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: { code?: number; error_subcode?: number };
+    };
+    if (body.error?.code === 190) return 'lost';
+    if (body.error?.code === 100 && body.error.error_subcode === 33) {
+      return 'lost';
+    }
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 /** Best-effort subscribe WABA to app webhooks. */
 export async function subscribeWabaWebhooks(
   wabaId: string,
