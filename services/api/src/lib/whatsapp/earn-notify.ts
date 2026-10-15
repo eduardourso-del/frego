@@ -6,6 +6,7 @@ import {
   type EarnNotifyInput,
 } from './earn-message.js';
 import { queueEarnPush, queuePesquisaPush } from '../push/earn-notify.js';
+import { whatsappSendingAllowed } from '../billing.js';
 
 export type { EarnNotifyInput };
 
@@ -19,6 +20,10 @@ export async function notifyEarnWhatsAppForBusiness(
   const conn = await prisma.businessWhatsAppConnection.findUnique({
     where: { businessId: input.businessId },
   });
+
+  if (!(await whatsappSendingAllowed(input.businessId))) {
+    return { sent: false, skipped: 'plan' };
+  }
 
   if (!conn || conn.status !== 'connected') {
     return { sent: false, skipped: 'not_connected' };

@@ -9,7 +9,7 @@ The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
 **Plano**:
-The monthly subscription an Estabelecimento holds. The two Planos are Starter and Growth. The days before the first charge are not a Plano.
+The monthly subscription an Estabelecimento holds. The three Planos are Starter, Growth, and Enterprise. The days before the first charge are not a Plano.
 _Avoid_: tier, package, assinatura (the brand mark is already called that)
 
 **Cortesia**:

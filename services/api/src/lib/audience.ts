@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { prisma } from '@frego/db';
+import { accessFor } from './billing.js';
 import {
   deriveWallet,
   isNearRewardCampaign,
@@ -755,6 +756,26 @@ export async function resolveMembershipRecognition(
   badges: AudienceBadge[];
   campaigns: CampaignWalletEntry[];
 }> {
+  const access = await accessFor(businessId);
+  if (access && !access.features.audiences) {
+    return {
+      badges: [],
+      campaigns: presentCustomerCampaigns(
+        wallet.campaigns.map((c) =>
+          c.audienceSegmentId
+            ? {
+                ...c,
+                canRedeem: false,
+                rewardsAvailable: 0,
+                lockedReason: 'audience' as const,
+                audienceEligible: false,
+              }
+            : { ...c, audienceEligible: null },
+        ),
+      ),
+    };
+  }
+
   const segmentIds = [
     ...new Set(
       wallet.campaigns

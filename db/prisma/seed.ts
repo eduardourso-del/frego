@@ -61,6 +61,10 @@ async function seedBusiness(opts: {
       planId: opts.planId,
       status: opts.status === 'pending' ? 'trial' : 'active',
       mrrCents: 0,
+      trialEndsAt:
+        opts.status === 'pending'
+          ? null
+          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   });
 
@@ -140,13 +144,18 @@ async function main() {
   });
   await prisma.plan.upsert({
     where: { tier: PlanTier.starter },
-    update: {},
-    create: { tier: PlanTier.starter, name: 'Starter', mrrCents: 7900 },
+    update: { name: 'Starter', mrrCents: 11900 },
+    create: { tier: PlanTier.starter, name: 'Starter', mrrCents: 11900 },
   });
   await prisma.plan.upsert({
     where: { tier: PlanTier.growth },
-    update: {},
-    create: { tier: PlanTier.growth, name: 'Growth', mrrCents: 19900 },
+    update: { name: 'Growth', mrrCents: 15900 },
+    create: { tier: PlanTier.growth, name: 'Growth', mrrCents: 15900 },
+  });
+  await prisma.plan.upsert({
+    where: { tier: PlanTier.enterprise },
+    update: { name: 'Enterprise', mrrCents: 19900 },
+    create: { tier: PlanTier.enterprise, name: 'Enterprise', mrrCents: 19900 },
   });
 
   // Platform admin Frego

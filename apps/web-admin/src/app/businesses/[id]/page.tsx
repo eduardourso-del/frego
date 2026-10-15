@@ -60,6 +60,12 @@ type Detail = {
   billing: {
     status: string;
     mrrCents: number;
+    trialEndsAt?: string | null;
+    periodEndsAt?: string | null;
+    cortesiaTier?: string | null;
+    paidTier?: string | null;
+    scheduledTier?: string | null;
+    cancelAtPeriodEnd?: boolean;
     plan: { tier: string; name: string } | null;
   } | null;
   whatsapp: {
@@ -98,8 +104,8 @@ const inputClass =
 
 function apiErrorMessage(error: string | undefined) {
   if (error === 'SLUG_TAKEN') return 'Este slug já está em uso.';
-  if (error === 'INVALID_CNPJ') return 'CNPJ inválido.';
-  if (error === 'CNPJ_TAKEN') return 'Este CNPJ já está cadastrado.';
+  if (error === 'INVALID_CNPJ' || error === 'INVALID_TAX_ID') return 'CPF ou CNPJ inválido.';
+  if (error === 'CNPJ_TAKEN' || error === 'TAX_ID_TAKEN') return 'Este CPF ou CNPJ já está cadastrado.';
   if (error === 'LOCATION_NOT_FOUND') return 'Unidade não encontrada.';
   if (error === 'NOT_FOUND') return 'Estabelecimento não encontrado.';
   return error ?? 'Falha ao salvar';
@@ -319,6 +325,36 @@ export default function BusinessDetailPage() {
       if (!res.ok) throw new Error(apiErrorMessage(json.error));
       await load();
       setToast(action === 'approve' ? 'Aprovado' : 'Recusado');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function grantCortesia(tier: 'starter' | 'growth' | 'enterprise' | null) {
+    if (!id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/admin/businesses/${id}/cortesia`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ tier }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        if (json.error === 'CORTESIA_BLOCKED') {
+          throw new Error('Há um Plano pago em vigor. A cortesia espera ele acabar.');
+        }
+        throw new Error(apiErrorMessage(json.error));
+      }
+      await load();
+      setToast(tier ? `Cortesia ${tier}` : 'Cortesia removida');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro');
     } finally {
@@ -590,13 +626,13 @@ export default function BusinessDetailPage() {
             </label>
 
             <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
-              CNPJ
+              CPF ou CNPJ
               <input
                 inputMode="numeric"
                 value={cnpj}
                 onChange={(e) => setCnpj(formatCnpj(e.target.value))}
                 className={inputClass}
-                placeholder="00.000.000/0000-00"
+                placeholder="000.000.000-00"
               />
             </label>
 
@@ -903,15 +939,42 @@ export default function BusinessDetailPage() {
               Cobrança
             </p>
             {detail.billing ? (
-              <p className="mt-3 text-[14px] text-[var(--color-neutral-700)]">
-                Plano {detail.billing.plan?.name ?? '—'} ·{' '}
-                {STATUS_LABEL[detail.billing.status] ?? detail.billing.status} ·{' '}
-                {(detail.billing.mrrCents / 100).toLocaleString('pt-BR', {
-                  style: 'currency',
-                  currency: 'BRL',
-                })}{' '}
-                MRR
-              </p>
+              <div className="mt-3">
+                <p className="text-[14px] text-[var(--color-neutral-700)]">
+                  Plano {detail.billing.plan?.name ?? '—'} ·{' '}
+                  {STATUS_LABEL[detail.billing.status] ?? detail.billing.status} ·{' '}
+                  {(detail.billing.mrrCents / 100).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL',
+                  })}{' '}
+                  MRR
+                  {detail.billing.cortesiaTier
+                    ? ` · Cortesia ${detail.billing.cortesiaTier}`
+                    : ''}
+                  {detail.billing.paidTier
+                    ? ` · pago ${detail.billing.paidTier}`
+                    : ''}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(['starter', 'growth', 'enterprise'] as const).map((tier) => (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => void grantCortesia(tier)}
+                      className="min-h-9 rounded-full border border-[var(--color-hairline)] px-3 text-[13px] font-semibold"
+                    >
+                      Cortesia {tier}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => void grantCortesia(null)}
+                    className="min-h-9 rounded-full border border-[var(--color-hairline)] px-3 text-[13px] font-semibold"
+                  >
+                    Tirar cortesia
+                  </button>
+                </div>
+              </div>
             ) : (
               <p className="mt-3 text-[14px] text-[var(--color-neutral-500)]">
                 Sem conta de cobrança.

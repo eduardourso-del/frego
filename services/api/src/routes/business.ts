@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { loadBilling, locationIsOperable, presentBilling } from '../lib/billing.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
 
@@ -93,6 +94,19 @@ function publicBusiness(b: {
   };
 }
 
+async function businessResponse(
+  business: Parameters<typeof publicBusiness>[0],
+  activeEarnKinds: EarnKind[],
+  role: string,
+) {
+  const loaded = await loadBilling(business.id);
+  return {
+    ...publicBusiness(business, activeEarnKinds),
+    role,
+    billing: loaded ? presentBilling(loaded.account, loaded.access) : null,
+  };
+}
+
 export const businessRoutes: FastifyPluginAsync = async (app) => {
   /** Perfil + branding do tenant autenticado — só este negócio. */
   app.get('/business', async (request) => {
@@ -101,7 +115,9 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       where: { id: auth.businessId },
     });
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return { business: publicBusiness(business, activeEarnKinds) };
+    return {
+      business: await businessResponse(business, activeEarnKinds, auth.role),
+    };
   });
 
   /** Atualiza experiência da loja (nome, cores, logo, slogan). Owner/manager. */
@@ -125,7 +141,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     if (body.cnpj?.trim()) {
       const parsed = normalizeCnpj(body.cnpj);
       if (parsed === 'invalid' || !parsed) {
-        return reply.code(400).send({ error: 'INVALID_CNPJ' });
+        return reply.code(400).send({ error: 'INVALID_TAX_ID' });
       }
       const current = await prisma.business.findUniqueOrThrow({
         where: { id: auth.businessId },
@@ -139,7 +155,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
           where: { cnpj: parsed },
         });
         if (taken) {
-          return reply.code(409).send({ error: 'CNPJ_TAKEN' });
+          return reply.code(409).send({ error: 'TAX_ID_TAKEN' });
         }
         cnpj = parsed;
       }
@@ -184,7 +200,9 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return { business: publicBusiness(business, activeEarnKinds) };
+    return {
+      business: await businessResponse(business, activeEarnKinds, auth.role),
+    };
   });
 
   /** Unidades (endereço) do negócio autenticado. */
@@ -217,6 +235,13 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!existing) {
       return reply.code(404).send({ error: 'LOCATION_NOT_FOUND' });
+    }
+    const billing = await loadBilling(auth.businessId);
+    if (
+      billing &&
+      !(await locationIsOperable(auth.businessId, existing.id, billing.access))
+    ) {
+      return reply.code(403).send({ error: 'PLAN_REQUIRED', feature: 'extraLocations' });
     }
 
     const location = await prisma.location.update({

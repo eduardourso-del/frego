@@ -1,11 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@frego/db';
-
-const PUBLIC_STATUSES = ['trial', 'active'] as const;
+import { loadBilling } from '../lib/billing.js';
 
 /**
  * Public storefront by slug — no auth.
- * Only trial/active businesses with a slug are visible.
+ * Visible while the Plano, trial, Cortesia, or renewal grace keeps the page up.
  */
 export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { slug: string } }>(
@@ -19,9 +18,10 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
       const business = await prisma.business.findFirst({
         where: {
           slug,
-          status: { in: [...PUBLIC_STATUSES] },
+          status: { notIn: ['pending', 'suspended'] },
         },
         select: {
+          id: true,
           name: true,
           type: true,
           logoUrl: true,
@@ -67,6 +67,15 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: 'NOT_FOUND' });
       }
 
+      const loaded = await loadBilling(business.id);
+      if (!loaded?.access.publicPage) {
+        return reply.code(404).send({ error: 'NOT_FOUND' });
+      }
+
+      const locations = loaded.access.features.extraLocations
+        ? business.locations
+        : business.locations.slice(0, 1);
+
       const campaigns = [...business.campaigns].sort((a, b) => {
         if (a.type === 'cashback' && b.type !== 'cashback') return -1;
         if (a.type !== 'cashback' && b.type === 'cashback') return 1;
@@ -92,7 +101,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           cashbackPercent: maxCashback,
           pointsPerReal: business.pointsPerReal,
         },
-        locations: business.locations,
+        locations,
         campaigns: campaigns.map((c) => ({
           id: c.id,
           name: c.name,

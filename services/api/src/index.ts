@@ -2,6 +2,7 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { authPlugin } from './plugins/auth.js';
+import { billingGate } from './plugins/billing-gate.js';
 import { customerRoutes } from './routes/customers.js';
 import { transactionRoutes } from './routes/transactions.js';
 import { campaignRoutes } from './routes/campaigns.js';
@@ -19,6 +20,8 @@ import { metaWebhookRoutes } from './routes/meta-webhook.js';
 import { publicBusinessRoutes } from './routes/public-business.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
+import { billingRoutes } from './routes/billing.js';
+import { asaasWebhookRoutes } from './routes/asaas-webhook.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -40,8 +43,10 @@ async function main() {
   });
 
   await app.register(authPlugin);
+  await app.register(billingGate);
   await app.register(healthRoutes);
   await app.register(metaWebhookRoutes);
+  await app.register(asaasWebhookRoutes);
   await app.register(publicBusinessRoutes);
   await app.register(registerRoutes);
   await app.register(adminRoutes);
@@ -57,6 +62,7 @@ async function main() {
   await app.register(pesquisaRoutes);
   await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
+  await app.register(billingRoutes);
 
   await app.listen({ port, host });
   app.log.info(`Frego API listening on http://${host}:${port}`);

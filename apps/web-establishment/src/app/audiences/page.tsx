@@ -306,7 +306,7 @@ export default function AudiencesPage() {
   const busy = loading || authLoading || businessLoading;
 
   return (
-    <AppShell businessName={business?.name} title="Audiências" topbar={topbar}>
+    <AppShell businessName={business?.name} title="Audiências" topbar={topbar} feature="audiences">
       <div className="mx-auto min-w-0 max-w-6xl px-4 py-5 md:px-7 md:py-6">
         <div className="mb-6 md:hidden">
           <h1 className="text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)]">

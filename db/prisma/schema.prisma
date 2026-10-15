@@ -24,6 +24,13 @@ enum PlanTier {
   enterprise
 }
 
+/// A Plano an Estabelecimento can hold. The trial is not one of these.
+enum SubscriptionTier {
+  starter
+  growth
+  enterprise
+}
+
 enum TeamRole {
   owner
   manager
@@ -113,6 +120,27 @@ model BillingAccount {
   planId     String         @map("plan_id")
   status     BusinessStatus @default(trial)
   mrrCents   Int            @default(0) @map("mrr_cents")
+  /// When the 7 days of Enterprise end. Null until Frego approves.
+  trialEndsAt DateTime?      @map("trial_ends_at")
+  /// End of the paid period already charged. The renewal date.
+  periodEndsAt DateTime?     @map("period_ends_at")
+  /// When the current renewal became overdue. The 3-day grace starts here.
+  pastDueAt DateTime?        @map("past_due_at")
+  cancelAtPeriodEnd Boolean  @default(false) @map("cancel_at_period_end")
+  /// Confirmed payment replaced a Cortesia, so the paid Plano applies during the trial.
+  paidReplacedCortesia Boolean @default(false) @map("paid_replaced_cortesia")
+  asaasCustomerId String?    @map("asaas_customer_id")
+  asaasSubscriptionId String? @map("asaas_subscription_id")
+  /// CREDIT_CARD | PIX | BOLETO
+  billingType String?        @map("billing_type")
+  cortesiaTier SubscriptionTier? @map("cortesia_tier")
+  paidTier SubscriptionTier? @map("paid_tier")
+  /// Downgrade that applies at periodEndsAt.
+  scheduledTier SubscriptionTier? @map("scheduled_tier")
+  /// Higher Plano waiting for the difference charge to confirm.
+  pendingUpgradeTier SubscriptionTier? @map("pending_upgrade_tier")
+  /// Plano chosen for the first subscription, before Asaas confirms the charge.
+  checkoutTier SubscriptionTier? @map("checkout_tier")
   createdAt  DateTime       @default(now()) @map("created_at")
   updatedAt  DateTime       @updatedAt @map("updated_at")
 
@@ -137,7 +165,7 @@ model Business {
   primaryColor   String  @default("#070707") @map("primary_color")
   primaryColorDark String @default("#070707") @map("primary_color_dark")
   slogan         String? @map("slogan")
-  /// CNPJ, apenas dígitos. Opcional no cadastro.
+  /// CPF (11) ou CNPJ (14), só dígitos. Obrigatório no cadastro.
   cnpj           String? @unique
   /// Página / slug público (ex. bloom-coffee)
   slug           String? @unique

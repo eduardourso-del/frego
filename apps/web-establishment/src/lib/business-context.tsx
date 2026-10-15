@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { API_URL } from '@/lib/api';
+import type { BillingView } from '@/lib/plans';
 
 export type BusinessBrand = {
   id: string;
@@ -36,6 +37,7 @@ export type BusinessBrand = {
   role?: string;
   /** Campanhas ativas que o caixa pode registrar: carimbos, pontos, cashback. */
   activeEarnKinds?: Array<'stamps' | 'points' | 'cashback'>;
+  billing?: BillingView | null;
 };
 
 type BusinessContextValue = {
@@ -169,8 +171,14 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       const res = await fetch(`${API_URL}/business`, { headers });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar a loja.');
-      const next = json.business as BusinessBrand;
-      setBusiness(next);
+      const detail = json.business as BusinessBrand;
+      const listed = list.find((item) => item.id === activeId);
+      setBusiness({
+        ...listed,
+        ...detail,
+        role: detail.role ?? listed?.role,
+        billing: detail.billing ?? listed?.billing ?? null,
+      });
     } catch {
       resetBusinessState();
     } finally {
@@ -192,9 +200,23 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
       const next = json.business as BusinessBrand;
-      setBusiness(next);
+      setBusiness((prev) => ({
+        ...prev,
+        ...next,
+        role: next.role ?? prev?.role,
+        billing: next.billing ?? prev?.billing ?? null,
+      }));
       setBusinesses((prev) =>
-        prev.map((b) => (b.id === next.id ? { ...b, ...next } : b)),
+        prev.map((b) =>
+          b.id === next.id
+            ? {
+                ...b,
+                ...next,
+                role: next.role ?? b.role,
+                billing: next.billing ?? b.billing ?? null,
+              }
+            : b,
+        ),
       );
       return next;
     },

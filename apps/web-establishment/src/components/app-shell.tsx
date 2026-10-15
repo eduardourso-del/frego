@@ -22,6 +22,8 @@ import { useBusiness } from '@/lib/business-context';
 import { BusinessLogo } from '@/components/remote-img';
 import { FregoWordmark } from '@/components/brand';
 import { PendingGate } from '@/components/pending-gate';
+import { BillingLocked, FeatureLocked } from '@/components/plan-lock';
+import { planMenuLabel, type PlanFeature } from '@/lib/plans';
 
 const mainNav = [
   { href: '/dashboard', label: 'Painel', icon: LayoutDashboard },
@@ -68,6 +70,8 @@ type AppShellProps = {
   title?: string;
   /** O guia pode ser lido enquanto o estabelecimento aguarda aprovação. */
   skipPendingGate?: boolean;
+  /** Fecha a página quando o Plano atual não inclui o recurso. */
+  feature?: PlanFeature;
 };
 
 export function AppShell({
@@ -76,6 +80,7 @@ export function AppShell({
   topbar,
   title,
   skipPendingGate = false,
+  feature,
 }: AppShellProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -90,6 +95,7 @@ export function AppShell({
   const staffInitials = initialsFrom(user?.email ?? staffLabel);
   const businessBlocked =
     business?.status === 'pending' || business?.status === 'suspended';
+  const planLabel = planMenuLabel(business?.billing);
 
   const visibleUtility = businessBlocked
     ? utilityNav.filter((item) => item.href !== '/counter')
@@ -210,6 +216,14 @@ export function AppShell({
             {title}
           </p>
         ) : null}
+        {planLabel ? (
+          <Link
+            href="/settings#plano"
+            className="mt-1 inline-flex max-w-full items-center rounded-full bg-[var(--color-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-ink)]"
+          >
+            {planLabel}
+          </Link>
+        ) : null}
       </div>
     </div>
   );
@@ -296,7 +310,27 @@ export function AppShell({
 
         <div className="min-h-0 flex-1 scroll-smooth overflow-auto">
           <div className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
-            {skipPendingGate ? children : <PendingGate>{children}</PendingGate>}
+            {skipPendingGate ? (
+              children
+            ) : (
+              <PendingGate>
+                {business?.billing?.mode === 'locked' && pathname !== '/settings' ? (
+                  <BillingLocked owner={business.role === 'owner'} />
+                ) : feature &&
+                  business?.billing?.mode === 'open' &&
+                  !business.billing.features[feature] ? (
+                  <FeatureLocked
+                    feature={feature}
+                    owner={business.role === 'owner'}
+                    currentTier={business.billing.tier}
+                  >
+                    {children}
+                  </FeatureLocked>
+                ) : (
+                  children
+                )}
+              </PendingGate>
+            )}
           </div>
         </div>
 
@@ -432,6 +466,15 @@ export function AppShell({
                   <p className="truncate text-[13px] text-[var(--color-neutral-500)]">
                     {user?.email ?? 'Equipe'}
                   </p>
+                  {planLabel ? (
+                    <Link
+                      href="/settings#plano"
+                      onClick={() => setMoreOpen(false)}
+                      className="mt-1 inline-flex text-[12px] font-semibold text-[var(--color-ink)]"
+                    >
+                      {planLabel}
+                    </Link>
+                  ) : null}
                 </div>
               </div>
 

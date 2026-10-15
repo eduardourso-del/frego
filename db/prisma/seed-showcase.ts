@@ -106,7 +106,7 @@ async function main() {
   const growth = await prisma.plan.upsert({
     where: { tier: PlanTier.growth },
     update: {},
-    create: { tier: PlanTier.growth, name: 'Growth', mrrCents: 19900 },
+    create: { tier: PlanTier.growth, name: 'Growth', mrrCents: 15900 },
   });
 
   const business = await prisma.business.upsert({
@@ -145,12 +145,12 @@ async function main() {
 
   await prisma.billingAccount.upsert({
     where: { businessId: business.id },
-    update: { planId: growth.id, status: 'active', mrrCents: 19900 },
+    update: { planId: growth.id, status: 'active', mrrCents: 15900 },
     create: {
       businessId: business.id,
       planId: growth.id,
       status: 'active',
-      mrrCents: 19900,
+      mrrCents: 15900,
     },
   });
 

@@ -2,6 +2,7 @@ import { prisma } from '@frego/db';
 import { sendWhatsAppTemplate } from './client.js';
 import { decryptToken } from './crypto.js';
 import { campaignNotifyCopy } from '../notify/campaign-copy.js';
+import { whatsappSendingAllowed } from '../billing.js';
 
 const WA_SEND_CONCURRENCY = 8;
 
@@ -37,6 +38,9 @@ export async function notifyCampaignAudienceWhatsApp(input: {
   skipped?: string;
   error?: string;
 }> {
+  if (!(await whatsappSendingAllowed(input.businessId))) {
+    return { sent: false, sentCount: 0, failedCount: 0, skipped: 'plan' };
+  }
   const phones = [
     ...new Set(input.phones.map((p) => p.trim()).filter((p) => p.length >= 10)),
   ];

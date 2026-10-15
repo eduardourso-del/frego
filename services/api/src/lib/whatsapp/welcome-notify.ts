@@ -1,6 +1,7 @@
 import { prisma } from '@frego/db';
 import { sendWhatsAppTemplate } from './client.js';
 import { decryptToken } from './crypto.js';
+import { whatsappSendingAllowed } from '../billing.js';
 
 export type WelcomeNotifyInput = {
   businessId: string;
@@ -24,6 +25,9 @@ function firstName(displayName: string | null | undefined): string {
 export async function notifyWelcomeWhatsAppForBusiness(
   input: WelcomeNotifyInput,
 ): Promise<{ sent: boolean; skipped?: string; error?: string }> {
+  if (!(await whatsappSendingAllowed(input.businessId))) {
+    return { sent: false, skipped: 'plan' };
+  }
   const conn = await prisma.businessWhatsAppConnection.findUnique({
     where: { businessId: input.businessId },
   });

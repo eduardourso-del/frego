@@ -44,6 +44,7 @@ function isPublicPath(url: string) {
   return (
     path.startsWith('/health') ||
     path.startsWith('/webhooks/meta') ||
+    path.startsWith('/webhooks/asaas') ||
     path.startsWith('/public/')
   );
 }

@@ -444,7 +444,7 @@ export default function PesquisasPage() {
   }
 
   return (
-    <AppShell title="Pesquisa">
+    <AppShell title="Pesquisa" feature="pesquisas">
       <div className="px-4 py-5 md:px-7 md:py-6">
         <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>

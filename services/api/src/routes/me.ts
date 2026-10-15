@@ -20,6 +20,7 @@ import {
   replaceCustomerDeviceToken,
 } from '../lib/push/device-token.js';
 import { deleteCustomerAccount } from '../lib/delete-customer.js';
+import { loadBilling, presentBilling } from '../lib/billing.js';
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -110,11 +111,13 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     for (const m of members) {
       if (pushed.has(m.businessId)) continue;
       pushed.add(m.businessId);
+      const loaded = await loadBilling(m.businessId);
       businesses.push({
         ...m.business,
         role: m.role,
         teamMemberId: m.id,
         activeEarnKinds: earnKinds.get(m.businessId) ?? [],
+        billing: loaded ? presentBilling(loaded.account, loaded.access) : null,
       });
     }
 

@@ -15,7 +15,7 @@ const registerBody = z.object({
   businessName: z.string().min(2).max(80),
   type: businessTypeSchema,
   slogan: z.string().max(160).optional(),
-  cnpj: z.string().trim().max(18).optional(),
+  cnpj: z.string().trim().min(1).max(18),
   primaryColor: hexColor,
   primaryColorDark: hexColor,
   locationName: z.string().min(2).max(80),
@@ -51,14 +51,12 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
 
     const body = registerBody.parse(request.body);
     const cnpj = normalizeCnpj(body.cnpj);
-    if (cnpj === 'invalid') {
-      return reply.code(400).send({ error: 'INVALID_CNPJ' });
+    if (!cnpj || cnpj === 'invalid') {
+      return reply.code(400).send({ error: cnpj === 'invalid' ? 'INVALID_TAX_ID' : 'TAX_ID_REQUIRED' });
     }
-    if (cnpj) {
-      const cnpjTaken = await prisma.business.findUnique({ where: { cnpj } });
-      if (cnpjTaken) {
-        return reply.code(409).send({ error: 'CNPJ_TAKEN' });
-      }
+    const cnpjTaken = await prisma.business.findUnique({ where: { cnpj } });
+    if (cnpjTaken) {
+      return reply.code(409).send({ error: 'TAX_ID_TAKEN' });
     }
 
     const existingMember = await prisma.teamMember.findFirst({

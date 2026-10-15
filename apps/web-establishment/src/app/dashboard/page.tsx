@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import Link from 'next/link';
 import { AppShell } from '@/components/app-shell';
 import { FregoIntelligence, type IntelligencePayload } from '@/components/frego-intelligence';
+import { FeatureLocked } from '@/components/plan-lock';
 import { CampaignPerformanceSection } from '@/components/campaign-performance-section';
 import { TermInfo } from '@/components/term-info';
 import { useAuth } from '@/lib/auth-context';
@@ -504,9 +505,19 @@ export default function DashboardPage() {
           </div>
         ) : data ? (
           <>
-            {data.intelligence && (
+            {business?.billing && !business.billing.features.intelligence && data.intelligence ? (
+              <div className="mb-4">
+                <FeatureLocked
+                  feature="intelligence"
+                  owner={business.role === 'owner'}
+                  currentTier={business.billing.tier}
+                >
+                  <FregoIntelligence data={data.intelligence} />
+                </FeatureLocked>
+              </div>
+            ) : data.intelligence ? (
               <FregoIntelligence data={data.intelligence} />
-            )}
+            ) : null}
 
             <PainelSection
               title="O estabelecimento"

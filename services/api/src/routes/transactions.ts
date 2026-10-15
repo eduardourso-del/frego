@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma, type Prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { loadBilling, locationIsOperable } from '../lib/billing.js';
 import {
   cashbackCentsFromSale,
   deriveWallet,
@@ -103,6 +104,13 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!location) {
       return reply.code(400).send({ error: 'INVALID_LOCATION' });
+    }
+    const billing = await loadBilling(auth.businessId);
+    if (
+      billing &&
+      !(await locationIsOperable(auth.businessId, location.id, billing.access))
+    ) {
+      return reply.code(403).send({ error: 'PLAN_REQUIRED', feature: 'extraLocations' });
     }
 
     const unitKind =

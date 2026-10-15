@@ -10,11 +10,13 @@ import {
 import { ShopAppPreview } from '@/components/shop-app-preview';
 import { WhatsAppSettingsCard } from '@/components/whatsapp-settings-card';
 import { TagManager } from '@/components/tag-manager';
+import { BillingSettings } from '@/components/billing-settings';
+import { FeatureLocked } from '@/components/plan-lock';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
 import { BusinessTypePicker } from '@/components/business-type-picker';
-import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
+import { cnpjFieldError, formatCnpj, taxIdLabel } from '@/lib/cnpj';
 
 const HERO_ASPECT = 16 / 9;
 
@@ -62,10 +64,12 @@ const inputClass =
 
 function settingsSaveError(err: unknown) {
   const message = err instanceof Error ? err.message : '';
-  if (message === 'INVALID_CNPJ') return 'CNPJ inválido.';
-  if (message === 'CNPJ_TAKEN') return 'Este CNPJ já está cadastrado.';
+  if (message === 'INVALID_CNPJ' || message === 'INVALID_TAX_ID') return 'CPF ou CNPJ inválido.';
+  if (message === 'CNPJ_TAKEN' || message === 'TAX_ID_TAKEN') {
+    return 'Este CPF ou CNPJ já está cadastrado.';
+  }
   if (message === 'CNPJ_ALREADY_SET') {
-    return 'O CNPJ já foi informado e não pode ser alterado aqui.';
+    return 'O CPF ou CNPJ já foi informado e não pode ser alterado aqui.';
   }
   return message || 'Não foi possível salvar.';
 }
@@ -99,6 +103,24 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropKind, setCropKind] = useState<'logo' | 'hero' | null>(null);
+  const [panel, setPanel] = useState<'loja' | 'planos'>('loja');
+
+  useEffect(() => {
+    function syncPanel() {
+      const hash = window.location.hash;
+      if (hash === '#plano') setPanel('planos');
+      if (hash === '#cnpj') setPanel('loja');
+    }
+    syncPanel();
+    window.addEventListener('hashchange', syncPanel);
+    return () => window.removeEventListener('hashchange', syncPanel);
+  }, []);
+
+  function showPanel(next: 'loja' | 'planos') {
+    setPanel(next);
+    const hash = next === 'planos' ? '#plano' : '';
+    window.history.replaceState(null, '', `/settings${hash}`);
+  }
 
   useEffect(() => {
     if (!business) return;
@@ -367,14 +389,52 @@ export default function SettingsPage() {
         <h1 className="mb-2 text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)] md:hidden">
           Configurações
         </h1>
-        <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
-          saldo. A prévia ao lado atualiza na hora.
-        </p>
+        {business?.billing?.mode === 'locked' ? null : (
+        <div className="mb-6 flex w-fit gap-1 rounded-full bg-[var(--color-neutral-100)] p-1">
+          <button
+            type="button"
+            onClick={() => showPanel('loja')}
+            className={`min-h-9 rounded-full px-4 text-[13px] font-semibold ${
+              panel === 'loja'
+                ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-sm'
+                : 'text-[var(--color-neutral-500)]'
+            }`}
+          >
+            Loja
+          </button>
+          <button
+            type="button"
+            onClick={() => showPanel('planos')}
+            className={`min-h-9 rounded-full px-4 text-[13px] font-semibold ${
+              panel === 'planos'
+                ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-sm'
+                : 'text-[var(--color-neutral-500)]'
+            }`}
+          >
+            Planos
+          </button>
+        </div>
+        )}
+        {panel === 'loja' ? (
+          <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
+            Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
+            saldo. A prévia ao lado atualiza na hora.
+          </p>
+        ) : (
+          <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
+            O Plano do estabelecimento. A cobrança abre na Asaas, onde você escolhe Pix, boleto ou cartão.
+          </p>
+        )}
         {loading && !business ? (
           <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
+        ) : business?.billing?.mode === 'locked' ? (
+          <BillingSettings />
         ) : (
           <div className="flex flex-col gap-4">
+          {panel === 'planos' ? (
+            <BillingSettings />
+          ) : (
+          <>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
               <div className="flex min-w-0 flex-col gap-3 self-start">
               <form
@@ -451,12 +511,12 @@ export default function SettingsPage() {
                   </label>
 
                   <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
-                    {business?.cnpj ? 'CNPJ' : 'CNPJ (opcional)'}
+                    {taxIdLabel(business?.cnpj)}
                     <input
                       id="cnpj"
                       inputMode="numeric"
                       autoComplete="off"
-                      placeholder="00.000.000/0000-00"
+                      placeholder="000.000.000-00"
                       value={cnpj}
                       onChange={(e) => setCnpj(formatCnpj(e.target.value))}
                       disabled={Boolean(business?.cnpj)}
@@ -476,8 +536,8 @@ export default function SettingsPage() {
                         id="cnpj-hint"
                         className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-400)]"
                       >
-                        Não entrou no cadastro. Depois de salvar, não dá para
-                        alterar por aqui.
+                        Não entrou no cadastro. A cobrança do Plano precisa do CPF ou CNPJ.
+                        Depois de salvar, não dá para alterar por aqui.
                       </p>
                     )}
                     {!business?.cnpj && cnpjFieldError(cnpj) ? (
@@ -978,7 +1038,19 @@ export default function SettingsPage() {
             </aside>
           </div>
 
-            <WhatsAppSettingsCard />
+            {business?.billing && !business.billing.features.whatsapp ? (
+              <FeatureLocked
+                feature="whatsapp"
+                owner={business.role === 'owner'}
+                currentTier={business.billing.tier}
+              >
+                <WhatsAppSettingsCard />
+              </FeatureLocked>
+            ) : (
+              <WhatsAppSettingsCard />
+            )}
+          </>
+          )}
           </div>
         )}
       </div>

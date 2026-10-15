@@ -81,7 +81,7 @@ function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
     errors.businessName = 'Use pelo menos 2 caracteres.';
   }
 
-  const cnpjError = cnpjFieldError(form.cnpj);
+  const cnpjError = cnpjFieldError(form.cnpj, true);
   if (cnpjError) errors.cnpj = cnpjError;
 
   if (!form.locationName.trim()) errors.locationName = REQUIRED;
@@ -124,7 +124,6 @@ export default function RegisterPage() {
   const errors = fieldErrors(form);
   const passwordsDiffer =
     form.confirmPassword.length > 0 && form.password !== form.confirmPassword;
-  const cnpjError = cnpjFieldError(form.cnpj);
 
   function visibleError(key: FieldKey, live = false) {
     if (!showErrors && !live) return undefined;
@@ -165,7 +164,7 @@ export default function RegisterPage() {
           businessName: form.businessName,
           type: form.type,
           slogan: form.slogan || undefined,
-          cnpj: form.cnpj || undefined,
+          cnpj: form.cnpj,
           primaryColor: form.primaryColor,
           primaryColorDark: form.primaryColor,
           locationName: form.locationName,
@@ -178,11 +177,14 @@ export default function RegisterPage() {
         if (code === 'ALREADY_HAS_BUSINESS') {
           throw new Error('Este e-mail já está vinculado a uma loja.');
         }
-        if (code === 'INVALID_CNPJ') {
-          throw new Error('CNPJ inválido.');
+        if (code === 'INVALID_TAX_ID' || code === 'INVALID_CNPJ') {
+          throw new Error('CPF ou CNPJ inválido.');
         }
-        if (code === 'CNPJ_TAKEN') {
-          throw new Error('Este CNPJ já está cadastrado.');
+        if (code === 'TAX_ID_REQUIRED') {
+          throw new Error('Informe o CPF ou CNPJ.');
+        }
+        if (code === 'TAX_ID_TAKEN' || code === 'CNPJ_TAKEN') {
+          throw new Error('Este CPF ou CNPJ já está cadastrado.');
         }
         throw new Error(code ?? `Erro HTTP ${res.status}`);
       }
@@ -307,13 +309,14 @@ export default function RegisterPage() {
               />
               <TextField
                 id="cnpj"
-                label="CNPJ (opcional)"
+                label="CPF ou CNPJ"
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="00.000.000/0000-00"
+                placeholder="000.000.000-00"
                 value={form.cnpj}
                 onChange={(e) => setField('cnpj', formatCnpj(e.target.value))}
-                error={visibleError('cnpj', Boolean(cnpjError))}
+                error={visibleError('cnpj', form.cnpj.trim().length > 0)}
+                required
               />
               <BusinessTypePicker
                 value={form.type}

@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { Prisma, prisma, type BusinessStatus } from '@frego/db';
 import { requirePlatformAuth } from '../plugins/auth.js';
+import { isSubscriptionTier, setCortesia, startTrial } from '../lib/billing.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
@@ -193,6 +194,12 @@ async function loadBusinessDetail(id: string) {
         select: {
           status: true,
           mrrCents: true,
+          trialEndsAt: true,
+          periodEndsAt: true,
+          cortesiaTier: true,
+          paidTier: true,
+          scheduledTier: true,
+          cancelAtPeriodEnd: true,
           plan: { select: { tier: true, name: true } },
         },
       },
@@ -781,14 +788,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     if (body.cnpj !== undefined) {
       const parsed = normalizeCnpj(body.cnpj);
       if (parsed === 'invalid') {
-        return reply.code(400).send({ error: 'INVALID_CNPJ' });
+        return reply.code(400).send({ error: 'INVALID_TAX_ID' });
       }
       if (parsed) {
         const taken = await prisma.business.findFirst({
           where: { cnpj: parsed, NOT: { id } },
         });
         if (taken) {
-          return reply.code(409).send({ error: 'CNPJ_TAKEN' });
+          return reply.code(409).send({ error: 'TAX_ID_TAKEN' });
         }
       }
       cnpj = parsed;
@@ -902,6 +909,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const updated = await setBusinessStatus(id, 'trial');
+    await startTrial(id);
 
     return {
       business: {
@@ -910,6 +918,25 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
         status: updated.status,
       },
     };
+  });
+
+  app.post('/admin/businesses/:id/cortesia', async (request, reply) => {
+    requirePlatformAuth(request);
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({
+        tier: z.enum(['starter', 'growth', 'enterprise']).nullable(),
+      })
+      .parse(request.body);
+    if (body.tier && !isSubscriptionTier(body.tier)) {
+      return reply.code(400).send({ error: 'INVALID_PLAN' });
+    }
+    const result = await setCortesia(id, body.tier);
+    if (!result.ok) {
+      const status = result.error === 'NOT_FOUND' ? 404 : 409;
+      return reply.code(status).send({ error: result.error });
+    }
+    return { ok: true, tier: body.tier };
   });
 
   app.post('/admin/businesses/:id/reject', async (request, reply) => {

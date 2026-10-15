@@ -603,6 +603,7 @@ export default function ReportsPage() {
   return (
     <AppShell
       title="Relatórios"
+      feature="reports"
       topbar={
         <header className="flex min-h-[60px] flex-wrap items-center gap-3 border-b border-[var(--color-hairline)] bg-[var(--color-card)]/90 px-4 py-2 backdrop-blur md:px-7">
           <h1 className="text-[17px] font-semibold text-[var(--color-ink)]">

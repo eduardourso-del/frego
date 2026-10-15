@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma, CampaignStatus, CampaignType } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { loadBilling } from '../lib/billing.js';
 import {
   computeCampaignPerformance,
   countMembershipsByRules,
@@ -388,6 +389,12 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
     ) {
       return reply.code(400).send({ error: 'INVALID_AUDIENCE' });
     }
+    if (body.audienceSegmentId) {
+      const billing = await loadBilling(auth.businessId);
+      if (billing && !billing.access.features.audiences) {
+        return reply.code(403).send({ error: 'PLAN_REQUIRED', feature: 'audiences' });
+      }
+    }
 
     const dupBirthday = await assertSingleActiveBirthday(
       auth.businessId,
@@ -542,6 +549,12 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       !(await assertAudienceBelongs(auth.businessId, body.audienceSegmentId))
     ) {
       return reply.code(400).send({ error: 'INVALID_AUDIENCE' });
+    }
+    if (body.audienceSegmentId) {
+      const billing = await loadBilling(auth.businessId);
+      if (billing && !billing.access.features.audiences) {
+        return reply.code(403).send({ error: 'PLAN_REQUIRED', feature: 'audiences' });
+      }
     }
 
     const dupBirthday = await assertSingleActiveBirthday(
