@@ -10,20 +10,25 @@ import { foldCampaignReturn, foldStoreCampaignReturn, voucherBelongsToPeriod, vo
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { DEFAULT_FUSO } from '../lib/br-fuso.js';
 import {
-  addDays,
   periodQuerySchema,
   resolvePeriod,
-  startOfDay,
 } from '../lib/period.js';
+import {
+  addCivilDays,
+  civilWeekday,
+  ymdInTimeZone,
+  zonedMidnight,
+} from '../lib/zoned-day.js';
 
 function deltaPct(current: number, previous: number): number | null {
   if (previous === 0) return current === 0 ? 0 : null;
   return Math.round(((current - previous) / previous) * 100);
 }
 
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
+function dayKey(d: Date, timeZone: string) {
+  return ymdInTimeZone(d, timeZone);
 }
 
 const WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'] as const;
@@ -48,7 +53,7 @@ type MemberAgg = {
   lastVisitAt: Date;
 };
 
-function buildMemberAggs(txs: TxRow[]) {
+function buildMemberAggs(txs: TxRow[], timeZone: string) {
   const map = new Map<string, MemberAgg>();
   for (const tx of txs) {
     if (shouldOmitFromLedger(tx.metadata)) continue;
@@ -65,7 +70,7 @@ function buildMemberAggs(txs: TxRow[]) {
       };
       map.set(tx.membershipId, agg);
     }
-    agg.visitDays.add(dayKey(tx.createdAt));
+    agg.visitDays.add(dayKey(tx.createdAt, timeZone));
     if (tx.createdAt > agg.lastVisitAt) agg.lastVisitAt = tx.createdAt;
 
     if (isCashbackUnit(tx.unitKind)) {
@@ -90,8 +95,12 @@ function buildMemberAggs(txs: TxRow[]) {
   return map;
 }
 
-function summarizePeriod(txs: TxRow[], firstVisitByMember: Map<string, Date>) {
-  const byMember = buildMemberAggs(txs);
+function summarizePeriod(
+  txs: TxRow[],
+  firstVisitByMember: Map<string, Date>,
+  timeZone: string,
+) {
+  const byMember = buildMemberAggs(txs, timeZone);
   let stamps = 0;
   let points = 0;
   let redeems = 0;
@@ -127,7 +136,7 @@ function summarizePeriod(txs: TxRow[], firstVisitByMember: Map<string, Date>) {
       continue;
     }
     const earliestInPeriod = [...agg.visitDays].sort()[0];
-    if (earliestInPeriod && dayKey(first) === earliestInPeriod) {
+    if (earliestInPeriod && dayKey(first, timeZone) === earliestInPeriod) {
       newCustomers += 1;
     }
   }
@@ -180,12 +189,6 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
   app.get('/dashboard', async (request) => {
     const auth = requireAuth(request);
     const query = periodQuerySchema.parse(request.query);
-    const { key: range, from, toExclusive, prevFrom, prevTo } =
-      resolvePeriod(
-        query,
-        { today: 'today', '7d': 7, '30d': 30 },
-        'today',
-      );
 
     const business = await prisma.business.findUniqueOrThrow({
       where: { id: auth.businessId },
@@ -197,8 +200,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         primaryColorDark: true,
         slogan: true,
         slug: true,
+        timeZone: true,
       },
     });
+    const timeZone = business.timeZone ?? DEFAULT_FUSO;
+    const now = new Date();
+    const todayYmd = ymdInTimeZone(now, timeZone);
+    const { key: range, from, toExclusive, prevFrom, prevTo } =
+      resolvePeriod(
+        query,
+        { today: 'today', '7d': 7, '30d': 30 },
+        'today',
+        now,
+        timeZone,
+      );
 
     const txSelect = {
       type: true,
@@ -211,10 +226,11 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       metadata: true,
     } as const;
 
-    const intelFrom = addDays(
-      startOfDay(new Date()),
-      -(INTEL_LOOKBACK_DAYS - 1),
+    const intelFrom = zonedMidnight(
+      addCivilDays(todayYmd, -(INTEL_LOOKBACK_DAYS - 1)),
+      timeZone,
     );
+    const weekFrom = zonedMidnight(addCivilDays(todayYmd, -6), timeZone);
 
     const [
       currentTxs,
@@ -254,8 +270,8 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         where: {
           businessId: auth.businessId,
           createdAt: {
-            gte: addDays(startOfDay(new Date()), -6),
-            lt: new Date(),
+            gte: weekFrom,
+            lt: now,
           },
         },
         select: {
@@ -313,7 +329,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       prisma.transaction.findMany({
         where: {
           businessId: auth.businessId,
-          createdAt: { gte: intelFrom, lt: new Date() },
+          createdAt: { gte: intelFrom, lt: now },
         },
         select: txSelect,
       }),
@@ -351,9 +367,9 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const current = summarizePeriod(currentTxs, firstVisitByMember);
-    const previous = summarizePeriod(previousTxs, firstVisitByMember);
-    const intelLookback = summarizePeriod(intelTxs, firstVisitByMember);
+    const current = summarizePeriod(currentTxs, firstVisitByMember, timeZone);
+    const previous = summarizePeriod(previousTxs, firstVisitByMember, timeZone);
+    const intelLookback = summarizePeriod(intelTxs, firstVisitByMember, timeZone);
     const periodRange = { from, to: toExclusive };
     const prevRange = { from: prevFrom, to: prevTo };
     const campaignPeriodTxs = [
@@ -432,22 +448,20 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    const todayStart = startOfDay(new Date());
     const weekSeries = Array.from({ length: 7 }, (_, i) => {
-      const day = addDays(todayStart, -6 + i);
-      const key = dayKey(day);
+      const key = addCivilDays(todayYmd, -6 + i);
       let stamps = 0;
       let redeems = 0;
       for (const tx of weekTxs) {
         if (shouldOmitFromLedger(tx.metadata)) continue;
-        if (dayKey(tx.createdAt) !== key) continue;
+        if (dayKey(tx.createdAt, timeZone) !== key) continue;
         if (isCashbackUnit(tx.unitKind)) continue;
         if (tx.type === 'stamp') stamps += tx.quantity;
         else redeems += tx.quantity;
       }
       return {
         date: key,
-        day: WEEKDAY_LABELS[day.getDay()],
+        day: WEEKDAY_LABELS[civilWeekday(key)],
         stamps,
         redeems,
       };
@@ -620,9 +634,9 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       (c) => c.type === 'stamps' || c.type === 'spend',
     );
 
-    const inactiveFrom = addDays(
-      startOfDay(new Date()),
-      -(INTEL_INACTIVE_DAYS - 1),
+    const inactiveFrom = zonedMidnight(
+      addCivilDays(todayYmd, -(INTEL_INACTIVE_DAYS - 1)),
+      timeZone,
     );
     const activeRecently = new Set<string>();
     for (const tx of intelTxs) {
@@ -653,6 +667,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       hasRewardCampaign,
       vipQuietCount,
       txs: intelTxs,
+      timeZone,
     });
 
     const insight =

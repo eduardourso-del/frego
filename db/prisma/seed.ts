@@ -40,6 +40,7 @@ async function seedBusiness(opts: {
       primaryColorDark: opts.primaryColorDark,
       slogan: opts.slogan,
       slug: opts.slug,
+      timeZone: 'America/Sao_Paulo',
     },
     create: {
       id: opts.id,
@@ -50,6 +51,7 @@ async function seedBusiness(opts: {
       primaryColorDark: opts.primaryColorDark,
       slogan: opts.slogan,
       slug: opts.slug,
+      timeZone: 'America/Sao_Paulo',
     },
   });
 
@@ -66,12 +68,17 @@ async function seedBusiness(opts: {
 
   const location = await prisma.location.upsert({
     where: { id: opts.locationId },
-    update: {},
+    update: {
+      state: 'SP',
+      city: 'São Paulo',
+    },
     create: {
       id: opts.locationId,
       businessId: business.id,
       name: opts.locationName,
       address: opts.locationAddress,
+      city: 'São Paulo',
+      state: 'SP',
       isOpen: true,
     },
   });

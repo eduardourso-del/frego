@@ -23,6 +23,12 @@ import { FregoWordmark } from '@/components/brand';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
+import {
+  emptyOperatingAddress,
+  operatingAddressErrors,
+  type OperatingAddress,
+} from '@/lib/br-ufs';
+import { OperatingAddressFields } from '@/components/operating-address-fields';
 
 const REQUIRED = 'Campo obrigatório.';
 
@@ -36,7 +42,7 @@ type RegisterForm = {
   type: string;
   slogan: string;
   locationName: string;
-  locationAddress: string;
+  address: OperatingAddress;
   primaryColor: string;
 };
 
@@ -48,10 +54,24 @@ const FIELD_ORDER = [
   'businessName',
   'cnpj',
   'locationName',
-  'locationAddress',
+  'address-postalCode',
+  'address-street',
+  'address-streetNumber',
+  'address-neighborhood',
+  'address-city',
+  'address-state',
 ] as const;
 
 type FieldKey = (typeof FIELD_ORDER)[number];
+
+const ADDRESS_FIELDS = [
+  'postalCode',
+  'street',
+  'streetNumber',
+  'neighborhood',
+  'city',
+  'state',
+] as const;
 
 function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
   const errors: Partial<Record<FieldKey, string>> = {};
@@ -89,9 +109,10 @@ function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
     errors.locationName = 'Use pelo menos 2 caracteres.';
   }
 
-  if (!form.locationAddress.trim()) errors.locationAddress = REQUIRED;
-  else if (form.locationAddress.trim().length < 5) {
-    errors.locationAddress = 'Use pelo menos 5 caracteres.';
+  const addressErrors = operatingAddressErrors(form.address);
+  for (const key of ADDRESS_FIELDS) {
+    const message = addressErrors[key];
+    if (message) errors[`address-${key}`] = message;
   }
 
   return errors;
@@ -113,7 +134,7 @@ export default function RegisterPage() {
     type: 'café',
     slogan: '',
     locationName: '',
-    locationAddress: '',
+    address: emptyOperatingAddress(),
     primaryColor: '#070707',
   });
 
@@ -169,7 +190,7 @@ export default function RegisterPage() {
           primaryColor: form.primaryColor,
           primaryColorDark: form.primaryColor,
           locationName: form.locationName,
-          locationAddress: form.locationAddress,
+          address: form.address,
         }),
       });
       const json = await res.json();
@@ -183,6 +204,12 @@ export default function RegisterPage() {
         }
         if (code === 'CNPJ_TAKEN') {
           throw new Error('Este CNPJ já está cadastrado.');
+        }
+        if (code === 'INVALID_CEP') {
+          throw new Error('CEP inválido.');
+        }
+        if (code === 'INVALID_STATE') {
+          throw new Error('Escolha o estado onde a unidade opera.');
         }
         throw new Error(code ?? `Erro HTTP ${res.status}`);
       }
@@ -338,8 +365,11 @@ export default function RegisterPage() {
           </Card>
 
           <Card padding="md">
-            <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+            <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
               Unidade
+            </p>
+            <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
+              O dia do painel segue o estado onde vocês operam.
             </p>
             <div className="flex flex-col gap-3.5">
               <TextField
@@ -352,14 +382,17 @@ export default function RegisterPage() {
                 required
                 minLength={2}
               />
-              <TextField
-                id="locationAddress"
-                label="Endereço"
-                value={form.locationAddress}
-                onChange={(e) => setField('locationAddress', e.target.value)}
-                error={visibleError('locationAddress')}
-                required
-                minLength={5}
+              <OperatingAddressFields
+                idPrefix="address"
+                value={form.address}
+                onChange={(patch) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    address: { ...prev.address, ...patch },
+                  }))
+                }
+                errors={operatingAddressErrors(form.address)}
+                showErrors={showErrors}
               />
             </div>
           </Card>

@@ -71,25 +71,25 @@ type TxLite = {
   metadata?: unknown;
 };
 
-const weekdayFmt = new Intl.DateTimeFormat('en-US', {
-  timeZone: TZ,
-  weekday: 'short',
-});
-
-const hourFmt = new Intl.DateTimeFormat('en-US', {
-  timeZone: TZ,
-  hour: 'numeric',
-  hourCycle: 'h23',
-});
-
-function zonedWeekday(d: Date): number {
-  const raw = weekdayFmt.format(d).replace(/\./g, '').slice(0, 3);
+function zonedWeekday(d: Date, timeZone = TZ): number {
+  const raw = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  })
+    .format(d)
+    .replace(/\./g, '')
+    .slice(0, 3);
   return WEEKDAY_INDEX[raw] ?? d.getDay();
 }
 
-function zonedHour(d: Date): number {
-  const n = Number.parseInt(hourFmt.format(d), 10);
-  return Number.isFinite(n) ? n : d.getHours();
+function zonedHour(d: Date, timeZone = TZ): number {
+  const raw = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    hourCycle: 'h23',
+  }).format(d);
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n % 24 : d.getHours();
 }
 
 export function periodLabelFor(): string {
@@ -112,10 +112,10 @@ function campaignSlotName(weekday: number | null, hour: number | null): string {
   return 'Horário parado';
 }
 
-function analyzeQuietSlot(txs: TxLite[]) {
+function analyzeQuietSlot(txs: TxLite[], timeZone: string) {
   const inWindow = txs.filter((tx) => {
     if (shouldOmitFromLedger(tx.metadata)) return false;
-    const h = zonedHour(tx.createdAt);
+    const h = zonedHour(tx.createdAt, timeZone);
     return h >= HOUR_START && h <= HOUR_END;
   });
   if (inWindow.length < MIN_QUIET_EVENTS) return null;
@@ -123,7 +123,7 @@ function analyzeQuietSlot(txs: TxLite[]) {
   let quietWeekday: number | null = null;
   const byDow = new Array<number>(7).fill(0);
   for (const tx of inWindow) {
-    byDow[zonedWeekday(tx.createdAt)] += 1;
+    byDow[zonedWeekday(tx.createdAt, timeZone)] += 1;
   }
   let min = Infinity;
   let max = 0;
@@ -140,14 +140,14 @@ function analyzeQuietSlot(txs: TxLite[]) {
 
   const seenHours = new Set<number>();
   for (const tx of inWindow) {
-    const h = zonedHour(tx.createdAt);
+    const h = zonedHour(tx.createdAt, timeZone);
     if (h >= HOUR_START && h <= HOUR_END) seenHours.add(h);
   }
 
   const byHour = new Map<number, number>();
   for (const h of seenHours) byHour.set(h, 0);
   for (const tx of inWindow) {
-    const h = zonedHour(tx.createdAt);
+    const h = zonedHour(tx.createdAt, timeZone);
     if (byHour.has(h)) {
       byHour.set(h, (byHour.get(h) ?? 0) + 1);
     }
@@ -215,8 +215,8 @@ function highValueAction(
   };
 }
 
-function quietHoursAction(txs: TxLite[]): IntelligenceAction | null {
-  const slot = analyzeQuietSlot(txs);
+function quietHoursAction(txs: TxLite[], timeZone: string): IntelligenceAction | null {
+  const slot = analyzeQuietSlot(txs, timeZone);
   if (!slot) return null;
 
   const dayName = slot.weekday != null ? WEEKDAY_PT[slot.weekday] : null;
@@ -257,8 +257,10 @@ export function buildIntelligence(input: {
   hasRewardCampaign: boolean;
   vipQuietCount: number;
   txs: TxLite[];
+  timeZone?: string;
 }): IntelligencePayload {
   const { inactiveCount, current } = input;
+  const timeZone = input.timeZone ?? TZ;
   const periodLabel = INTEL_PERIOD_LABEL;
   const candidates: IntelligenceAction[] = [];
 
@@ -337,7 +339,7 @@ export function buildIntelligence(input: {
   const highValue = highValueAction(current.spenders);
   if (highValue) candidates.push(highValue);
 
-  const quiet = quietHoursAction(input.txs);
+  const quiet = quietHoursAction(input.txs, timeZone);
   if (quiet) candidates.push(quiet);
 
   const celebrate: IntelligenceAction | null =

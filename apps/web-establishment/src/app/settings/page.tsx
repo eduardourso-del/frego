@@ -15,13 +15,21 @@ import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
+import {
+  emptyOperatingAddress,
+  formatCep,
+  operatingAddressErrors,
+  type OperatingAddress,
+} from '@/lib/br-ufs';
+import { OperatingAddressFields } from '@/components/operating-address-fields';
 
 const HERO_ASPECT = 16 / 9;
 
 type LocationDraft = {
   id: string;
   name: string;
-  address: string;
+  address: OperatingAddress;
+  legacyAddress: string;
 };
 
 function Section({
@@ -67,11 +75,15 @@ function settingsSaveError(err: unknown) {
   if (message === 'CNPJ_ALREADY_SET') {
     return 'O CNPJ já foi informado e não pode ser alterado aqui.';
   }
+  if (message === 'INVALID_CEP') return 'CEP inválido.';
+  if (message === 'INVALID_STATE') {
+    return 'Escolha o estado onde a unidade opera.';
+  }
   return message || 'Não foi possível salvar.';
 }
 
 export default function SettingsPage() {
-  const { business, loading, updateBusiness, authHeaders } = useBusiness();
+  const { business, loading, updateBusiness, authHeaders, refresh } = useBusiness();
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [type, setType] = useState('café');
@@ -145,6 +157,13 @@ export default function SettingsPage() {
             id: string;
             name: string;
             address: string | null;
+            postalCode: string | null;
+            street: string | null;
+            streetNumber: string | null;
+            complement: string | null;
+            neighborhood: string | null;
+            city: string | null;
+            state: string | null;
           }>;
         };
         if (cancelled) return;
@@ -152,7 +171,17 @@ export default function SettingsPage() {
           (json.locations ?? []).map((loc) => ({
             id: loc.id,
             name: loc.name,
-            address: loc.address ?? '',
+            legacyAddress: loc.state ? '' : (loc.address ?? ''),
+            address: {
+              ...emptyOperatingAddress(),
+              postalCode: formatCep(loc.postalCode ?? ''),
+              street: loc.street ?? '',
+              streetNumber: loc.streetNumber ?? '',
+              complement: loc.complement ?? '',
+              neighborhood: loc.neighborhood ?? '',
+              city: loc.city ?? '',
+              state: loc.state ?? '',
+            },
           })),
         );
       } catch {
@@ -169,13 +198,17 @@ export default function SettingsPage() {
     };
   }, [cropSrc]);
 
-  function setLocationField(
-    id: string,
-    field: 'name' | 'address',
-    value: string,
-  ) {
+  function setLocationName(id: string, name: string) {
     setLocations((prev) =>
-      prev.map((loc) => (loc.id === id ? { ...loc, [field]: value } : loc)),
+      prev.map((loc) => (loc.id === id ? { ...loc, name } : loc)),
+    );
+  }
+
+  function patchLocationAddress(id: string, patch: Partial<OperatingAddress>) {
+    setLocations((prev) =>
+      prev.map((loc) =>
+        loc.id === id ? { ...loc, address: { ...loc.address, ...patch } } : loc,
+      ),
     );
   }
 
@@ -191,12 +224,16 @@ export default function SettingsPage() {
 
       for (const loc of locations) {
         const trimmedName = loc.name.trim();
-        const trimmedAddress = loc.address.trim();
         if (trimmedName.length < 2) {
           throw new Error('O nome da unidade precisa ter pelo menos 2 caracteres.');
         }
-        if (trimmedAddress.length < 5) {
-          throw new Error('O endereço precisa ter pelo menos 5 caracteres.');
+        const addressError = Object.values(operatingAddressErrors(loc.address))[0];
+        if (addressError) {
+          throw new Error(
+            locations.length > 1
+              ? `${loc.name.trim() || 'Unidade'}: ${addressError}`
+              : addressError,
+          );
         }
       }
 
@@ -233,26 +270,28 @@ export default function SettingsPage() {
           ...(await authHeaders()),
           'Content-Type': 'application/json',
         };
-        await Promise.all(
-          locations.map(async (loc) => {
-            const res = await fetch(
-              `${API_URL}/business/locations/${encodeURIComponent(loc.id)}`,
-              {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({
-                  name: loc.name.trim(),
-                  address: loc.address.trim(),
-                }),
-              },
-            );
-            if (!res.ok) {
-              const json = (await res.json().catch(() => null)) as {
-                error?: string;
-              } | null;
-              throw new Error(json?.error ?? 'Não foi possível salvar o endereço.');
-            }
-          }),
+        for (const loc of locations) {
+          const res = await fetch(
+            `${API_URL}/business/locations/${encodeURIComponent(loc.id)}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({
+                name: loc.name.trim(),
+                address: loc.address,
+              }),
+            },
+          );
+          if (!res.ok) {
+            const json = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(json?.error ?? 'Não foi possível salvar o endereço.');
+          }
+        }
+        await refresh();
+        setLocations((prev) =>
+          prev.map((loc) => ({ ...loc, legacyAddress: '' })),
         );
       }
 
@@ -371,6 +410,11 @@ export default function SettingsPage() {
           Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
           saldo. A prévia ao lado atualiza na hora.
         </p>
+        {business && !business.timeZone ? (
+          <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3 text-[14px] text-[var(--color-primary-800)]">
+            Informe o endereço da unidade. O dia do painel segue o estado onde vocês operam.
+          </div>
+        ) : null}
         {loading && !business ? (
           <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
         ) : (
@@ -607,7 +651,11 @@ export default function SettingsPage() {
                 <Section
                   Icon={MapPin}
                   title="Onde encontrar"
-                  hint="Aparece no app do cliente e na página pública."
+                  hint={
+                    business?.timeZone
+                      ? 'Aparece no app do cliente e na página pública. O dia do painel segue o estado da unidade.'
+                      : 'Informe o endereço. O dia do painel segue o estado onde vocês operam.'
+                  }
                 >
                   {locations.length === 0 ? (
                     <p className="text-[14px] text-[var(--color-neutral-500)]">
@@ -633,32 +681,28 @@ export default function SettingsPage() {
                             Nome da unidade
                             <input
                               value={loc.name}
-                              onChange={(e) =>
-                                setLocationField(loc.id, 'name', e.target.value)
-                              }
+                              onChange={(e) => setLocationName(loc.id, e.target.value)}
                               className={inputClass}
                               placeholder="Ex.: Loja Jardins"
                               required
                               minLength={2}
                             />
                           </label>
-                          <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
-                            Endereço
-                            <input
+                          <div className="mt-3">
+                            <OperatingAddressFields
+                              idPrefix={`location-${loc.id}`}
                               value={loc.address}
-                              onChange={(e) =>
-                                setLocationField(
-                                  loc.id,
-                                  'address',
-                                  e.target.value,
-                                )
-                              }
-                              className={inputClass}
-                              placeholder="Rua, número, bairro"
-                              required
-                              minLength={5}
+                              onChange={(patch) => patchLocationAddress(loc.id, patch)}
+                              errors={operatingAddressErrors(loc.address)}
+                              showErrors={Boolean(error)}
+                              legacyAddress={loc.legacyAddress || undefined}
                             />
-                          </label>
+                          </div>
+                          {locations.length > 1 && index === 0 ? (
+                            <p className="mt-3 text-[12px] leading-snug text-[var(--color-neutral-500)]">
+                              O dia do painel segue a unidade mais antiga que tem estado.
+                            </p>
+                          ) : null}
                         </div>
                       ))}
                     </div>

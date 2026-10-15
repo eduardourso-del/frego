@@ -476,6 +476,15 @@ export default function DashboardPage() {
           </div>
         </div>
         <WhatsAppAttentionBanner />
+        {business && !business.timeZone ? (
+          <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3 text-[14px] text-[var(--color-primary-800)]">
+            Informe o endereço da unidade em{' '}
+            <Link href="/settings" className="font-semibold underline">
+              Configurações
+            </Link>
+            . O dia do painel segue o estado onde vocês operam.
+          </div>
+        ) : null}
         {error && (
           <div
             className="mb-4 rounded-[12px] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-[14px] text-[var(--color-danger)]"

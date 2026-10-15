@@ -8,6 +8,10 @@ The Clube, at the till and in the Cliente's pocket. The phone number is the Clie
 The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
+**Fuso**:
+The civil timezone of an Estabelecimento, taken from the UF of the address where it operates. The Painel's day follows that Fuso.
+_Avoid_: browser timezone, UTC, fuso do usuário
+
 **Plano**:
 The monthly subscription an Estabelecimento holds. The two Planos are Starter and Growth. The days before the first charge are not a Plano.
 _Avoid_: tier, package, assinatura (the brand mark is already called that)

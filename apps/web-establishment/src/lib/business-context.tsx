@@ -33,6 +33,8 @@ export type BusinessBrand = {
   stampsExpireDays?: number | null;
   pointsExpireDays?: number | null;
   cashbackExpireDays?: number | null;
+  /** IANA zone from the operating UF. Null until Configurações saves it. */
+  timeZone?: string | null;
   role?: string;
   /** Campanhas ativas que o caixa pode registrar: carimbos, pontos, cashback. */
   activeEarnKinds?: Array<'stamps' | 'points' | 'cashback'>;

@@ -4,6 +4,12 @@ import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
+import {
+  locationAddressData,
+  operatingAddressSchema,
+  parseOperatingAddress,
+  syncBusinessFuso,
+} from '../lib/operating-address.js';
 
 const hexColor = z
   .string()
@@ -46,7 +52,7 @@ const updateBody = z.object({
 
 const updateLocationBody = z.object({
   name: z.string().min(2).max(80).optional(),
-  address: z.string().min(5).max(200).nullable().optional(),
+  address: operatingAddressSchema.optional(),
   isOpen: z.boolean().optional(),
 });
 
@@ -69,6 +75,7 @@ function publicBusiness(b: {
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
+  timeZone: string | null;
 }, activeEarnKinds: EarnKind[] = []) {
   return {
     id: b.id,
@@ -89,6 +96,7 @@ function publicBusiness(b: {
     stampsExpireDays: b.stampsExpireDays,
     pointsExpireDays: b.pointsExpireDays,
     cashbackExpireDays: b.cashbackExpireDays,
+    timeZone: b.timeZone,
     activeEarnKinds,
   };
 }
@@ -197,6 +205,13 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
         id: true,
         name: true,
         address: true,
+        postalCode: true,
+        street: true,
+        streetNumber: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
         isOpen: true,
       },
     });
@@ -211,6 +226,12 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     }
     const { locationId } = request.params as { locationId: string };
     const body = updateLocationBody.parse(request.body);
+    const parsedAddress = body.address
+      ? parseOperatingAddress(body.address)
+      : null;
+    if (parsedAddress && !parsedAddress.ok) {
+      return reply.code(400).send({ error: parsedAddress.error });
+    }
 
     const existing = await prisma.location.findFirst({
       where: { id: locationId, businessId: auth.businessId },
@@ -223,16 +244,29 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       where: { id: locationId },
       data: {
         name: body.name,
-        address: body.address === undefined ? undefined : body.address,
+        ...(parsedAddress?.ok
+          ? locationAddressData(parsedAddress.address)
+          : {}),
         isOpen: body.isOpen,
       },
       select: {
         id: true,
         name: true,
         address: true,
+        postalCode: true,
+        street: true,
+        streetNumber: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
         isOpen: true,
       },
     });
+
+    if (parsedAddress?.ok) {
+      await syncBusinessFuso(auth.businessId);
+    }
 
     return { location };
   });

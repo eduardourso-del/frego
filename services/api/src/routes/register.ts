@@ -4,6 +4,11 @@ import { prisma } from '@frego/db';
 import { requireFirebaseUser } from '../plugins/auth.js';
 import { businessTypeSchema } from '../lib/business-type.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
+import {
+  locationAddressData,
+  operatingAddressSchema,
+  parseOperatingAddress,
+} from '../lib/operating-address.js';
 
 const hexColor = z
   .string()
@@ -19,7 +24,7 @@ const registerBody = z.object({
   primaryColor: hexColor,
   primaryColorDark: hexColor,
   locationName: z.string().min(2).max(80),
-  locationAddress: z.string().min(5).max(200),
+  address: operatingAddressSchema,
   slug: z
     .string()
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
@@ -50,6 +55,10 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = registerBody.parse(request.body);
+    const parsedAddress = parseOperatingAddress(body.address);
+    if (!parsedAddress.ok) {
+      return reply.code(400).send({ error: parsedAddress.error });
+    }
     const cnpj = normalizeCnpj(body.cnpj);
     if (cnpj === 'invalid') {
       return reply.code(400).send({ error: 'INVALID_CNPJ' });
@@ -106,6 +115,7 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
           primaryColor,
           primaryColorDark,
           slug,
+          timeZone: parsedAddress.address.timeZone,
         },
       });
 
@@ -122,7 +132,7 @@ export const registerRoutes: FastifyPluginAsync = async (app) => {
         data: {
           businessId: business.id,
           name: body.locationName,
-          address: body.locationAddress,
+          ...locationAddressData(parsedAddress.address),
           isOpen: true,
         },
       });

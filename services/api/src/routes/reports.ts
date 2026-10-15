@@ -9,19 +9,22 @@ import { foldCampaignReturn, voucherBelongsToPeriod, voucherLookbackStart } from
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { DEFAULT_FUSO } from '../lib/br-fuso.js';
 import {
-  addDays,
   periodQuerySchema,
   resolvePeriod,
-  startOfDay,
 } from '../lib/period.js';
+import {
+  addCivilDays,
+  addZonedMonths,
+  civilWeekday,
+  startOfZonedMonth,
+  ymdInTimeZone,
+  zonedMidnight,
+} from '../lib/zoned-day.js';
 
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
-
-function monthKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+function dayKey(d: Date, timeZone: string) {
+  return ymdInTimeZone(d, timeZone);
 }
 
 const MONTH_SHORT = [
@@ -74,7 +77,7 @@ function isPointsEarn(tx: TxLite) {
   );
 }
 
-function summarize(txs: TxLite[]) {
+function summarize(txs: TxLite[], timeZone: string) {
   const activeMembers = new Set<string>();
   const visitDaysByMember = new Map<string, Set<string>>();
   let stamps = 0;
@@ -91,7 +94,7 @@ function summarize(txs: TxLite[]) {
       days = new Set();
       visitDaysByMember.set(tx.membershipId, days);
     }
-    days.add(dayKey(tx.createdAt));
+    days.add(dayKey(tx.createdAt, timeZone));
 
     if (isCashbackUnit(tx.unitKind)) {
       continue;
@@ -140,9 +143,16 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/reports', async (request) => {
     const auth = requireAuth(request);
     const query = periodQuerySchema.parse(request.query);
+    const business = await prisma.business.findUniqueOrThrow({
+      where: { id: auth.businessId },
+      select: { timeZone: true },
+    });
+    const timeZone = business.timeZone ?? DEFAULT_FUSO;
+    const now = new Date();
+    const todayYmd = ymdInTimeZone(now, timeZone);
     const { key: range, from, toExclusive, prevFrom, prevTo, days } =
-      resolvePeriod(query, { '7d': 7, '30d': 30, '90d': 90 }, '30d');
-    const inactiveCutoff = addDays(startOfDay(new Date()), -29);
+      resolvePeriod(query, { '7d': 7, '30d': 30, '90d': 90 }, '30d', now, timeZone);
+    const inactiveCutoff = zonedMidnight(addCivilDays(todayYmd, -29), timeZone);
 
     const txSelect = {
       type: true,
@@ -230,8 +240,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       }),
     ]);
 
-    const current = summarize(currentTxs);
-    const previous = summarize(previousTxs);
+    const current = summarize(currentTxs, timeZone);
+    const previous = summarize(previousTxs, timeZone);
     const periodRange = { from, to: toExclusive };
     const campaignPeriodTxs = [
       ...currentTxs,
@@ -240,16 +250,17 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     const active30dCount = activeIn30d.length;
     const inactive30d = Math.max(0, totalMembers - active30dCount);
 
+    const fromYmd = ymdInTimeZone(from, timeZone);
     const series = Array.from({ length: days }, (_, i) => {
-      const day = addDays(startOfDay(from), i);
-      const key = dayKey(day);
+      const key = addCivilDays(fromYmd, i);
+      const [, month, dayOfMonth] = key.split('-');
       let stamps = 0;
       let points = 0;
       let redeems = 0;
       const customers = new Set<string>();
       for (const tx of currentTxs) {
         if (shouldOmitFromLedger(tx.metadata)) continue;
-        if (dayKey(tx.createdAt) !== key) continue;
+        if (dayKey(tx.createdAt, timeZone) !== key) continue;
         customers.add(tx.membershipId);
         if (tx.type === 'redeem') redeems += tx.quantity;
         else if (isPointsEarn(tx)) points += tx.quantity;
@@ -259,8 +270,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         date: key,
         label:
           days <= 7
-            ? ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][day.getDay()]
-            : `${day.getDate()}/${day.getMonth() + 1}`,
+            ? ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][civilWeekday(key)]
+            : `${Number(dayOfMonth)}/${Number(month)}`,
         stamps,
         points,
         redeems,
@@ -283,7 +294,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         stats = { visits: 0, stamps: 0, points: 0, redeems: 0 };
         locStats.set(tx.locationId, stats);
       }
-      const visitKey = `${tx.locationId}:${dayKey(tx.createdAt)}:${tx.membershipId}`;
+      const visitKey = `${tx.locationId}:${dayKey(tx.createdAt, timeZone)}:${tx.membershipId}`;
       let visits = locVisitDays.get(tx.locationId);
       if (!visits) {
         visits = new Set();
@@ -476,20 +487,22 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       )
       .slice(0, 12);
 
-    const now = new Date();
     const cohortMonths: Array<{ key: string; label: string; from: Date }> = [];
+    const thisMonth = startOfZonedMonth(now, timeZone);
     for (let i = 4; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = addZonedMonths(thisMonth, -i, timeZone);
+      const ymd = ymdInTimeZone(start, timeZone);
+      const monthIndex = Number(ymd.slice(5, 7)) - 1;
       cohortMonths.push({
-        key: monthKey(d),
-        label: MONTH_SHORT[d.getMonth()],
-        from: d,
+        key: ymd.slice(0, 7),
+        label: MONTH_SHORT[monthIndex]!,
+        from: start,
       });
     }
 
     const membersActiveInPeriod = current.activeMembers;
     const cohorts = cohortMonths.map((m, idx) => {
-      const next = cohortMonths[idx + 1]?.from ?? addDays(now, 1);
+      const next = cohortMonths[idx + 1]?.from ?? addZonedMonths(m.from, 1, timeZone);
       const cohortMembers = memberships.filter(
         (mem) => mem.associatedAt >= m.from && mem.associatedAt < next,
       );

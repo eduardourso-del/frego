@@ -288,18 +288,43 @@ export function PasswordField({
 export function SelectField({
   label,
   className,
+  error,
   children,
   ...props
 }: SelectHTMLAttributes<HTMLSelectElement> & {
   label?: string;
+  error?: string;
   children: ReactNode;
 }) {
   return (
     <label className="block">
-      {label ? <FieldLabel>{label}</FieldLabel> : null}
-      <select className={cx(controlClass, className)} {...props}>
+      {label ? (
+        <FieldLabel className={error ? 'text-[var(--color-danger)]' : undefined}>
+          {label}
+        </FieldLabel>
+      ) : null}
+      <select
+        {...props}
+        aria-invalid={error ? true : props['aria-invalid']}
+        aria-describedby={
+          error && props.id ? `${props.id}-error` : props['aria-describedby']
+        }
+        className={cx(
+          controlClass,
+          error && '!border-[var(--color-danger)] focus:!border-[var(--color-danger)]',
+          className,
+        )}
+      >
         {children}
       </select>
+      {error ? (
+        <p
+          id={props.id ? `${props.id}-error` : undefined}
+          className="mt-1.5 text-[13px] text-[var(--color-danger)]"
+        >
+          {error}
+        </p>
+      ) : null}
     </label>
   );
 }

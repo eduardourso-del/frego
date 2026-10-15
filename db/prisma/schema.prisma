@@ -155,6 +155,8 @@ model Business {
   pointsExpireDays Int?  @map("points_expire_days")
   /// Dias até o cashback expirar após o ganho. null = não expira.
   cashbackExpireDays Int? @map("cashback_expire_days")
+  /// IANA zone derived from the operating UF. Null until that address is saved.
+  timeZone String? @map("time_zone")
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
@@ -177,7 +179,16 @@ model Location {
   id         String   @id @default(cuid())
   businessId String   @map("business_id")
   name       String
+  /// Linha composta para a página pública e o app. As partes abaixo definem o Fuso.
   address    String?
+  postalCode   String? @map("postal_code")
+  street       String?
+  streetNumber String? @map("street_number")
+  complement   String?
+  neighborhood String?
+  city         String?
+  /// UF (2 letters). The oldest unidade with a UF sets Business.timeZone.
+  state        String?
   isOpen     Boolean  @default(true) @map("is_open")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
