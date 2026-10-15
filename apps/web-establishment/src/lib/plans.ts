@@ -57,13 +57,13 @@ export function tierForFeature(feature: PlanFeature): PlanTier {
 
 export function planMenuLabel(billing: BillingView | null | undefined): string | null {
   if (!billing || billing.mode === 'pending' || billing.mode === 'suspended') return null;
-  if (billing.mode === 'locked') return 'Sem Plano';
-  if (billing.source === 'trial') return 'Enterprise · teste';
+  if (billing.mode === 'locked') return 'Pagamento pendente';
+  if (billing.source === 'trial') return 'Enterprise · em teste';
   if (billing.source === 'cortesia' && billing.cortesiaTier) {
     return `${PLAN_LABEL[billing.cortesiaTier]} · cortesia`;
   }
   if (billing.source === 'grace' && billing.tier) {
-    return `${PLAN_LABEL[billing.tier]} · atraso`;
+    return `${PLAN_LABEL[billing.tier]} · em atraso`;
   }
   if (billing.tier) return PLAN_LABEL[billing.tier];
   return null;

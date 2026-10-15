@@ -28,8 +28,8 @@ export function FeatureLocked({
       </h2>
       <p className="mt-3 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
         {owner
-          ? `O que já existe continua guardado. Atualize o Plano para ${PLAN_LABEL[tier]} e volte a usar ${FEATURE_LABEL[feature]}.`
-          : 'Quem é dono do estabelecimento precisa atualizar o Plano para liberar isto.'}
+          ? `O que já existe continua guardado. Atualize para o ${PLAN_LABEL[tier]} e use ${FEATURE_LABEL[feature]}.`
+          : 'O dono do estabelecimento precisa atualizar o Plano para liberar esta parte.'}
       </p>
       {owner ? (
         <Link
@@ -65,8 +65,8 @@ export function BillingLocked({ owner }: { owner: boolean }) {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
           {owner
-            ? 'O balcão e o resto do Frego ficam fechados até o pagamento do Plano confirmar. A cobrança está em Configurações.'
-            : 'Quem é dono do estabelecimento precisa atualizar o Plano. Até lá, o balcão fica fechado.'}
+            ? 'O balcão e o resto do Frego ficam fechados até o pagamento confirmar.'
+            : 'O dono do estabelecimento precisa atualizar o Plano. Até lá, o balcão fica fechado.'}
         </p>
         {owner ? (
           <Link

@@ -69,10 +69,10 @@ export function BillingSettings() {
     : same
       ? 'Plano atual'
       : alreadyScheduled && changeOn
-        ? `Mudança confirmada · ${PLAN_LABEL[selected]} em ${changeOn}`
+        ? `Mudança marcada para ${changeOn}`
         : downgrading
           ? `Confirmar mudança para ${PLAN_LABEL[selected]}`
-          : `Pagar ${formatPlanPrice(due)} na Asaas`;
+          : `Pagar ${formatPlanPrice(due)}`;
 
   async function post(path: string, body?: unknown) {
     setBusy(true);
@@ -96,14 +96,14 @@ export function BillingSettings() {
       };
       if (!res.ok) {
         if (json.error === 'ASAAS_NOT_CONFIGURED') {
-          throw new Error('A cobrança ainda não está ligada. Fale com o Frego.');
+          throw new Error('O pagamento ainda não está disponível. Fale com o Frego.');
         }
         if (json.error === 'OWNER_ONLY') {
-          throw new Error('Só quem é dono do estabelecimento altera o Plano.');
+          throw new Error('Só o dono do estabelecimento muda o Plano.');
         }
         if (json.error === 'CNPJ_REQUIRED') {
           throw new Error(
-            'Informe o CPF ou CNPJ do estabelecimento e salve o perfil. A Asaas só gera a cobrança com ele.',
+            'Informe o CPF ou CNPJ e salve o perfil. Sem isso o pagamento não abre.',
           );
         }
         throw new Error(json.message || 'Não foi possível atualizar o Plano.');
@@ -112,13 +112,13 @@ export function BillingSettings() {
       if (invoice) window.open(invoice, '_blank', 'noopener,noreferrer');
       const date = when(json.result?.appliesAt ?? json.appliesAt ?? null);
       if (path === '/billing/cancel') {
-        setNote(date ? `O Plano encerra em ${date}.` : 'O Plano encerra no fim do período.');
+        setNote(date ? `O Plano segue até ${date} e depois encerra.` : 'O Plano encerra no fim deste período.');
       } else if (json.result?.kind === 'scheduled' || json.appliesAt) {
-        setNote(date ? `A mudança vale em ${date}.` : 'A mudança vale no fim do período já pago.');
+        setNote(date ? `A mudança começa em ${date}.` : 'A mudança começa no fim do período já pago.');
       } else if (json.result?.kind === 'current') {
-        setNote('Este já é o Plano do período.');
+        setNote('Este já é o Plano deste período.');
       } else if (invoice) {
-        setNote('A cobrança abriu na Asaas. Lá você escolhe Pix, boleto ou cartão.');
+        setNote('O pagamento abriu em outra aba. Lá você escolhe Pix, boleto ou cartão.');
       }
       await refresh();
     } catch (err) {
@@ -175,7 +175,7 @@ export function BillingSettings() {
                       </span>
                     ) : billing.scheduledTier === plan.tier ? (
                       <span className="rounded-full bg-[var(--color-ink)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        {changeOn ? `A partir de ${changeOn}` : 'Próximo período'}
+                        {changeOn ? `A partir de ${changeOn}` : 'No próximo período'}
                       </span>
                     ) : null}
                   </span>
@@ -217,28 +217,28 @@ export function BillingSettings() {
               onClick={() => void post('/billing/plan', { tier: selected })}
               className="min-h-11 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white disabled:opacity-60"
             >
-              {busy ? (downgrading ? 'Salvando…' : 'Abrindo cobrança…') : action}
+              {busy ? (downgrading ? 'Salvando…' : 'Abrindo pagamento…') : action}
             </button>
             {alreadyScheduled && changeOn && inForce ? (
               <p className="text-[12px] leading-snug text-[var(--color-neutral-500)]">
-                {PLAN_LABEL[inForce]} segue até {changeOn}. Depois passa para {PLAN_LABEL[selected]}.
+                {PLAN_LABEL[inForce]} segue até {changeOn}. Depois muda para {PLAN_LABEL[selected]}.
               </p>
             ) : same ? null : downgrading ? (
               <p className="text-[12px] leading-snug text-[var(--color-neutral-500)]">
                 {inForce
-                  ? `${PLAN_LABEL[inForce]} segue até ${changeOn ?? 'o fim do período'}. A mudança só vale depois que você confirmar.`
-                  : 'A mudança só vale depois que você confirmar.'}
+                  ? `${PLAN_LABEL[inForce]} segue até ${changeOn ?? 'o fim deste período'}. A mudança começa só depois que você confirmar.`
+                  : 'A mudança começa só depois que você confirmar.'}
               </p>
             ) : (
               <p className="text-[12px] leading-snug text-[var(--color-neutral-500)]">
                 {upgrading
-                  ? `Só a diferença agora. Na página da Asaas você escolhe Pix, boleto ou cartão.`
-                  : 'Na página da Asaas você escolhe Pix, boleto ou cartão.'}
+                  ? 'Agora você paga só a diferença. No pagamento, escolha Pix, boleto ou cartão.'
+                  : 'No pagamento, escolha Pix, boleto ou cartão.'}
               </p>
             )}
             {!business?.cnpj && needsCharge ? (
               <p className="text-[13px] text-[var(--color-neutral-600)]">
-                A Asaas só gera a cobrança com o CPF ou CNPJ.{' '}
+                O pagamento precisa do CPF ou CNPJ.{' '}
                 <a href="#cnpj" className="font-semibold text-[var(--color-ink)]">
                   Informe o CPF ou CNPJ
                 </a>{' '}
@@ -271,7 +271,7 @@ export function BillingSettings() {
         </div>
       ) : (
         <p className="text-[14px] text-[var(--color-neutral-500)]">
-          Só quem é dono do estabelecimento altera o Plano.
+          Só o dono do estabelecimento muda o Plano.
         </p>
       )}
     </section>
@@ -281,21 +281,21 @@ export function BillingSettings() {
 function describe(billing: NonNullable<ReturnType<typeof useBusiness>['business']>['billing']) {
   if (!billing) return '';
   if (billing.mode === 'locked') {
-    return 'O pagamento não confirmou. O balcão fica fechado até a Asaas confirmar.';
+    return 'O pagamento ainda não entrou. O balcão fica fechado até confirmar.';
   }
   if (billing.source === 'trial' && billing.trialEndsAt) {
-    return `Teste do Enterprise até ${when(billing.trialEndsAt)}. O Plano escolhido vale no dia seguinte se o pagamento confirmar.`;
+    return `Enterprise em teste até ${when(billing.trialEndsAt)}. Se o pagamento confirmar, o Plano escolhido começa quando o teste acabar.`;
   }
   if (billing.source === 'cortesia' && billing.cortesiaTier) {
-    return `${PLAN_LABEL[billing.cortesiaTier]} por cortesia, sem cobrança.`;
+    return `${PLAN_LABEL[billing.cortesiaTier]} por cortesia. Sem pagamento.`;
   }
   if (billing.source === 'grace') {
-    return 'A renovação está em atraso. O Frego segue aberto por 3 dias depois do vencimento.';
+    return 'A renovação atrasou. O Frego continua aberto por 3 dias depois do vencimento.';
   }
   const name = billing.tier ? PLAN_LABEL[billing.tier] : 'Plano';
   const next = when(billing.periodEndsAt);
   if (billing.cancelAtPeriodEnd && next) {
-    return `${name} segue até ${next}. Depois o Plano encerra.`;
+    return `${name} segue até ${next}. Depois, o Plano encerra.`;
   }
   if (billing.scheduledTier && next) {
     return `${name} até ${next}. Depois, ${PLAN_LABEL[billing.scheduledTier]}.`;
@@ -304,7 +304,7 @@ function describe(billing: NonNullable<ReturnType<typeof useBusiness>['business'
     ? ` Muda para ${PLAN_LABEL[billing.scheduledTier]}${next ? ` em ${next}` : ''}.`
     : '';
   const cancel = billing.cancelAtPeriodEnd
-    ? ` Cancela${next ? ` em ${next}` : ' no fim do período'}.`
+    ? ` Encerra${next ? ` em ${next}` : ' no fim deste período'}.`
     : '';
-  return `${name}${next ? ` · próxima cobrança ${next}` : ''}.${scheduled}${cancel}`;
+  return `${name}${next ? ` · próximo pagamento ${next}` : ''}.${scheduled}${cancel}`;
 }

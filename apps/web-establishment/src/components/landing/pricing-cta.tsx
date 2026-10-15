@@ -22,9 +22,9 @@ export function LandingPricingCta() {
           Sete dias de Enterprise. Depois, o Plano que couber no balcão.
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-center text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          O teste começa quando o Frego aprova o estabelecimento. Sem cartão
-          para começar. Sem taxa de integração, sem taxa por pedido e sem
-          taxa extra.
+          O teste começa quando o Frego aprova o estabelecimento. Não pedimos
+          cartão para começar. A integração não tem custo, e não cobramos taxa
+          por pedido nem taxa extra.
         </p>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
           {LANDING_PLANS.map((plan) => (

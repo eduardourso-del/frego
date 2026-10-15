@@ -422,7 +422,7 @@ export default function SettingsPage() {
           </p>
         ) : (
           <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-            O Plano do estabelecimento. A cobrança abre na Asaas, onde você escolhe Pix, boleto ou cartão.
+            O Plano do estabelecimento. No pagamento você escolhe Pix, boleto ou cartão.
           </p>
         )}
         {loading && !business ? (
@@ -529,14 +529,14 @@ export default function SettingsPage() {
                         id="cnpj-hint"
                         className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-400)]"
                       >
-                        Informado. Para alterar, fale com a equipe Frego.
+                        Salvo. Para alterar, fale com a equipe Frego.
                       </p>
                     ) : (
                       <p
                         id="cnpj-hint"
                         className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-400)]"
                       >
-                        Não entrou no cadastro. A cobrança do Plano precisa do CPF ou CNPJ.
+                        Faltou no cadastro. O pagamento do Plano precisa do CPF ou CNPJ.
                         Depois de salvar, não dá para alterar por aqui.
                       </p>
                     )}
