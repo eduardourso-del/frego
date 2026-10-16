@@ -52,6 +52,13 @@ class StaffSession extends ChangeNotifier {
         );
         return null;
       }
+      // A blip while the hourly token refreshes is not a sign-out.
+      if (e.code == 'network-request-failed') {
+        throw ApiException(
+          code: 'NETWORK',
+          message: 'Sem conexão para renovar a sessão. Tente de novo.',
+        );
+      }
       throw ApiException(
         code: 'AUTH',
         message: 'Falha ao autenticar (${e.code}). ${e.message ?? ''}'.trim(),
