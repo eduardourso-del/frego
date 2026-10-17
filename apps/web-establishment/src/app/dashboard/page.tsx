@@ -7,7 +7,7 @@ import { FregoIntelligence, type IntelligencePayload } from '@/components/frego-
 import { CampaignPerformanceSection } from '@/components/campaign-performance-section';
 import { TermInfo } from '@/components/term-info';
 import { useAuth } from '@/lib/auth-context';
-import { useBusiness } from '@/lib/business-context';
+import { memberDisplayName, useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { TERM } from '@/lib/term-copy';
 import { WhatsAppAttentionBanner } from '@/components/whatsapp-settings-card';
@@ -377,6 +377,7 @@ export default function DashboardPage() {
     authHeaders,
     businessId,
     business,
+    businesses,
     loading: businessLoading,
   } = useBusiness();
   const kinds = business?.activeEarnKinds;
@@ -389,11 +390,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const firstName = useMemo(() => {
+    const named = memberDisplayName(businesses, businessId);
+    if (named) return named.split(/\s+/)[0] ?? named;
     const email = user?.email;
     if (!email) return 'equipe';
     const local = email.split('@')[0] ?? 'equipe';
     return local.charAt(0).toUpperCase() + local.slice(1);
-  }, [user]);
+  }, [businesses, businessId, user]);
 
   const load = useCallback(async () => {
     if (!businessId) return;

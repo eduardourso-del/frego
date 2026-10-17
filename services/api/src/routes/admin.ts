@@ -68,6 +68,7 @@ const updateBusinessBody = z.object({
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
   status: z.enum(STATUSES).optional(),
+  explorationVisible: z.boolean().optional(),
   slug: z
     .union([
       z
@@ -260,6 +261,7 @@ async function loadBusinessDetail(id: string) {
       name: business.name,
       type: business.type,
       status: business.status,
+      explorationVisible: business.explorationVisible,
       logoUrl: business.logoUrl,
       heroImageUrl: business.heroImageUrl,
       primaryColor: business.primaryColor,
@@ -839,6 +841,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
             ? undefined
             : body.cashbackExpireDays,
         slug: slug === undefined ? undefined : slug,
+        explorationVisible: body.explorationVisible,
       },
     });
 

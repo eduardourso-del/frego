@@ -6,6 +6,7 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/empty_state.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
 import 'campaign_detail_page.dart';
@@ -97,27 +98,29 @@ class _ShopsPageState extends State<ShopsPage> {
           (membershipsRes['memberships'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
 
-      Map<String, dynamic>? customer;
       Map<String, dynamic>? stats;
+      String? displayName;
       try {
         final extras = await Future.wait([
           fetchMyCustomer(),
           fetchMyStats(),
         ]);
-        customer = extras[0]['customer'] as Map<String, dynamic>?;
+        displayName =
+            (extras[0]['customer'] as Map?)?['displayName'] as String?;
         stats = extras[1];
       } catch (_) {
-        // Stats/perfil são extras — lojas ainda devem aparecer.
+        // O resumo é extra — as lojas ainda devem aparecer.
         try {
-          final c = await fetchMyCustomer();
-          customer = c['customer'] as Map<String, dynamic>?;
+          final customer = await fetchMyCustomer();
+          displayName =
+              (customer['customer'] as Map?)?['displayName'] as String?;
         } catch (_) {}
       }
 
       if (!mounted) return;
       setState(() {
         _memberships = memberships;
-        _displayName = customer?['displayName'] as String?;
+        _displayName = displayName;
         _stats = stats;
         _loading = false;
         _hydrated = true;
@@ -438,12 +441,10 @@ class _ShopsPageState extends State<ShopsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final firstName = _firstName;
-
     final top = MediaQuery.paddingOf(context).top;
+    final greeting = _firstName == null ? 'Olá' : 'Olá, $_firstName';
     final expanded = MediaQuery.sizeOf(context).height / 3;
     const toolbar = 68.0;
-    final greeting = firstName != null ? 'Olá, $firstName' : 'Olá';
     final loadingHome = _loading && !_hydrated;
     final balances = loadingHome ? const <_BalanceChip>[] : _balanceChips();
     final summary = loadingHome
@@ -474,8 +475,8 @@ class _ShopsPageState extends State<ShopsPage> {
         expandedHeight: expanded - top,
         centerTitle: false,
         titleSpacing: 20,
-        stretchTriggerOffset: 90,
-        onStretchTrigger: _load,
+        stretchTriggerOffset: 60,
+        onStretchTrigger: () => fregoStretchRefresh(_load),
         titleTextStyle: (Theme.of(context).textTheme.headlineSmall ??
                 const TextStyle())
             .copyWith(
@@ -492,7 +493,7 @@ class _ShopsPageState extends State<ShopsPage> {
             Text(greeting, maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
             const Text(
-              'Seus benefícios em um só lugar',
+              'Suas lojas',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -589,57 +590,13 @@ class _ShopsPageState extends State<ShopsPage> {
           ),
         )
       else if (_memberships.isEmpty)
-        SliverFillRemaining(
+        const SliverFillRemaining(
           hasScrollBody: false,
-          child: Padding(
-            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: FregoColors.primary50,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(
-                    FregoIcons.shopsFilled,
-                    color: FregoColors.ink,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Nenhuma loja ainda',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: FregoColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Peça um carimbo ou pontos no balcão. Quando a loja registrar seu telefone, ela aparece aqui com o saldo.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: FregoColors.neutral500,
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Puxe para atualizar',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: FregoColors.neutral400,
-                  ),
-                ),
-              ],
-            ),
+          child: FregoEmptyState(
+            title: 'Nenhuma loja ainda',
+            body:
+                'Peça um carimbo no balcão. Quando a loja registrar seu telefone, ela aparece aqui.',
+            badge: FregoIcons.shopsFilled,
           ),
         )
       else if (items.isEmpty)
@@ -1403,7 +1360,7 @@ class _PinnedSearchDelegate extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _PinnedSearchDelegate oldDelegate) => false;
 }
 
-/// Top third of the home: Céu Azul, white greeting, prize summary on card.
+/// Top third of Lojas: Céu Azul, title, prize summary on card.
 class _BalanceChip {
   const _BalanceChip({
     required this.icon,

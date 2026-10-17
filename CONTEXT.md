@@ -8,6 +8,10 @@ The Clube, at the till and in the Cliente's pocket. The phone number is the Clie
 The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
+**Unidade**:
+An address where an Estabelecimento operates. Its city and UF decide which Exploração lists that Estabelecimento.
+_Avoid_: loja, filial, location
+
 **Fuso**:
 The civil timezone of an Estabelecimento, taken from the UF of the address where it operates. The Painel's day follows that Fuso.
 _Avoid_: browser timezone, UTC, fuso do usuário
@@ -91,3 +95,21 @@ _Avoid_: reply, submission, response
 **Bônus**:
 The wallet credit an Estabelecimento sets on a Pesquisa. One wallet: a fixed number of carimbos on the shared pile or one Cartela, a fixed number of pontos, a fixed cashback amount, or a double of the pontos or cashback on that earn. It is offered only on an earn that credited that same wallet. With none set, any qualifying earn can open a Convite.
 _Avoid_: prêmio, reward, voucher
+
+**Favorito**:
+A Cliente's mark on an Estabelecimento so she can find it again. It is not a Clube, and only she can see it. The same mark shows on the Clube list and in Exploração.
+_Avoid_: seguir, membership, clube
+
+## Exploração
+
+**Cidade**:
+The city and UF where the Cliente lives, kept on her profile. Only she sets it. It does not have to be a city with a Visível Estabelecimento.
+_Avoid_: endereço, GPS, localização
+
+**Exploração**:
+The city and UF a Cliente is browsing, and the Visível Estabelecimentos there, including ones where she already has a Clube. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
+_Avoid_: lojas, descoberta, catálogo
+
+**Visível**:
+An Estabelecimento an operator has chosen to include in Exploração. It stays out until that choice is made. The public page is not Exploração.
+_Avoid_: ativo, publicado, suspenso, status

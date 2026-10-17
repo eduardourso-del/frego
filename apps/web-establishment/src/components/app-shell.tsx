@@ -18,7 +18,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { useBusiness } from '@/lib/business-context';
+import { memberDisplayName, useBusiness } from '@/lib/business-context';
 import { BusinessLogo } from '@/components/remote-img';
 import { FregoWordmark } from '@/components/brand';
 import { PendingGate } from '@/components/pending-gate';
@@ -86,8 +86,9 @@ export function AppShell({
   const letter = name.trim().charAt(0).toUpperCase() || 'V';
   const logoUrl = business?.logoUrl;
   const primary = business?.primaryColor ?? '#070707';
-  const staffLabel = user?.email?.split('@')[0] ?? 'Equipe';
-  const staffInitials = initialsFrom(user?.email ?? staffLabel);
+  const memberName = memberDisplayName(businesses, businessId);
+  const staffLabel = memberName ?? user?.email?.split('@')[0] ?? 'Equipe';
+  const staffInitials = initialsFrom(memberName ?? user?.email ?? staffLabel);
   const businessBlocked =
     business?.status === 'pending' || business?.status === 'suspended';
 

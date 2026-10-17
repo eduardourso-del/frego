@@ -7,6 +7,7 @@ import '../../session/staff_session.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/native_splash.dart';
+import '../support/support_page.dart';
 import '../till/till_page.dart';
 
 class BusinessGate extends StatefulWidget {
@@ -113,6 +114,10 @@ class _BusinessPicker extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Escolher loja'),
         actions: [
+          TextButton(
+            onPressed: () => openSupport(context),
+            child: const Text('Fale conosco'),
+          ),
           IconButton(
             tooltip: 'Sair',
             onPressed: session.signOut,
@@ -234,6 +239,10 @@ class _StatusScaffold extends StatelessWidget {
                 ),
               ),
               ?extra,
+              TextButton(
+                onPressed: () => openSupport(context),
+                child: const Text('Fale conosco'),
+              ),
             ],
           ),
         ),

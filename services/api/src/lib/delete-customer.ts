@@ -41,6 +41,9 @@ export async function deleteCustomerAccount(input: {
     await tx.deviceToken.deleteMany({
       where: { customerId: input.customerId },
     });
+    await tx.favorite.deleteMany({
+      where: { customerId: input.customerId },
+    });
     await tx.customer.update({
       where: { id: input.customerId },
       data: {
@@ -48,6 +51,11 @@ export async function deleteCustomerAccount(input: {
         phoneLast4: null,
         displayName: null,
         birthday: null,
+        city: null,
+        state: null,
+        browseCity: null,
+        browseState: null,
+        browseCityChosen: false,
         firebaseUid: null,
         notificationsEnabled: false,
         deletedAt: new Date(),

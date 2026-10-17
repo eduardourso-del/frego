@@ -36,9 +36,23 @@ export type BusinessBrand = {
   /** IANA zone from the operating UF. Null until Configurações saves it. */
   timeZone?: string | null;
   role?: string;
+  /** Nome informado no cadastro (dono) ou no convite da equipe. */
+  displayName?: string | null;
   /** Campanhas ativas que o caixa pode registrar: carimbos, pontos, cashback. */
   activeEarnKinds?: Array<'stamps' | 'points' | 'cashback'>;
 };
+
+/** Nome da pessoa logada nesta loja. Vazio quando o cadastro não guardou um. */
+export function memberDisplayName(
+  businesses: BusinessBrand[],
+  businessId: string | null | undefined,
+): string | null {
+  if (!businessId) return null;
+  const name = businesses
+    .find((b) => b.id === businessId)
+    ?.displayName?.trim();
+  return name || null;
+}
 
 type BusinessContextValue = {
   business: BusinessBrand | null;

@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import '../explore/cidade_gate_page.dart';
+import '../explore/explore_page.dart';
 import '../history/history_page.dart';
 import '../profile/profile_page.dart';
 import '../rewards/rewards_page.dart';
@@ -12,6 +14,7 @@ import '../shops/pesquisa_page.dart';
 import '../shops/shop_detail_page.dart';
 import '../shops/shops_page.dart';
 import '../../analytics/frego_telemetry.dart';
+import '../../api/frego_api.dart';
 import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
@@ -19,21 +22,37 @@ import '../../ui/adaptive.dart';
 
 /// Shell do app do cliente: lojas + prêmios + histórico + perfil.
 class CustomerShell extends StatefulWidget {
-  const CustomerShell({super.key, required this.phoneE164});
+  const CustomerShell({
+    super.key,
+    required this.phoneE164,
+    this.deferCidade = false,
+  });
 
   final String phoneE164;
+
+  /// This session skipped Cidade during onboarding. The gate waits for the next open.
+  final bool deferCidade;
 
   @override
   State<CustomerShell> createState() => _CustomerShellState();
 }
 
 class _CustomerShellState extends State<CustomerShell> {
-  static const _tabScreens = ['shops', 'rewards', 'history', 'profile'];
+  static const _tabScreens = [
+    'shops',
+    'explore',
+    'rewards',
+    'history',
+    'profile',
+  ];
 
   int _index = 0;
   int _shopsRefresh = 0;
+  int _exploreRefresh = 0;
   int _rewardsRefresh = 0;
   int _historyRefresh = 0;
+  bool _checkingCidade = false;
+  bool _needsCidade = false;
   late final CupertinoTabController _cupertinoTabs;
 
   @override
@@ -41,6 +60,10 @@ class _CustomerShellState extends State<CustomerShell> {
     super.initState();
     _cupertinoTabs = CupertinoTabController(initialIndex: 0);
     PendingPushOpen.target.addListener(_openPendingPush);
+    if (!widget.deferCidade) {
+      _checkingCidade = true;
+      unawaited(_checkCidade());
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PushService.syncIfAuthorized());
       _openPendingPush();
@@ -53,6 +76,21 @@ class _CustomerShellState extends State<CustomerShell> {
     PendingPushOpen.target.removeListener(_openPendingPush);
     _cupertinoTabs.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkCidade() async {
+    try {
+      final data = await fetchMyCustomer();
+      final customer = data['customer'] as Map<String, dynamic>?;
+      final city = (customer?['city'] as String?)?.trim();
+      if (!mounted) return;
+      setState(() {
+        _checkingCidade = false;
+        _needsCidade = city == null || city.isEmpty;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _checkingCidade = false);
+    }
   }
 
   void _openPendingPush() {
@@ -86,8 +124,9 @@ class _CustomerShellState extends State<CustomerShell> {
       // Soft-refresh in the background — keep the page mounted so content
       // does not flash away.
       if (i == 0) _shopsRefresh++;
-      if (i == 1) _rewardsRefresh++;
-      if (i == 2) _historyRefresh++;
+      if (i == 1) _exploreRefresh++;
+      if (i == 2) _rewardsRefresh++;
+      if (i == 3) _historyRefresh++;
     });
     unawaited(FregoTelemetry.screen(_tabScreens[i]));
   }
@@ -96,6 +135,8 @@ class _CustomerShellState extends State<CustomerShell> {
         phoneE164: widget.phoneE164,
         refreshToken: _shopsRefresh,
       );
+
+  Widget _explorePage() => ExplorePage(refreshToken: _exploreRefresh);
 
   Widget _rewardsPage() => RewardsPage(refreshToken: _rewardsRefresh);
 
@@ -106,6 +147,7 @@ class _CustomerShellState extends State<CustomerShell> {
         onProfileSaved: () {
           setState(() {
             _shopsRefresh++;
+            _exploreRefresh++;
             _rewardsRefresh++;
           });
         },
@@ -114,10 +156,12 @@ class _CustomerShellState extends State<CustomerShell> {
   Widget _pageAt(int index) {
     switch (index) {
       case 1:
-        return _rewardsPage();
+        return _explorePage();
       case 2:
-        return _historyPage();
+        return _rewardsPage();
       case 3:
+        return _historyPage();
+      case 4:
         return _profilePage();
       case 0:
       default:
@@ -127,7 +171,28 @@ class _CustomerShellState extends State<CustomerShell> {
 
   @override
   Widget build(BuildContext context) {
-    if (FregoAdaptive.useCupertino(context)) {
+    if (_checkingCidade) {
+      return const FregoSplash(fregues: true);
+    }
+    final home = FregoAdaptive.useCupertino(context)
+        ? _cupertinoHome()
+        : _materialHome();
+    if (!_needsCidade) return home;
+    return PopScope(
+      canPop: false,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          home,
+          CidadeGatePage(
+            onPicked: () => setState(() => _needsCidade = false),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cupertinoHome() {
       return CupertinoTabScaffold(
         controller: _cupertinoTabs,
         tabBar: CupertinoTabBar(
@@ -146,6 +211,11 @@ class _CustomerShellState extends State<CustomerShell> {
               icon: Icon(FregoIcons.shops),
               activeIcon: Icon(FregoIcons.shopsFilled),
               label: 'Lojas',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(FregoIcons.explore),
+              activeIcon: Icon(FregoIcons.exploreFilled),
+              label: 'Explorar',
             ),
             BottomNavigationBarItem(
               icon: Icon(FregoIcons.rewards),
@@ -170,13 +240,15 @@ class _CustomerShellState extends State<CustomerShell> {
           );
         },
       );
-    }
+  }
 
+  Widget _materialHome() {
     return Scaffold(
       body: IndexedStack(
         index: _index,
         children: [
           _shopsPage(),
+          _explorePage(),
           _rewardsPage(),
           _historyPage(),
           _profilePage(),
@@ -192,6 +264,11 @@ class _CustomerShellState extends State<CustomerShell> {
             icon: Icon(FregoIcons.shops),
             selectedIcon: Icon(FregoIcons.shopsFilled),
             label: 'Lojas',
+          ),
+          NavigationDestination(
+            icon: Icon(FregoIcons.explore),
+            selectedIcon: Icon(FregoIcons.exploreFilled),
+            label: 'Explorar',
           ),
           NavigationDestination(
             icon: Icon(FregoIcons.rewards),

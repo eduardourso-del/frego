@@ -21,9 +21,15 @@ class ShopDetailPage extends StatefulWidget {
   const ShopDetailPage({
     super.key,
     required this.businessId,
+    this.explorationCity,
+    this.explorationState,
   });
 
   final String businessId;
+
+  /// Set when opened from Exploração. Filters Campanhas and orders unidades.
+  final String? explorationCity;
+  final String? explorationState;
 
   @override
   State<ShopDetailPage> createState() => _ShopDetailPageState();
@@ -53,7 +59,15 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       }
     });
     try {
-      final data = await fetchMyWallet(businessId: widget.businessId);
+      final exploring = widget.explorationCity != null &&
+          widget.explorationState != null;
+      final data = exploring
+          ? await fetchExplorationPlace(
+              businessId: widget.businessId,
+              city: widget.explorationCity!,
+              state: widget.explorationState!,
+            )
+          : await fetchMyWallet(businessId: widget.businessId);
       Map<String, dynamic>? convite;
       try {
         convite = await fetchMyConvite(widget.businessId);
@@ -92,7 +106,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       _isFavorite = next;
     });
     try {
-      await setMembershipFavorite(
+      await setFavorite(
         businessId: widget.businessId,
         isFavorite: next,
       );
@@ -389,7 +403,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 Expanded(
                   child: Text(
                     addressLine,
-                    maxLines: 2,
+                    maxLines: 8,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
@@ -757,6 +771,8 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                         context,
                         CampaignDetailPage(
                           businessId: widget.businessId,
+                          explorationCity: widget.explorationCity,
+                          explorationState: widget.explorationState,
                           campaignId: campaignId,
                         ),
                       );
@@ -795,6 +811,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
   }
 
   String? _primaryAddressLine(List<Map<String, dynamic>> locations) {
+    final lines = <String>[];
     for (final loc in locations) {
       final address = (loc['address'] as String?)?.trim() ?? '';
       if (address.isEmpty) continue;
@@ -805,9 +822,10 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               locations.length > 1
           ? '$locName · $address'
           : address;
-      return closed ? '$base · fechado' : base;
+      lines.add(closed ? '$base · fechado' : base);
     }
-    return null;
+    if (lines.isEmpty) return null;
+    return lines.join('\n');
   }
 
   String? _balanceExpiryLine({

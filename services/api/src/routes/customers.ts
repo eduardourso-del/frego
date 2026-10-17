@@ -725,6 +725,16 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     });
     const isNewMembership = !priorMembership;
 
+    const existingFavorite = await prisma.favorite.findUnique({
+      where: {
+        customerId_businessId: {
+          customerId: customer.id,
+          businessId: auth.businessId,
+        },
+      },
+      select: { customerId: true },
+    });
+
     const membership = await prisma.membership.upsert({
       where: {
         customerId_businessId: {
@@ -735,6 +745,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       create: {
         customerId: customer.id,
         businessId: auth.businessId,
+        isFavorite: existingFavorite != null,
       },
       update: {},
     });

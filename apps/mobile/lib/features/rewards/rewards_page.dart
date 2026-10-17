@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../api/frego_api.dart';
+import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/empty_state.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
@@ -299,12 +301,23 @@ class _RewardsPageState extends State<RewardsPage> {
   List<Widget> _bodySlivers({
     required List<_RewardItem> filtered,
   }) {
+    if (_items.isEmpty) {
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: FregoEmptyState(
+            title: 'Nenhum prêmio ainda',
+            body:
+                'Os prêmios das suas lojas aparecem aqui, com o progresso e o resgate.',
+            badge: FregoIcons.rewardsFilled,
+          ),
+        ),
+      ];
+    }
     final children = <Widget>[
-      Text(
-        _items.isEmpty
-            ? 'Quando você acumular em uma loja, os prêmios aparecem aqui.'
-            : 'Campanhas das suas lojas — progresso, validade e resgate.',
-        style: const TextStyle(
+      const Text(
+        'Campanhas das suas lojas — progresso, validade e resgate.',
+        style: TextStyle(
           fontSize: 15,
           height: 1.35,
           color: FregoColors.neutral500,
@@ -346,9 +359,7 @@ class _RewardsPageState extends State<RewardsPage> {
             border: Border.all(color: FregoColors.hairline),
           ),
           child: Text(
-            _items.isEmpty
-                ? 'Nenhum prêmio ainda. Visite uma loja parceira e comece a acumular.'
-                : 'Nada neste filtro. Experimente “Todos”.',
+            'Nada neste filtro. Experimente “Todos”.',
             style: const TextStyle(
               fontSize: 14,
               height: 1.4,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,20 @@ import 'package:flutter/services.dart';
 
 import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
+
+/// [SliverAppBar.onStretchTrigger] runs during layout. Calling setState there
+/// throws, and the reload never starts. Wait for the frame to finish first.
+Future<void> fregoStretchRefresh(Future<void> Function() reload) {
+  final done = Completer<void>();
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      await reload();
+    } finally {
+      if (!done.isCompleted) done.complete();
+    }
+  });
+  return done.future;
+}
 
 /// Preferência de UI nativa: Cupertino no iOS/macOS, Material no Android/web.
 abstract final class FregoAdaptive {

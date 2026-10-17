@@ -27,6 +27,7 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
   String? _error;
   bool _needsOnboarding = false;
   bool _needsNotificationPrompt = false;
+  bool _deferCidade = false;
   String? _phoneE164;
 
   @override
@@ -121,12 +122,13 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
     if (_needsOnboarding) {
       return ProfileSetupPage(
         phoneE164: _phoneE164 ?? '',
-        onCompleted: () async {
+        onCompleted: ({bool citySet = false}) async {
           final showPrompt = await PushService.shouldShowPrePrompt();
           if (!mounted) return;
           setState(() {
             _needsOnboarding = false;
             _needsNotificationPrompt = showPrompt;
+            _deferCidade = !citySet;
           });
         },
       );
@@ -140,7 +142,10 @@ class _CustomerHomeGateState extends State<CustomerHomeGate> {
       );
     }
 
-    return CustomerShell(phoneE164: _phoneE164 ?? '');
+    return CustomerShell(
+      phoneE164: _phoneE164 ?? '',
+      deferCidade: _deferCidade,
+    );
   }
 }
 

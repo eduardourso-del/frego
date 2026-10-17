@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Frego PDV — Uso no balcão</title>
+<style>
+  @font-face {
+    font-family: "Instrument Sans";
+    src: url("../packages/tokens/assets/fonts/InstrumentSans-Regular.ttf") format("truetype");
+    font-weight: 400;
+  }
+  @font-face {
+    font-family: "Instrument Sans";
+    src: url("../packages/tokens/assets/fonts/InstrumentSans-Medium.ttf") format("truetype");
+    font-weight: 500;
+  }
+  @font-face {
+    font-family: "Instrument Sans";
+    src: url("../packages/tokens/assets/fonts/InstrumentSans-SemiBold.ttf") format("truetype");
+    font-weight: 600;
+  }
+  @font-face {
+    font-family: "Instrument Sans";
+    src: url("../packages/tokens/assets/fonts/InstrumentSans-Bold.ttf") format("truetype");
+    font-weight: 700;
+  }
+
+  :root {
+    --ink: #070707;
+    --paper: #f4efe6;
+    --mustard: #ffd900;
+    --muted: #5c564e;
+    --line: #e4ddd2;
+    --card: #fffdf8;
+  }
+
+  @page {
+    size: A4;
+    margin: 16mm 16mm 18mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    color: var(--ink);
+    background: white;
+    font-family: "Instrument Sans", sans-serif;
+    font-size: 11pt;
+    line-height: 1.45;
+  }
+
+  h1, h2, h3 { font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+  h1 { font-size: 28pt; margin: 0 0 8px; }
+  h2 {
+    font-size: 16pt;
+    margin: 22px 0 8px;
+    break-after: avoid;
+  }
+  h3 {
+    font-size: 12.5pt;
+    margin: 14px 0 4px;
+    break-after: avoid;
+  }
+  p { margin: 0 0 8px; }
+  strong { font-weight: 600; }
+
+  .cover {
+    background: var(--ink);
+    color: var(--paper);
+    margin: -16mm -16mm 18px;
+    padding: 28mm 16mm 18mm;
+  }
+  .cover .kicker {
+    font-size: 10pt;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mustard);
+    margin-bottom: 14px;
+  }
+  .cover h1 { color: white; font-size: 36pt; }
+  .cover p { color: #d9d2c6; max-width: 38em; font-size: 12pt; }
+  .cover .meta { margin-top: 22px; font-size: 10pt; color: #b7b0a4; }
+
+  .lead { font-size: 12pt; max-width: 40em; }
+
+  ol, ul { margin: 4px 0 10px; padding-left: 1.15em; }
+  li { margin: 0 0 4px; }
+  li::marker { font-weight: 600; }
+
+  .steps { padding-left: 1.3em; }
+  .steps > li { margin-bottom: 6px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 12px;
+    font-size: 10.5pt;
+    break-inside: avoid;
+  }
+  th, td {
+    text-align: left;
+    vertical-align: top;
+    padding: 7px 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font-size: 9pt;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .note {
+    background: var(--paper);
+    border-left: 4px solid var(--mustard);
+    padding: 8px 12px;
+    margin: 8px 0 12px;
+    break-inside: avoid;
+  }
+  .note p:last-child { margin: 0; }
+
+  .btn {
+    display: inline-block;
+    font-weight: 600;
+    background: var(--ink);
+    color: white;
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 0.95em;
+  }
+
+  section { break-inside: auto; }
+  h2, h3, .note, table, ol { break-inside: avoid; }
+  h2 + p, h3 + p, h3 + ol { break-before: avoid; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <div class="kicker">Frego PDV</div>
+  <h1>Uso no balcão</h1>
+  <p>Como a equipe da loja busca o cliente, registra carimbo, pontos ou cashback e confirma o voucher na entrega do prêmio.</p>
+  <div class="meta">Outubro de 2026 · maquininha Get Smart e tablet no caixa</div>
+</header>
+
+<p class="lead">O Frego PDV é a tela do caixa. Uma pessoa atende com o aparelho na mão. O pagamento no cartão continua no aplicativo de pagamento da Getnet. Campanhas, relatórios e a lista completa de clientes ficam no painel do estabelecimento.</p>
+
+<h2>1. Entrar</h2>
+<p>Abra o <strong>Frego PDV</strong>. A conta é a mesma do painel: e-mail e senha da equipe.</p>
+<ol class="steps">
+  <li>Digite o <strong>E-mail</strong> e a <strong>Senha</strong>.</li>
+  <li>Toque em <strong>Entrar</strong>.</li>
+</ol>
+<p>Se o e-mail ou a senha estiverem errados, a tela avisa <em>E-mail ou senha incorretos</em>. Sem internet, avisa para verificar a conexão da maquininha.</p>
+<p>Quem tem mais de uma loja vê <strong>Escolher loja</strong> e toca no estabelecimento do turno. Loja em análise aparece como <strong>Aguardando aprovação</strong> e o caixa só libera depois que a Frego aprovar. Loja suspensa pede contato com o suporte.</p>
+
+<h2>2. A tela do balcão</h2>
+<p>No topo fica <strong>Balcão</strong> e o nome da loja. O botão da ação principal fica sempre visível, acima do teclado.</p>
+<p>Dois modos, no alto da tela:</p>
+<table>
+  <thead>
+    <tr><th>Modo</th><th>Para quê</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Registrar</strong></td><td>Buscar o cliente e lançar carimbo, pontos ou cashback. É o modo inicial.</td></tr>
+    <tr><td><strong>Voucher</strong></td><td>Confirmar o prêmio quando o cliente mostra o código no aplicativo.</td></tr>
+  </tbody>
+</table>
+<p>Se a loja tiver mais de um programa ativo, <strong>Registrar</strong> mostra também <strong>Carimbos</strong>, <strong>Pontos</strong> e <strong>Cashback</strong>. Só aparece o que estiver ativo em Campanhas, no painel. Sem campanha, o caixa avisa e não registra.</p>
+<p>O menu <strong>⋯</strong> tem <strong>Trocar loja</strong> (quando a conta tem mais de uma) e <strong>Sair</strong>. <strong>Fale conosco</strong> abre o suporte.</p>
+
+<h2>3. Buscar o cliente</h2>
+<p>Em <strong>Registrar</strong>, o campo pede os <strong>últimos 4 dígitos</strong> do celular. Digitar mais números vira o telefone completo, com DDD.</p>
+<ol class="steps">
+  <li>Digite os 4 últimos dígitos, por exemplo <strong>4321</strong>, ou o telefone inteiro.</li>
+  <li>Toque em <strong>Buscar</strong>.</li>
+</ol>
+<p>A ficha mostra o nome, o telefone e os saldos da loja: carimbos, pontos e cashback. Se a loja tiver mais de uma cartela, cada uma aparece com o próprio saldo.</p>
+
+<div class="note">
+  <p>Os 4 dígitos só acham quem já está nesta loja. Para cadastrar alguém novo, o telefone precisa estar completo, com DDD.</p>
+</div>
+
+<h3>Vários clientes com os mesmos 4 dígitos</h3>
+<p>A tela mostra <strong>Vários clientes</strong> e <em>Terminam em 4321. Qual é?</em> Toque na pessoa que está na frente. <strong>Ver N clientes</strong> abre a lista inteira.</p>
+
+<h3>Cliente que já tem o aplicativo, mas não esta loja</h3>
+<p>A ficha avisa que a pessoa já está no Frego e ainda não está associada a este estabelecimento. O botão passa a ser <strong>Adicionar à loja</strong>, ou <strong>Adicionar à loja e carimbar</strong> (ou registrar o gasto, ou o cashback), conforme o programa escolhido.</p>
+
+<h2>4. Dar carimbo</h2>
+<ol class="steps">
+  <li>Em <strong>Registrar</strong>, deixe <strong>Carimbos</strong> selecionado.</li>
+  <li>Busque o cliente.</li>
+  <li>Se houver mais de um lugar para o carimbo, escolha em <strong>Onde entra o carimbo</strong>. Cada opção é o nome da cartela ou do saldo compartilhado.</li>
+  <li>Toque em <strong>Carimbar</strong>.</li>
+</ol>
+<p>Cada toque dá <strong>1 carimbo</strong>. O saldo atualiza na ficha. O valor da compra não é pedido no carimbo.</p>
+
+<h2>5. Registrar pontos</h2>
+<ol class="steps">
+  <li>Selecione <strong>Pontos</strong>.</li>
+  <li>Busque o cliente.</li>
+  <li>Informe o <strong>Valor da compra (R$)</strong>. Atalhos de R$ 20, R$ 40, R$ 60 e R$ 100 preenchem o campo.</li>
+  <li>Confira a prévia, por exemplo <em>+12 pts</em>, e a taxa da loja (<em>R$ 1 → 1 pt</em>, ou a taxa configurada).</li>
+  <li>Toque em <strong>Registrar gasto</strong>.</li>
+</ol>
+
+<h2>6. Registrar cashback e usar o saldo</h2>
+<ol class="steps">
+  <li>Selecione <strong>Cashback</strong>.</li>
+  <li>Busque o cliente.</li>
+  <li>Informe o valor da compra. A tela mostra a porcentagem da loja e a prévia, por exemplo <em>+R$ 2,00 de cashback</em>.</li>
+  <li>Toque em <strong>Registrar cashback</strong>.</li>
+</ol>
+<p>Se o cliente já tem saldo, marque <strong>Usar cashback nesta compra</strong> e digite quanto abater. A linha mostra o desconto e o valor a pagar, por exemplo <em>−R$ 5,00 cashback · a pagar R$ 15,00</em>. O abatimento não pode passar do saldo nem do valor da compra. Isso vale também no modo Pontos, quando há saldo de cashback.</p>
+
+<h2>7. Cadastrar quem ainda não está na loja</h2>
+<p>Busque pelo telefone completo. Se ninguém aparecer, a tela diz <strong>Cliente não encontrado</strong>.</p>
+<ol class="steps">
+  <li>Escolha <strong>Só cadastrar</strong> ou o benefício do momento: carimbar, registrar o gasto ou registrar o cashback.</li>
+  <li>O nome é opcional.</li>
+  <li>Em pontos ou cashback, informe o valor da compra.</li>
+  <li>Toque no botão de baixo. Ele muda com a escolha: <strong>Criar cliente</strong>, <strong>Criar e carimbar</strong>, <strong>Criar e registrar gasto</strong> ou <strong>Criar e registrar cashback</strong>.</li>
+  <li>Confirme no aviso <strong>Criar cliente?</strong>.</li>
+</ol>
+
+<h2>8. Corrigir nome ou telefone</h2>
+<p>Na ficha de quem já está nesta loja, toque em <strong>Corrigir</strong>.</p>
+<ul>
+  <li><strong>Salvar nome</strong> troca só o nome.</li>
+  <li><strong>Passar para este número</strong> muda o telefone. O saldo desta loja (carimbos, pontos, cashback e vouchers) vai junto.</li>
+</ul>
+<div class="note">
+  <p>O telefone é a conta. A troca de número só vale enquanto este cadastro ainda não entrou no aplicativo e existe só nesta loja. Se o número novo já for cliente, o saldo entra na conta dele.</p>
+</div>
+
+<h2>9. Etiquetas</h2>
+<p>Na ficha, toque em <strong>+ Etiqueta</strong>. Marque as que fizerem sentido nesta visita e toque em <strong>Pronto</strong>. <strong>VIP</strong> aparece quando a loja já marcou a pessoa assim. As etiquetas são criadas no painel; no caixa só se escolhe quais usar.</p>
+
+<h2>10. Confirmar o voucher</h2>
+<p>O cliente resgata o prêmio no aplicativo e mostra o código, no formato <strong>K7M-2PQ</strong>, ou o QR.</p>
+<h3>Pelo código</h3>
+<ol class="steps">
+  <li>Mude para <strong>Voucher</strong>. O título vira <strong>Confirmar voucher</strong>.</li>
+  <li>Digite o código, ou toque em <strong>Escanear QR</strong> e aponte para o código no celular. Se a maquininha não tiver câmera, digite o código.</li>
+  <li>O <strong>Valor desta compra (R$)</strong> é opcional. Serve de retorno da campanha e não impede a entrega.</li>
+  <li>Toque em <strong>Usar</strong>.</li>
+  <li>No aviso <strong>Confirmar este voucher?</strong>, confira código, prêmio e nome de quem está na frente. Toque em <strong>Confirmar</strong>.</li>
+</ol>
+<h3>Pela ficha do cliente</h3>
+<p>Depois da busca, a ficha lista <strong>Vouchers em aberto</strong>. Toque em <strong>Confirmar</strong> na linha do prêmio. Se houver mais de dois, <strong>Ver todos os N vouchers</strong> abre a lista.</p>
+<p>O resultado aparece na hora:</p>
+<table>
+  <thead>
+    <tr><th>Aviso</th><th>O que fazer</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Voucher confirmado</strong></td><td>Entregue o prêmio.</td></tr>
+    <tr><td><strong>Voucher já foi usado</strong></td><td>Não entregue de novo.</td></tr>
+    <tr><td><strong>Voucher expirado</strong></td><td>A entrega só segue se você tocar em <strong>Aceitar mesmo assim</strong>.</td></tr>
+    <tr><td><strong>Não encontrado</strong></td><td>Confira o código com o cliente.</td></tr>
+  </tbody>
+</table>
+
+<h2>11. Desfazer um lançamento</h2>
+<p>O último lançamento do caixa ganha o botão <strong>Desfazer</strong>, à esquerda da ação principal. Na ficha, os lançamentos recentes também têm <strong>Desfazer</strong>.</p>
+<p>O aviso <strong>Desfazer lançamento?</strong> lembra: só funciona se o cliente ainda não usou o benefício. Toque em <strong>Desfazer</strong> para estornar, ou <strong>Cancelar</strong> para manter.</p>
+
+<h2>12. Neste turno</h2>
+<p>Enquanto nenhum cliente está aberto, <strong>Neste turno</strong> lista quem já foi atendido nesta sessão. Toque no nome para abrir a ficha de novo, sem redigitar o telefone. A lista zera ao sair do aplicativo.</p>
+
+<h2>13. Suporte</h2>
+<p>Toque em <strong>Fale conosco</strong> na entrada, na escolha da loja ou no balcão.</p>
+<ul>
+  <li>E-mail: <strong>contato@bearlabs.com.br</strong>. <strong>Copiar e-mail</strong> coloca o endereço na área de transferência.</li>
+  <li><strong>Número de série</strong>: na maquininha Get Smart, é o número da etiqueta atrás do aparelho. Fora dela, a tela avisa que o número não está disponível.</li>
+</ul>
+<p>Informe esse número quando falar de um problema no PDV ou na maquininha.</p>
+
+<h2>O que não se faz no PDV</h2>
+<table>
+  <thead>
+    <tr><th>Tarefa</th><th>Onde</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Cobrar no cartão, Pix ou estorno da venda</td><td>Aplicativo de pagamento da Getnet</td></tr>
+    <tr><td>Criar campanha, prêmio, taxa de pontos ou porcentagem de cashback</td><td>Painel do estabelecimento, em Campanhas</td></tr>
+    <tr><td>Relatórios e lista completa de clientes</td><td>Painel do estabelecimento</td></tr>
+    <tr><td>O cliente ver saldo e resgatar</td><td>Aplicativo Frego no celular dele</td></tr>
+  </tbody>
+</table>
+
+</body>
+</html>

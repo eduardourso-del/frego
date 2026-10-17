@@ -20,6 +20,9 @@ import {
   replaceCustomerDeviceToken,
 } from '../lib/push/device-token.js';
 import { deleteCustomerAccount } from '../lib/delete-customer.js';
+import { setCustomerFavorite } from '../lib/favorite.js';
+import { findCity } from '../lib/city.js';
+import { listMunicipalities } from '../lib/municipalities.js';
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -37,6 +40,9 @@ const updateCustomerBody = z.object({
   /** Marca o onboarding do app como concluído. */
   onboardingCompleted: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
+  /** Cidade. Both fields together. Cannot be cleared. */
+  city: z.string().trim().min(1).max(80).optional(),
+  state: z.string().trim().min(2).max(2).optional(),
 });
 
 const deviceTokenBody = z.object({
@@ -55,6 +61,11 @@ const customerPublicSelect = {
   birthday: true,
   onboardingCompleted: true,
   notificationsEnabled: true,
+  city: true,
+  state: true,
+  browseCity: true,
+  browseState: true,
+  browseCityChosen: true,
   createdAt: true,
 } as const;
 
@@ -114,6 +125,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
         ...m.business,
         role: m.role,
         teamMemberId: m.id,
+        displayName: m.displayName,
         activeEarnKinds: earnKinds.get(m.businessId) ?? [],
       });
     }
@@ -125,6 +137,11 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /** Perfil do cliente autenticado (app). Telefone OTP já vincula/mescla o Customer. */
+  app.get('/me/cities', async (request) => {
+    requireCustomerAuth(request);
+    return { cities: listMunicipalities() };
+  });
+
   app.get('/me/customer', async (request) => {
     const auth = requireCustomerAuth(request);
     const customer = await prisma.customer.findUniqueOrThrow({
@@ -150,9 +167,23 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       body.displayName === undefined &&
       body.birthday === undefined &&
       body.onboardingCompleted === undefined &&
-      body.notificationsEnabled === undefined
+      body.notificationsEnabled === undefined &&
+      body.city === undefined &&
+      body.state === undefined
     ) {
       return reply.code(400).send({ error: 'NOTHING_TO_UPDATE' });
+    }
+    if ((body.city === undefined) !== (body.state === undefined)) {
+      return reply.code(400).send({ error: 'CITY_INCOMPLETE' });
+    }
+
+    let cidade: { city: string; state: string } | undefined;
+    if (body.city !== undefined && body.state !== undefined) {
+      const match = findCity(listMunicipalities(), body.city, body.state);
+      if (!match) {
+        return reply.code(400).send({ error: 'CITY_UNKNOWN' });
+      }
+      cidade = match;
     }
 
     const customer = await prisma.customer.update({
@@ -171,6 +202,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           : {}),
         ...(body.notificationsEnabled !== undefined
           ? { notificationsEnabled: body.notificationsEnabled }
+          : {}),
+        ...(cidade
+          ? { city: cidade.city, state: cidade.state }
           : {}),
       },
       select: customerPublicSelect,
@@ -335,17 +369,20 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
     }
 
-    const updated = await prisma.membership.update({
-      where: { id: membership.id },
-      data: { isFavorite: body.isFavorite },
-      select: {
-        id: true,
-        businessId: true,
-        isFavorite: true,
-      },
-    });
+    const updated = await setCustomerFavorite(
+      auth.customerId,
+      businessId,
+      body.isFavorite,
+    );
+    if (!updated) {
+      return reply.code(404).send({ error: 'NOT_FOUND' });
+    }
 
-    return updated;
+    return {
+      id: membership.id,
+      businessId: updated.businessId,
+      isFavorite: updated.isFavorite,
+    };
   });
 
   /**

@@ -9,6 +9,7 @@ import '../../theme/frego_theme.dart';
 import '../../util/money.dart';
 import '../../util/phone.dart';
 import '../../util/voucher.dart';
+import '../support/support_page.dart';
 import 'voucher_scan_sheet.dart';
 
 enum EarnMode { stamps, points, cashback }
@@ -1244,6 +1245,10 @@ class _TillPageState extends State<TillPage> {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () => openSupport(context),
+            child: const Text('Fale conosco'),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(FregoIcons.more),
             onSelected: (value) {

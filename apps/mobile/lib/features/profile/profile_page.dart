@@ -11,6 +11,7 @@ import '../../ui/adaptive.dart';
 import '../../ui/legal_links.dart';
 import '../../ui/skeleton.dart';
 import '../auth/auth_gate.dart';
+import '../explore/city_picker.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -33,6 +34,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _error;
   String? _success;
   DateTime? _birthday;
+  CityChoice? _city;
   int _membershipCount = 0;
   Map<String, dynamic>? _stats;
   bool _notificationsEnabled = true;
@@ -71,12 +73,14 @@ class _ProfilePageState extends State<ProfilePage> {
     return '${d.year}-$month-$day';
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-      _success = null;
-    });
+  Future<void> _load({bool quiet = false}) async {
+    if (!quiet) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _success = null;
+      });
+    }
     try {
       final results = await Future.wait([
         fetchMyCustomer(),
@@ -88,6 +92,7 @@ class _ProfilePageState extends State<ProfilePage> {
       _name.text = (customer['displayName'] as String?) ?? '';
       setState(() {
         _birthday = _parseBirthday(customer['birthday']);
+        _city = CityChoice.fromMap(customer);
         _membershipCount = (data['membershipCount'] as num?)?.toInt() ?? 0;
         _notificationsEnabled = customer['notificationsEnabled'] != false;
         _stats = results[1];
@@ -126,6 +131,32 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _saving = false;
         _success = 'Perfil atualizado';
+      });
+      widget.onProfileSaved?.call();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _pickCity() async {
+    final picked = await pickHomeCity(context, selected: _city);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+      _success = null;
+    });
+    try {
+      await updateMyCustomer(city: picked.city, state: picked.state);
+      if (!mounted) return;
+      setState(() {
+        _city = picked;
+        _saving = false;
+        _success = 'Cidade salva';
       });
       widget.onProfileSaved?.call();
     } catch (e) {
@@ -242,6 +273,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return FregoLargeTitlePage(
       title: 'Perfil',
+      onRefresh: () => _load(quiet: true),
       trailing: cupertino
           ? CupertinoButton(
               padding: EdgeInsets.zero,
@@ -348,6 +380,31 @@ class _ProfilePageState extends State<ProfilePage> {
                 _ReadonlyField(
                   label: 'Telefone',
                   value: widget.phoneE164,
+                ),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: _saving ? null : _pickCity,
+                  child: _ReadonlyField(
+                    label: 'Cidade',
+                    value: _city == null
+                        ? 'Toque para escolher'
+                        : _city!.label,
+                    muted: _city == null,
+                    trailing: const Icon(
+                      FregoIcons.location,
+                      size: 18,
+                      color: FregoColors.neutral500,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Onde você mora. Trocar a cidade aqui não muda a cidade que você está explorando, se você já escolheu outra.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.4,
+                    color: FregoColors.neutral500,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 GestureDetector(

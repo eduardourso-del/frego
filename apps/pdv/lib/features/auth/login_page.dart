@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/frego_theme.dart';
+import '../support/support_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -132,6 +133,14 @@ class _LoginPageState extends State<LoginPage> {
                     child: FilledButton(
                       onPressed: _busy ? null : _submit,
                       child: Text(_busy ? 'Entrando…' : 'Entrar'),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => openSupport(context),
+                      child: const Text('Fale conosco'),
                     ),
                   ),
                 ],

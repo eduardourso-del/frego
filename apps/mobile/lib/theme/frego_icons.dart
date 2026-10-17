@@ -9,6 +9,8 @@ abstract final class FregoIcons {
   // Tabs / navegação principal
   static const shops = Icons.storefront_outlined;
   static const shopsFilled = Icons.storefront_rounded;
+  static const explore = Icons.explore_outlined;
+  static const exploreFilled = Icons.explore_rounded;
   static const rewards = Icons.card_giftcard_outlined;
   static const rewardsFilled = Icons.card_giftcard_rounded;
   static const history = Icons.receipt_long_outlined;

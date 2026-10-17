@@ -31,6 +31,7 @@ type Detail = {
     name: string;
     type: string;
     status: string;
+    explorationVisible: boolean;
     logoUrl: string | null;
     heroImageUrl: string | null;
     primaryColor: string;
@@ -112,12 +113,14 @@ export default function BusinessDetailPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [type, setType] = useState('café');
   const [status, setStatus] = useState('pending');
+  const [explorationVisible, setExplorationVisible] = useState(false);
   const [slogan, setSlogan] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [slug, setSlug] = useState('');
@@ -140,6 +143,7 @@ export default function BusinessDetailPage() {
     setName(b.name);
     setType(b.type);
     setStatus(b.status);
+    setExplorationVisible(b.explorationVisible === true);
     setSlogan(b.slogan ?? '');
     setCnpj(formatCnpj(b.cnpj ?? ''));
     setSlug(b.slug ?? '');
@@ -326,6 +330,46 @@ export default function BusinessDetailPage() {
     }
   }
 
+  async function setVisible(next: boolean) {
+    if (!id || visibilitySaving) return;
+    const previous = explorationVisible;
+    setExplorationVisible(next);
+    setVisibilitySaving(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ explorationVisible: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json.error));
+      if (json.business) {
+        setDetail((current) =>
+          current
+            ? {
+                ...current,
+                business: {
+                  ...current.business,
+                  explorationVisible: json.business.explorationVisible === true,
+                },
+              }
+            : current,
+        );
+      }
+      setToast(next ? 'Visível na exploração' : 'Fora da exploração');
+    } catch (err) {
+      setExplorationVisible(previous);
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setVisibilitySaving(false);
+    }
+  }
+
   const letter = (name || 'V').trim().charAt(0).toUpperCase();
 
   return (
@@ -397,6 +441,34 @@ export default function BusinessDetailPage() {
               </button>
             </div>
           </header>
+
+          <section className="mb-6 flex items-center justify-between gap-4 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+            <div>
+              <p className="text-[16px] font-semibold">Visível na exploração</p>
+              <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                Aparece na aba Explorar do app. Começa desligado.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={explorationVisible}
+              aria-label="Visível na exploração"
+              disabled={visibilitySaving}
+              onClick={() => void setVisible(!explorationVisible)}
+              className={`relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                explorationVisible
+                  ? 'bg-[var(--color-primary-500)]'
+                  : 'bg-[var(--color-neutral-200)]'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                  explorationVisible ? 'translate-x-6' : ''
+                }`}
+              />
+            </button>
+          </section>
 
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[

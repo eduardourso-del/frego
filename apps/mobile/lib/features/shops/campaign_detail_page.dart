@@ -19,10 +19,14 @@ class CampaignDetailPage extends StatefulWidget {
     super.key,
     required this.businessId,
     required this.campaignId,
+    this.explorationCity,
+    this.explorationState,
   });
 
   final String businessId;
   final String campaignId;
+  final String? explorationCity;
+  final String? explorationState;
 
   @override
   State<CampaignDetailPage> createState() => _CampaignDetailPageState();
@@ -48,7 +52,15 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
       }
     });
     try {
-      final data = await fetchMyWallet(businessId: widget.businessId);
+      final exploring = widget.explorationCity != null &&
+          widget.explorationState != null;
+      final data = exploring
+          ? await fetchExplorationPlace(
+              businessId: widget.businessId,
+              city: widget.explorationCity!,
+              state: widget.explorationState!,
+            )
+          : await fetchMyWallet(businessId: widget.businessId);
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -145,7 +157,11 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
   Future<void> _openShop() async {
     await FregoAdaptive.push(
       context,
-      ShopDetailPage(businessId: widget.businessId),
+      ShopDetailPage(
+        businessId: widget.businessId,
+        explorationCity: widget.explorationCity,
+        explorationState: widget.explorationState,
+      ),
     );
     if (mounted) _load();
   }

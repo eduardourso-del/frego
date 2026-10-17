@@ -50,6 +50,8 @@ Future<Map<String, dynamic>> updateMyCustomer({
   bool clearBirthday = false,
   bool onboardingCompleted = true,
   bool? notificationsEnabled,
+  String? city,
+  String? state,
 }) async {
   final headers = await customerAuthHeaders();
   final res = await http.patch(
@@ -62,7 +64,81 @@ Future<Map<String, dynamic>> updateMyCustomer({
       if (!clearBirthday && birthday != null) 'birthday': birthday,
       if (notificationsEnabled != null)
         'notificationsEnabled': notificationsEnabled,
+      if (city != null) 'city': city,
+      if (state != null) 'state': state,
     }),
+  );
+  return _decode(res);
+}
+
+Future<List<Map<String, dynamic>>> fetchHomeCities() async {
+  final headers = await customerAuthHeaders();
+  final res = await http.get(
+    Uri.parse('$apiBaseUrl/me/cities'),
+    headers: headers,
+  );
+  final body = _decode(res);
+  return (body['cities'] as List<dynamic>? ?? [])
+      .cast<Map<String, dynamic>>();
+}
+
+Future<List<Map<String, dynamic>>> fetchExplorationCities() async {
+  final headers = await customerAuthHeaders();
+  final res = await http.get(
+    Uri.parse('$apiBaseUrl/me/exploration/cities'),
+    headers: headers,
+  );
+  final body = _decode(res);
+  return (body['cities'] as List<dynamic>? ?? [])
+      .cast<Map<String, dynamic>>();
+}
+
+Future<Map<String, dynamic>> fetchExploration() async {
+  final headers = await customerAuthHeaders();
+  final res = await http.get(
+    Uri.parse('$apiBaseUrl/me/exploration'),
+    headers: headers,
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> setBrowseCity({
+  required String city,
+  required String state,
+}) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.put(
+    Uri.parse('$apiBaseUrl/me/exploration/city'),
+    headers: headers,
+    body: jsonEncode({'city': city, 'state': state}),
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> fetchExplorationPlace({
+  required String businessId,
+  required String city,
+  required String state,
+}) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.get(
+    Uri.parse('$apiBaseUrl/me/exploration/businesses/$businessId').replace(
+      queryParameters: {'city': city, 'state': state},
+    ),
+    headers: headers,
+  );
+  return _decode(res);
+}
+
+Future<Map<String, dynamic>> setFavorite({
+  required String businessId,
+  required bool isFavorite,
+}) async {
+  final headers = await customerAuthHeaders();
+  final res = await http.patch(
+    Uri.parse('$apiBaseUrl/me/favorites/$businessId'),
+    headers: headers,
+    body: jsonEncode({'isFavorite': isFavorite}),
   );
   return _decode(res);
 }
@@ -127,14 +203,8 @@ Future<Map<String, dynamic>> fetchMyStats() async {
 Future<Map<String, dynamic>> setMembershipFavorite({
   required String businessId,
   required bool isFavorite,
-}) async {
-  final headers = await customerAuthHeaders();
-  final res = await http.patch(
-    Uri.parse('$apiBaseUrl/me/memberships/$businessId/favorite'),
-    headers: headers,
-    body: jsonEncode({'isFavorite': isFavorite}),
-  );
-  return _decode(res);
+}) {
+  return setFavorite(businessId: businessId, isFavorite: isFavorite);
 }
 
 Future<Map<String, dynamic>> putDeviceToken({

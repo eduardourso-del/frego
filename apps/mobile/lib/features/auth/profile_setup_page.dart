@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../api/frego_api.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../explore/city_picker.dart';
 
 class ProfileSetupPage extends StatefulWidget {
   const ProfileSetupPage({
@@ -13,7 +14,7 @@ class ProfileSetupPage extends StatefulWidget {
   });
 
   final String phoneE164;
-  final VoidCallback onCompleted;
+  final void Function({bool citySet}) onCompleted;
 
   @override
   State<ProfileSetupPage> createState() => _ProfileSetupPageState();
@@ -23,6 +24,8 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
   final _name = TextEditingController();
   bool _loading = false;
   String? _error;
+  String? _cityError;
+  CityChoice? _city;
 
   @override
   void dispose() {
@@ -36,16 +39,24 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
       setState(() => _error = 'Informe um nome com pelo menos 2 letras');
       return;
     }
+    final city = _city;
+    if (city == null) {
+      setState(() => _cityError = 'Escolha onde você mora');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
+      _cityError = null;
     });
     try {
       await updateMyCustomer(
         displayName: withName && name.isNotEmpty ? name : null,
+        city: city.city,
+        state: city.state,
       );
       if (!mounted) return;
-      widget.onCompleted();
+      widget.onCompleted(citySet: true);
     } catch (e) {
       setState(() {
         _error = e.toString().replaceFirst('Exception: ', '');
@@ -95,6 +106,36 @@ class _ProfileSetupPageState extends State<ProfileSetupPage> {
               },
               onSubmitted: (_) => _continue(withName: true),
             ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: _loading
+                    ? null
+                    : () async {
+                        final picked = await pickHomeCity(context, selected: _city);
+                        if (picked == null || !mounted) return;
+                        setState(() {
+                          _city = picked;
+                          _cityError = null;
+                        });
+                      },
+                child: Text(
+                  _city == null ? 'Onde você mora' : _city!.label,
+                ),
+              ),
+            ),
+            if (_cityError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 4),
+                child: Text(
+                  _cityError!,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: FregoColors.danger,
+                  ),
+                ),
+              ),
             const Spacer(),
             FregoPrimaryButton(
               label: _loading ? 'Salvando…' : 'Continuar',

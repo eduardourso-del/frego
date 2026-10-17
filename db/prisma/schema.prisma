@@ -130,6 +130,8 @@ model Business {
   /// padaria | café | restaurant | pizzaria | hamburgueria | … (see @frego/tokens BUSINESS_TYPES)
   type      String
   status    BusinessStatus @default(trial)
+  /// Operator included this Estabelecimento in Exploração. Off until chosen.
+  explorationVisible Boolean @default(false) @map("exploration_visible")
   logoUrl   String?        @map("logo_url")
   /// Imagem de capa (hero) da página pública e detalhe no app.
   heroImageUrl String?       @map("hero_image_url")
@@ -171,6 +173,7 @@ model Business {
   billing      BillingAccount?
   whatsapp     BusinessWhatsAppConnection?
   whatsappWebhookEvents WhatsAppWebhookEvent[]
+  favorites    Favorite[]
 
   @@map("businesses")
 }
@@ -244,12 +247,20 @@ model Customer {
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   /// Opt-out de push no app. Default on — OS permission is still required.
   notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+  /// Cidade: where the Cliente lives. City label plus UF.
+  city        String?
+  state       String?
+  /// City Exploração is listing after she picks one. Not her Cidade.
+  browseCity  String?  @map("browse_city")
+  browseState String?  @map("browse_state")
+  browseCityChosen Boolean @default(false) @map("browse_city_chosen")
   /// Set when the customer deletes the in-app account (PII anonymized).
   deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   memberships  Membership[]
+  favorites    Favorite[]
   deviceTokens DeviceToken[]
   transactions Transaction[] @relation("CustomerActorTransactions")
   convites     Convite[]
@@ -298,6 +309,20 @@ model Membership {
   @@index([businessId])
   @@index([customerId, isFavorite])
   @@map("memberships")
+}
+
+/// A Cliente's private mark on an Estabelecimento. Not a Clube.
+model Favorite {
+  customerId String   @map("customer_id")
+  businessId String   @map("business_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, businessId])
+  @@index([businessId])
+  @@map("favorites")
 }
 
 /// House-defined label. Catalog lives on the business; assignment is per membership.
