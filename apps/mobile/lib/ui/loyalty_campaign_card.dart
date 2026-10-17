@@ -174,6 +174,21 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 color: FregoColors.ink,
                               ),
                             ),
+                            if (rewardDescription != null &&
+                                rewardDescription!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                rewardDescription!.trim(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w500,
+                                  color: FregoColors.neutral500,
+                                ),
+                              ),
+                            ],
                             if (scopeLabel != null &&
                                 scopeLabel!.trim().isNotEmpty) ...[
                               const SizedBox(height: 4),

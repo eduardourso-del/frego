@@ -425,7 +425,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
       if (description != null && description.isNotEmpty) ...[
         const SizedBox(height: 20),
         const Text(
-          'Sobre o prêmio',
+          'Descrição',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,

@@ -77,8 +77,9 @@ class _TillPageState extends State<TillPage> {
   List<String> _earnKinds = const [];
   List<CustomerTag> _catalog = const [];
   bool _loading = false;
-  bool _applyCashback = false;
   bool _grantBenefitOnCreate = true;
+  bool _useAllCashback = false;
+  bool _skipCashbackEarn = false;
   String? _error;
   LookupResult? _lookup;
   FulfillResult? _voucherResult;
@@ -137,10 +138,10 @@ class _TillPageState extends State<TillPage> {
   }
 
   int get _applyCents {
-    if (!_saleMode || !_applyCashback || _maxApplyCents <= 0) return 0;
+    if (!_saleMode || _maxApplyCents <= 0) return 0;
     final typed = parseMoneyToCents(_applyAmount.text);
-    final raw = typed ?? _maxApplyCents;
-    return raw < _maxApplyCents ? raw : _maxApplyCents;
+    if (typed == null || typed <= 0) return 0;
+    return typed < _maxApplyCents ? typed : _maxApplyCents;
   }
 
   int get _previewPoints {
@@ -150,6 +151,7 @@ class _TillPageState extends State<TillPage> {
   }
 
   int get _previewCashback {
+    if (_skipCashbackEarn) return 0;
     final cents = _amountCents;
     if (cents == null ||
         _mode != EarnMode.cashback ||
@@ -227,7 +229,16 @@ class _TillPageState extends State<TillPage> {
 
   void _onMoneyChanged() {
     if (!mounted) return;
-    if (_applyCashback && _maxApplyCents > 0) {
+    if (_useAllCashback && _saleMode && _maxApplyCents > 0) {
+      final next = formatCentsAsInput(_maxApplyCents);
+      if (_applyAmount.text != next) {
+        _applyAmount.value = TextEditingValue(
+          text: next,
+          selection: TextSelection.collapsed(offset: next.length),
+        );
+        return;
+      }
+    } else if (_saleMode && _maxApplyCents > 0) {
       final typed = parseMoneyToCents(_applyAmount.text);
       if (typed != null && typed > _maxApplyCents) {
         final next = formatCentsAsInput(_maxApplyCents);
@@ -240,7 +251,38 @@ class _TillPageState extends State<TillPage> {
         }
       }
     }
-    setState(() {});
+    setState(() {
+      if (_amountError && _amountCents != null) _error = null;
+    });
+  }
+
+  void _setUseAllCashback(bool value) {
+    setState(() {
+      _useAllCashback = value;
+      if (!value) {
+        _applyAmount.clear();
+        return;
+      }
+      if (_maxApplyCents > 0) {
+        _applyAmount.text = formatCentsAsInput(_maxApplyCents);
+      }
+    });
+  }
+
+  void _fillCashback() {
+    _setUseAllCashback(true);
+  }
+
+  String _withCashbackUse(String label) {
+    if (_applyCents <= 0) return label;
+    final money = formatBrl(_applyCents);
+    if (_skipCashbackEarn &&
+        (label == 'Registrar cashback' || label == 'Usar cashback')) {
+      return 'Usar $money';
+    }
+    if (label == 'Registrar cashback') return 'Registrar · usar $money';
+    if (label == 'Usar cashback') return 'Usar $money';
+    return '$label · usar $money';
   }
 
   @override
@@ -376,9 +418,10 @@ class _TillPageState extends State<TillPage> {
       _lookup = null;
       _voucherResult = null;
       _lastSale = null;
-      _applyCashback = false;
       _grantBenefitOnCreate = true;
       _applyAmount.clear();
+      _useAllCashback = false;
+      _skipCashbackEarn = false;
       _displayName.clear();
     });
     try {
@@ -527,7 +570,7 @@ class _TillPageState extends State<TillPage> {
     if (lookup.associatedHere && lookup.membershipId != null) {
       if (_canEarn || _cashbackBalance > 0) _earn();
     } else {
-      _createCustomer(withEarn: _canEarn);
+      _createCustomer(withEarn: _grantingCreateBenefit);
     }
   }
 
@@ -575,7 +618,7 @@ class _TillPageState extends State<TillPage> {
 
   String _earnCtaLabel(LookupResult lookup) {
     if (!lookup.associatedHere) {
-      if (!_canEarn) return 'Adicionar à loja';
+      if (!_grantingCreateBenefit) return 'Adicionar à loja';
       return _mode == EarnMode.points
           ? 'Adicionar à loja e registrar'
           : _mode == EarnMode.cashback
@@ -583,13 +626,17 @@ class _TillPageState extends State<TillPage> {
           : 'Adicionar à loja e carimbar';
     }
     if (!_canEarn) {
-      return lookup.cashbackCents > 0 ? 'Usar cashback' : 'Sem campanha ativa';
+      return _withCashbackUse(
+        lookup.cashbackCents > 0 ? 'Usar cashback' : 'Sem campanha ativa',
+      );
     }
-    return _mode == EarnMode.points
-        ? 'Registrar gasto'
-        : _mode == EarnMode.cashback
-        ? 'Registrar cashback'
-        : 'Carimbar';
+    return _withCashbackUse(
+      _mode == EarnMode.points
+          ? 'Registrar gasto'
+          : _mode == EarnMode.cashback
+          ? 'Registrar cashback'
+          : 'Carimbar',
+    );
   }
 
   _TillCta get _buscarCta {
@@ -612,7 +659,7 @@ class _TillPageState extends State<TillPage> {
         );
       }
       return _TillCta(
-        label: _fulfillingId != null ? '…' : 'Usar',
+        label: _fulfillingId != null ? '…' : 'Confirmar',
         onPressed: _fulfillingId != null ? null : _submitVoucher,
         enabled:
             _fulfillingId == null &&
@@ -648,7 +695,9 @@ class _TillPageState extends State<TillPage> {
       );
     }
     final earnableStamps = lookup.stampDestinations.where((d) => d.earnable);
-    final needsStampPick = _mode == EarnMode.stamps &&
+    final offerEarn = lookup.associatedHere || _grantingCreateBenefit;
+    final needsStampPick = offerEarn &&
+        _mode == EarnMode.stamps &&
         earnableStamps.length > 1 &&
         _stampTarget == null;
     final earnDisabled =
@@ -673,6 +722,7 @@ class _TillPageState extends State<TillPage> {
   }
 
   Color? _earnActionColor(LookupResult lookup) {
+    if (!lookup.associatedHere && !_grantingCreateBenefit) return null;
     if (!_canEarn) {
       return lookup.cashbackCents > 0 ? FregoColors.cashback : null;
     }
@@ -1017,7 +1067,7 @@ class _TillPageState extends State<TillPage> {
         phone: phone,
         addFirstStamp: _mode == EarnMode.stamps && withEarn && _amountCents == null,
         displayName: _optionalCreateName,
-        campaignId: _mode == EarnMode.stamps ? _stampTarget : null,
+        campaignId: withEarn && _mode == EarnMode.stamps ? _stampTarget : null,
       );
       setState(
         () => _lookup = created.copyWith(
@@ -1100,6 +1150,9 @@ class _TillPageState extends State<TillPage> {
         quantity: unitKind == 'stamps' ? 1 : null,
         campaignId: unitKind == 'stamps' ? _stampTarget : null,
         applyCashbackCents: applyingLeftover ? _applyCents : null,
+        earnCashback: _skipCashbackEarn && unitKind == 'cashback'
+            ? false
+            : null,
       );
       setState(() {
         _lookup = _lookup?.copyWith(
@@ -1116,7 +1169,8 @@ class _TillPageState extends State<TillPage> {
         _stampTarget = null;
         _amount.clear();
         _applyAmount.clear();
-        _applyCashback = false;
+        _useAllCashback = false;
+        _skipCashbackEarn = false;
       });
       if (_lookup != null) _remember(_lookup!);
       _rememberSale(result.sale);
@@ -1177,6 +1231,65 @@ class _TillPageState extends State<TillPage> {
     }
   }
 
+  String? _announcedError;
+
+  bool get _amountError =>
+      _error != null && _error!.toLowerCase().contains('valor da compra');
+
+  bool get _stampError =>
+      _error != null && _error!.toLowerCase().contains('carimbo entra');
+
+  bool get _phoneSearchError =>
+      _error != null &&
+      (_error!.contains('4 últimos') || _error!.contains('4 ultimos'));
+
+  bool get _fullPhoneError =>
+      _error != null &&
+      _error!.toLowerCase().contains('telefone') &&
+      !_phoneSearchError;
+
+  void _announceError() {
+    if (_error == _announcedError) return;
+    final message = _error;
+    _announcedError = message;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _error != message) return;
+      if (message == null) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        return;
+      }
+      _toastError(message);
+      if (message.toLowerCase().contains('valor da compra')) {
+        _amountFocus.requestFocus();
+      } else if (message.toLowerCase().contains('telefone')) {
+        if (_lookup != null && !_lookup!.found) {
+          _fullPhoneFocus.requestFocus();
+        } else {
+          _queryFocus.requestFocus();
+        }
+      }
+    });
+  }
+
+  void _toastError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          message,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: FregoColors.danger,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   void _toast(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1191,12 +1304,13 @@ class _TillPageState extends State<TillPage> {
       _error = null;
       _voucherResult = null;
       _lastSale = null;
-      _applyCashback = false;
       _grantBenefitOnCreate = true;
       _fullPhone.clear();
       _query.clear();
       _displayName.clear();
       _applyAmount.clear();
+      _useAllCashback = false;
+      _skipCashbackEarn = false;
     });
   }
 
@@ -1215,6 +1329,7 @@ class _TillPageState extends State<TillPage> {
                     : 'Carimbos';
     final searchSettled = _lookup != null && !voucherTask;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    _announceError();
     return Scaffold(
       // Lift the action ourselves so it floats on the keyboard. Scaffold
       // resize leaves the bar under the IME on some Android devices.
@@ -1318,6 +1433,13 @@ class _TillPageState extends State<TillPage> {
                 onChanged: (mode) => setState(() {
                   _mode = mode;
                   _stampTarget = null;
+                  if (mode == EarnMode.stamps) {
+                    _applyAmount.clear();
+                    _useAllCashback = false;
+                    _skipCashbackEarn = false;
+                  } else if (mode != EarnMode.cashback) {
+                    _skipCashbackEarn = false;
+                  }
                 }),
               ),
               const SizedBox(height: 16),
@@ -1347,14 +1469,8 @@ class _TillPageState extends State<TillPage> {
                 controller: _query,
                 focusNode: _queryFocus,
                 onSubmitted: _lookupByQuery,
+                errorText: _phoneSearchError ? _error : null,
               ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _error!,
-                style: const TextStyle(color: FregoColors.danger, fontSize: 13),
-              ),
-            ],
             if (_recents.isNotEmpty && _lookup == null) ...[
               const SizedBox(height: 20),
               const Text(
@@ -1482,9 +1598,14 @@ class _TillPageState extends State<TillPage> {
                             );
                           }
                         },
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Telefone completo',
                           hintText: '(19) 99488-5914',
+                          errorText: _fullPhoneError ? _error : null,
+                          errorStyle: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],
@@ -1523,6 +1644,7 @@ class _TillPageState extends State<TillPage> {
                             ? 0
                             : (_amountCents ?? 0) - _applyCents,
                         showPointsRate: _mode == EarnMode.points,
+                        errorText: _amountError ? _error : null,
                       ),
                   ],
                 ),
@@ -1530,6 +1652,7 @@ class _TillPageState extends State<TillPage> {
             ],
             if (_lookup != null &&
                 _mode == EarnMode.stamps &&
+                (_lookup!.associatedHere || _grantingCreateBenefit) &&
                 (_lookup!.found || _grantingCreateBenefit) &&
                 _lookup!.stampDestinations.where((d) => d.earnable).length >
                     1) ...[
@@ -1558,6 +1681,18 @@ class _TillPageState extends State<TillPage> {
                 ],
               ),
               const SizedBox(height: 12),
+              if (_stampError)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(
+                      color: FregoColors.danger,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
             if (_lookup != null && _lookup!.found && !(_lookup!.multiple)) ...[
               const SizedBox(height: 16),
@@ -1576,15 +1711,25 @@ class _TillPageState extends State<TillPage> {
                 pointsPerReal: _pointsPerReal,
                 previewCashback: _previewCashback,
                 cashbackPercent: _cashbackPercent,
-                applyCashback: _applyCashback,
                 applyCents: _applyCents,
                 paidCents: (_amountCents ?? 0) - _applyCents < 0
                     ? 0
                     : (_amountCents ?? 0) - _applyCents,
-                maxApplyCents: _maxApplyCents,
                 showAmount: _showAmount,
+                amountError: _amountError ? _error : null,
+                grantBenefit: _grantBenefitOnCreate,
+                benefitLabel: _createBenefitToggleLabel,
+                onGrantChanged: (grant) =>
+                    setState(() => _grantBenefitOnCreate = grant),
                 fulfillingId: _fulfillingId,
-                onApplyChanged: (v) => setState(() => _applyCashback = v),
+                onFillCashback: _fillCashback,
+                useAllCashback: _useAllCashback,
+                onUseAllChanged: _setUseAllCashback,
+                skipCashbackEarn: _skipCashbackEarn,
+                onSkipCashbackEarn: (value) =>
+                    setState(() => _skipCashbackEarn = value),
+                showSkipCashbackEarn:
+                    _mode == EarnMode.cashback && _cashbackPercent > 0,
                 onFulfill: (v) => _fulfill(transactionId: v.transactionId),
                 onSeeAllVouchers: () =>
                     _openVouchersSheet(_lookup!.openVouchers),
@@ -1897,11 +2042,13 @@ class _PhoneField extends StatelessWidget {
     required this.controller,
     required this.onSubmitted,
     this.focusNode,
+    this.errorText,
   });
 
   final TextEditingController controller;
   final VoidCallback onSubmitted;
   final FocusNode? focusNode;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -1953,11 +2100,135 @@ class _PhoneField extends StatelessWidget {
                 contentPadding: EdgeInsets.symmetric(
                   vertical: wide ? 22 : 16,
                 ),
+                errorText: errorText,
+                errorStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+class _CashbackUseRow extends StatelessWidget {
+  const _CashbackUseRow({
+    required this.controller,
+    required this.applyCents,
+    required this.paidCents,
+    required this.previewCashback,
+    required this.compraTyped,
+    required this.useAll,
+    required this.onUseAllChanged,
+    required this.showSkipEarn,
+    required this.skipEarn,
+    required this.onSkipEarnChanged,
+    this.focusNode,
+  });
+
+  final TextEditingController controller;
+  final FocusNode? focusNode;
+  final int applyCents;
+  final int paidCents;
+  final int previewCashback;
+  final bool compraTyped;
+  final bool useAll;
+  final ValueChanged<bool> onUseAllChanged;
+  final bool showSkipEarn;
+  final bool skipEarn;
+  final ValueChanged<bool> onSkipEarnChanged;
+
+  String get _slip {
+    if (applyCents <= 0) return 'Marque para usar o saldo todo, ou informe um valor.';
+    if (!compraTyped) return '− ${formatBrl(applyCents)} do saldo';
+    final base = '− ${formatBrl(applyCents)} · a pagar ${formatBrl(paidCents)}';
+    if (previewCashback <= 0) return base;
+    return '$base · entra + ${formatBrl(previewCashback)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: useAll,
+            onChanged: (value) => onUseAllChanged(value ?? false),
+            title: const Text(
+              'Usar todo o saldo',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+          ),
+          TextField(
+            controller: controller,
+            focusNode: focusNode,
+            readOnly: useAll,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600),
+            onChanged: (raw) {
+              final next = maskMoneyInput(raw);
+              if (next != raw) {
+                controller.value = TextEditingValue(
+                  text: next,
+                  selection: TextSelection.collapsed(offset: next.length),
+                );
+              }
+            },
+            decoration: InputDecoration(
+              labelText: 'Cashback',
+              hintText: '0,00',
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: FregoColors.cashbackRing),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(
+                  color: FregoColors.cashback,
+                  width: 1.5,
+                ),
+              ),
+            ),
+          ),
+          if (showSkipEarn)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: skipEarn,
+              onChanged: (value) => onSkipEarnChanged(value ?? false),
+              title: const Text(
+                'Não entra cashback nesta compra',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text(
+                'O cliente só usa o saldo. Esta compra não gera cashback.',
+              ),
+            ),
+          const SizedBox(height: 6),
+          SizedBox(
+            width: double.infinity,
+            child: Text(
+              _slip,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: applyCents > 0 ? FontWeight.w600 : FontWeight.w400,
+                color: applyCents > 0
+                    ? FregoColors.cashback
+                    : FregoColors.neutral500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1973,6 +2244,7 @@ class _AmountField extends StatelessWidget {
     this.applyCents = 0,
     this.paidCents = 0,
     this.showPointsRate = true,
+    this.errorText,
   });
 
   final TextEditingController controller;
@@ -1984,6 +2256,7 @@ class _AmountField extends StatelessWidget {
   final int applyCents;
   final int paidCents;
   final bool showPointsRate;
+  final String? errorText;
 
   @override
   Widget build(BuildContext context) {
@@ -2008,9 +2281,14 @@ class _AmountField extends StatelessWidget {
                 );
               }
             },
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Valor da compra (R\$)',
               hintText: '0,00',
+              errorText: errorText,
+              errorStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -2104,13 +2382,20 @@ class _CustomerCard extends StatelessWidget {
     required this.pointsPerReal,
     required this.previewCashback,
     required this.cashbackPercent,
-    required this.applyCashback,
     required this.applyCents,
     required this.paidCents,
-    required this.maxApplyCents,
     required this.showAmount,
+    this.amountError,
+    required this.grantBenefit,
+    required this.benefitLabel,
+    required this.onGrantChanged,
     required this.fulfillingId,
-    required this.onApplyChanged,
+    required this.onFillCashback,
+    required this.useAllCashback,
+    required this.onUseAllChanged,
+    required this.skipCashbackEarn,
+    required this.onSkipCashbackEarn,
+    required this.showSkipCashbackEarn,
     required this.onFulfill,
     this.amountFocus,
     this.applyFocus,
@@ -2135,13 +2420,20 @@ class _CustomerCard extends StatelessWidget {
   final int pointsPerReal;
   final int previewCashback;
   final int cashbackPercent;
-  final bool applyCashback;
   final int applyCents;
   final int paidCents;
-  final int maxApplyCents;
   final bool showAmount;
+  final String? amountError;
+  final bool grantBenefit;
+  final String benefitLabel;
+  final ValueChanged<bool> onGrantChanged;
   final String? fulfillingId;
-  final ValueChanged<bool> onApplyChanged;
+  final VoidCallback onFillCashback;
+  final bool useAllCashback;
+  final ValueChanged<bool> onUseAllChanged;
+  final bool skipCashbackEarn;
+  final ValueChanged<bool> onSkipCashbackEarn;
+  final bool showSkipCashbackEarn;
   final ValueChanged<OpenVoucher> onFulfill;
   final VoidCallback? onSeeAllVouchers;
   final List<CounterSale> recentSales;
@@ -2160,6 +2452,7 @@ class _CustomerCard extends StatelessWidget {
         earnKinds.contains('cashback') ||
         lookup.cashbackCents > 0 ||
         cashbackPercent > 0;
+    final offerEarn = lookup.associatedHere || grantBenefit;
     final voucherPreview = lookup.openVouchers.take(2).toList();
     final salePreview = recentSales.take(3).toList();
     return _Card(
@@ -2267,14 +2560,22 @@ class _CustomerCard extends StatelessWidget {
               ),
               child: Text(
                 lookup.otherShopsCount > 0
-                    ? 'Já está no Frego — ativo em ${lookup.otherShopsCount} outro(s) estabelecimento(s). Adicione a esta loja para carimbar.'
-                    : 'Já está no Frego (app). Ainda não associado a esta loja — adicione para carimbar.',
+                    ? 'Já está no Frego — ativo em ${lookup.otherShopsCount} outro(s) estabelecimento(s). Ainda não nesta loja.'
+                    : 'Já está no Frego (app). Ainda não associado a esta loja.',
                 style: const TextStyle(
                   color: FregoColors.primary800,
                   fontSize: 13,
                 ),
               ),
             ),
+            if (earnKinds.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _GrantToggle(
+                grant: grantBenefit,
+                benefitLabel: benefitLabel,
+                onChanged: onGrantChanged,
+              ),
+            ],
           ],
           const SizedBox(height: 12),
           _BalanceGrid(
@@ -2315,114 +2616,40 @@ class _CustomerCard extends StatelessWidget {
                   color: FregoColors.cashback,
                   background: FregoColors.cashbackBg,
                   ring: FregoColors.cashbackRing,
-                  caption: cashbackPercent > 0 && mode == EarnMode.cashback
-                      ? '$cashbackPercent% do valor pago'
+                  onTap: offerEarn && showAmount && lookup.cashbackCents > 0
+                      ? onFillCashback
                       : null,
                 ),
             ],
           ),
-            if (lookup.cashbackCents > 0 && mode != EarnMode.stamps)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    value: applyCashback,
-                    onChanged: (v) => onApplyChanged(v ?? false),
-                    title: const Text(
-                      'Usar cashback nesta compra',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  if (applyCashback) ...[
-                    TextField(
-                      controller: applyAmount,
-                      focusNode: applyFocus,
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      onTap: () {
-                        if (applyAmount.text.isEmpty && maxApplyCents > 0) {
-                          applyAmount.text = formatCentsAsInput(maxApplyCents);
-                        }
-                      },
-                      onChanged: (raw) {
-                        final next = maskMoneyInput(raw);
-                        if (next != raw) {
-                          applyAmount.value = TextEditingValue(
-                            text: next,
-                            selection: TextSelection.collapsed(
-                              offset: next.length,
-                            ),
-                          );
-                        }
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Valor a usar (R\$)',
-                        hintText: maxApplyCents > 0
-                            ? formatCentsAsInput(maxApplyCents)
-                            : '0,00',
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: FregoColors.cashbackRing,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(
-                            color: FregoColors.cashback,
-                            width: 1.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  Text(
-                    applyCashback && applyCents > 0
-                        ? 'Remove ${formatBrl(applyCents)} da carteira. O caixa de vocês cobra ${formatBrl(paidCents)}.'
-                        : 'Saldo disponível ${formatBrl(lookup.cashbackCents)}. Informe quanto o outro sistema descontou.',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: FregoColors.cashback,
-                    ),
-                  ),
-                ],
-              ),
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: Text(
-              mode == EarnMode.cashback
-                  ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
-                  : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher abaixo ao entregar o prêmio.',
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: FregoColors.neutral500,
-              ),
-            ),
-          ),
-          if (showAmount &&
-              (mode == EarnMode.points || mode == EarnMode.cashback))
+          if (offerEarn &&
+              showAmount &&
+              (mode == EarnMode.points || mode == EarnMode.cashback)) ...[
             _AmountField(
               controller: amount,
               focusNode: amountFocus,
               previewPoints: previewPoints,
               pointsPerReal: pointsPerReal,
-              previewCashback: previewCashback,
+              previewCashback: applyCents > 0 ? 0 : previewCashback,
               cashbackPercent: cashbackPercent,
-              applyCents: applyCents,
-              paidCents: paidCents,
               showPointsRate: mode == EarnMode.points,
+              errorText: amountError,
             ),
+            if (lookup.cashbackCents > 0)
+              _CashbackUseRow(
+                controller: applyAmount,
+                focusNode: applyFocus,
+                applyCents: applyCents,
+                paidCents: paidCents,
+                previewCashback: previewCashback,
+                compraTyped: parseMoneyToCents(amount.text) != null,
+                useAll: useAllCashback,
+                onUseAllChanged: onUseAllChanged,
+                showSkipEarn: showSkipCashbackEarn,
+                skipEarn: skipCashbackEarn,
+                onSkipEarnChanged: onSkipCashbackEarn,
+              ),
+          ],
           if (lookup.openVouchers.isNotEmpty) ...[
             const SizedBox(height: 12),
             _OpenVouchers(
@@ -2438,19 +2665,46 @@ class _CustomerCard extends StatelessWidget {
                 ),
               ),
           ],
-          if (showAmount &&
+          if (offerEarn &&
+              showAmount &&
               mode != EarnMode.points &&
-              mode != EarnMode.cashback)
+              mode != EarnMode.cashback) ...[
             _AmountField(
               controller: amount,
               focusNode: amountFocus,
               previewPoints: previewPoints,
               pointsPerReal: pointsPerReal,
-              previewCashback: previewCashback,
+              previewCashback: applyCents > 0 ? 0 : previewCashback,
               cashbackPercent: cashbackPercent,
-              applyCents: applyCents,
-              paidCents: paidCents,
-              showPointsRate: mode == EarnMode.points,
+              showPointsRate: false,
+              errorText: amountError,
+            ),
+            if (lookup.cashbackCents > 0)
+              _CashbackUseRow(
+                controller: applyAmount,
+                focusNode: applyFocus,
+                applyCents: applyCents,
+                paidCents: paidCents,
+                previewCashback: previewCashback,
+                compraTyped: parseMoneyToCents(amount.text) != null,
+                useAll: useAllCashback,
+                onUseAllChanged: onUseAllChanged,
+                showSkipEarn: showSkipCashbackEarn,
+                skipEarn: skipCashbackEarn,
+                onSkipEarnChanged: onSkipCashbackEarn,
+              ),
+          ],
+          if (mode != EarnMode.cashback && offerEarn)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text(
+                'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher abaixo ao entregar o prêmio.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: FregoColors.neutral500,
+                ),
+              ),
             ),
           if (recentSales.isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -2588,7 +2842,7 @@ class _PoolTile extends StatelessWidget {
     required this.color,
     required this.background,
     required this.ring,
-    this.caption,
+    this.onTap,
   });
 
   final String label;
@@ -2596,11 +2850,11 @@ class _PoolTile extends StatelessWidget {
   final Color color;
   final Color background;
   final Color ring;
-  final String? caption;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final tile = Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -2627,15 +2881,16 @@ class _PoolTile extends StatelessWidget {
             value,
             style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w600),
           ),
-          if (caption != null && caption!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                caption!,
-                style: TextStyle(fontSize: 12, color: color),
-              ),
-            ),
         ],
+      ),
+    );
+    if (onTap == null) return tile;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: tile,
       ),
     );
   }

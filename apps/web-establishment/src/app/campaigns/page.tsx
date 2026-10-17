@@ -675,7 +675,7 @@ function CampaignsPageContent() {
         cashbackPercent:
           form.type === 'cashback' ? form.cashbackPercent : undefined,
         rewardTitle: form.rewardTitle || undefined,
-        rewardDescription: form.rewardDescription || undefined,
+        rewardDescription: form.rewardDescription.trim() || null,
         rewardImageUrl: form.rewardImageUrl || null,
         audienceSegmentId: form.audienceSegmentId || null,
         ...(form.type === 'promo'

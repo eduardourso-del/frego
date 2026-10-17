@@ -22,6 +22,7 @@ import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
 import { reminderRoutes } from './routes/reminders.js';
 import { startAccountReminderSchedule } from './lib/reminders/run.js';
+import { allowEmptyJsonBody } from './lib/json-body.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -36,6 +37,8 @@ async function main() {
           : undefined,
     },
   });
+
+  allowEmptyJsonBody(app);
 
   await app.register(cors, {
     origin: true,

@@ -47,7 +47,14 @@ const campaignFields = z.object({
   stampsNeeded: z.number().int().positive().max(10_000).optional(),
   pointsPerReal: z.number().int().positive().max(100).optional(),
   rewardTitle: z.string().max(80).optional(),
-  rewardDescription: z.string().max(200).optional(),
+  rewardDescription: z
+    .union([z.string().max(200), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v == null) return v;
+      const trimmed = v.trim();
+      return trimmed.length ? trimmed : null;
+    }),
   rewardImageUrl: z
     .union([z.string().url().max(2000), z.literal(''), z.null()])
     .optional()

@@ -423,6 +423,8 @@ class _WalletPageState extends State<WalletPage> {
                                 final daysUntil =
                                     (c['daysUntilBirthday'] as num?)?.toInt();
                                 final unlocksAt = c['unlocksAt'] as String?;
+                                final description =
+                                    (c['rewardDescription'] as String?)?.trim();
 
                                 if (isCashback) {
                                   final primary = _parseHex(
@@ -453,6 +455,7 @@ class _WalletPageState extends State<WalletPage> {
                                       rewardTitle: c['rewardTitle']
                                               as String? ??
                                           'Volta em R\$',
+                                      rewardDescription: description,
                                       canRedeem: false,
                                       buttonLabel: lockedReason == 'audience'
                                           ? 'Indisponível pra você'
@@ -564,8 +567,7 @@ class _WalletPageState extends State<WalletPage> {
                                       rewardTitle: c['rewardTitle']
                                               as String? ??
                                           'Prêmio',
-                                      rewardDescription:
-                                          c['rewardDescription'] as String?,
+                                      rewardDescription: description,
                                       rewardImageUrl:
                                           c['rewardImageUrl'] as String?,
                                       canRedeem: canRedeem,
@@ -664,6 +666,21 @@ class _WalletPageState extends State<WalletPage> {
                                             ),
                                           ],
                                         ),
+                                        if (description != null &&
+                                            description.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            description,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              height: 1.35,
+                                              fontWeight: FontWeight.w500,
+                                              color: FregoColors.neutral500,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(height: 6),
                                         Text(
                                           subtitle,

@@ -228,6 +228,8 @@ Future<Map<String, dynamic>> deleteMyAccount() async {
   final res = await http.delete(
     Uri.parse('$apiBaseUrl/me/customer'),
     headers: headers,
+    // Auth headers always set application/json. Fastify 400s an empty body.
+    body: '{}',
   );
   return _decode(res);
 }

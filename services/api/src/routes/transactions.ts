@@ -48,6 +48,8 @@ const createTxBody = z.object({
   amountCents: z.number().int().positive().max(10_000_000).optional(),
   /** Desconto de cashback a aplicar nesta venda (centavos). */
   applyCashbackCents: z.number().int().min(0).max(10_000_000).optional(),
+  /** Quando false, a compra não gera cashback novo. O saldo só sai se houver apply. */
+  earnCashback: z.boolean().optional(),
 });
 
 export const transactionRoutes: FastifyPluginAsync = async (app) => {
@@ -202,8 +204,10 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
 
     const paidCents = (amountCents ?? 0) - applied;
     const minPurchase = business.cashbackMinPurchaseCents ?? 0;
+    const earnCashback = body.earnCashback !== false;
     let cashbackEarned = 0;
     if (
+      earnCashback &&
       unitKind === 'cashback' &&
       cashbackEarn &&
       amountCents != null &&
@@ -219,8 +223,9 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
     if (unitKind === 'cashback' && applied === 0 && cashbackEarned === 0) {
       return reply.code(400).send({
         error: 'CASHBACK_NOTHING_TO_RECORD',
-        message:
-          'Ative uma campanha de cashback com porcentagem, ou aplique saldo existente.',
+        message: earnCashback
+          ? 'Ative uma campanha de cashback com porcentagem, ou aplique saldo existente.'
+          : 'Para não entrar cashback, use o saldo nesta compra.',
       });
     }
 

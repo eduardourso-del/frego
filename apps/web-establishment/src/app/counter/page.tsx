@@ -260,6 +260,7 @@ export default function CounterPage() {
   const [error, setError] = useState<string | null>(null);
   const [lookup, setLookup] = useState<LookupResult | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [toastTone, setToastTone] = useState<'ok' | 'danger'>('ok');
   const [lastSale, setLastSale] = useState<CounterSale | null>(null);
   const [pendingUndo, setPendingUndo] = useState<CounterSale | null>(null);
   const [pendingCreate, setPendingCreate] = useState(false);
@@ -270,8 +271,9 @@ export default function CounterPage() {
   const [focus, setFocus] = useState<TillFocus>('none');
   const [overlay, setOverlay] = useState<CounterOverlay>(null);
   const [canScan, setCanScan] = useState(true);
-  const [applyCashback, setApplyCashback] = useState(false);
   const [applyAmount, setApplyAmount] = useState('');
+  const [useAllCashback, setUseAllCashback] = useState(false);
+  const [skipCashbackEarn, setSkipCashbackEarn] = useState(false);
   const [fulfillingId, setFulfillingId] = useState<string | null>(null);
   const [fetchedKinds, setFetchedKinds] = useState<EarnMode[] | null>(null);
   const [shopDestinations, setShopDestinations] = useState<StampDestination[]>(
@@ -343,17 +345,19 @@ export default function CounterPage() {
       : Math.min(cashbackBalance, amountCents ?? cashbackBalance);
   const typedApply = parseMoneyToCents(applyAmount);
   const applyCents =
-    saleMode && applyCashback && maxApplyCents > 0
-      ? Math.min(typedApply ?? maxApplyCents, maxApplyCents)
+    saleMode && maxApplyCents > 0 && typedApply != null && typedApply > 0
+      ? Math.min(typedApply, maxApplyCents)
       : 0;
   const paidCents = Math.max(0, (amountCents ?? 0) - applyCents);
   const previewCashback =
-    earnMode === 'cashback' &&
-    canEarnCashback &&
-    cashbackPercent > 0 &&
-    paidCents > 0
-      ? Math.floor((paidCents * cashbackPercent) / 100)
-      : 0;
+    skipCashbackEarn
+      ? 0
+      : earnMode === 'cashback' &&
+          canEarnCashback &&
+          cashbackPercent > 0 &&
+          paidCents > 0
+        ? Math.floor((paidCents * cashbackPercent) / 100)
+        : 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -393,17 +397,51 @@ export default function CounterPage() {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3200);
+    const t = setTimeout(() => setToast(null), toastTone === 'danger' ? 4200 : 3200);
     return () => clearTimeout(t);
-  }, [toast]);
+  }, [toast, toastTone]);
 
   useEffect(() => {
-    if (!applyCashback || maxApplyCents <= 0) return;
+    if (!error) return;
+    setToastTone('danger');
+    setToast(error);
+    const field = issueField(error);
+    if (field === 'amount') {
+      setFocus('amount');
+      document
+        .getElementById('compra-valor')
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    } else if (field === 'fullPhone') {
+      setFocus('fullPhone');
+    } else if (field === 'phone') {
+      setFocus('phone');
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (error && issueField(error) === 'amount' && amountCents != null) {
+      setError(null);
+    }
+  }, [amountCents, error]);
+
+  useEffect(() => {
+    if (!saleMode) return;
+    if (useAllCashback) {
+      if (maxApplyCents <= 0) {
+        setUseAllCashback(false);
+        setApplyAmount('');
+        return;
+      }
+      const next = formatCentsAsInput(maxApplyCents);
+      if (applyAmount !== next) setApplyAmount(next);
+      return;
+    }
+    if (maxApplyCents <= 0) return;
     const typed = parseMoneyToCents(applyAmount);
     if (typed != null && typed > maxApplyCents) {
       setApplyAmount(formatCentsAsInput(maxApplyCents));
     }
-  }, [applyCashback, applyAmount, maxApplyCents]);
+  }, [saleMode, useAllCashback, applyAmount, maxApplyCents]);
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1400px)');
@@ -485,6 +523,7 @@ export default function CounterPage() {
       setOverlay(null);
       const phoneNow = data.customer?.phoneE164 ?? previousPhone;
       const nameNow = data.customer?.displayName ?? '';
+      setToastTone('ok');
       setToast(
         data.moved || phoneNow !== previousPhone
           ? 'Saldo passado para o número certo.'
@@ -597,12 +636,12 @@ export default function CounterPage() {
         setLastSale(null);
       }
       setPendingUndo(null);
+      setToastTone('ok');
       setToast(data.message ?? 'Lançamento desfeito.');
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Não foi possível desfazer.';
       setError(message);
-      setToast(message);
     } finally {
       setReversingId(null);
     }
@@ -615,7 +654,8 @@ export default function CounterPage() {
     setLookup(null);
     setVoucherResult(null);
     setApplyAmount('');
-    setApplyCashback(false);
+    setUseAllCashback(false);
+    setSkipCashbackEarn(false);
     setLastSale(null);
     setPendingUndo(null);
     setCreateName('');
@@ -839,6 +879,7 @@ export default function CounterPage() {
         return;
       }
 
+      setToastTone('ok');
       setToast(
         data.sale
           ? null
@@ -901,6 +942,9 @@ export default function CounterPage() {
             ? { campaignId: stampTarget }
             : {}),
           ...(applyingLeftover ? { applyCashbackCents: applyCents } : {}),
+          ...(skipCashbackEarn && unitKind === 'cashback'
+            ? { earnCashback: false }
+            : {}),
         }),
       });
       const data = await res.json();
@@ -940,10 +984,12 @@ export default function CounterPage() {
       });
       rememberSale(sale);
       setStampTarget(null);
+      setToastTone('ok');
       setToast(sale ? null : data.message);
       setAmount('');
       setApplyAmount('');
-      setApplyCashback(false);
+      setUseAllCashback(false);
+      setSkipCashbackEarn(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível registrar.');
     } finally {
@@ -1087,6 +1133,7 @@ export default function CounterPage() {
       });
       setVoucherCode('');
       if (!data.alreadyUsed) {
+        setToastTone('ok');
         setToast(data.message ?? 'Voucher confirmado.');
       }
 
@@ -1176,8 +1223,8 @@ export default function CounterPage() {
         ? 'cadastrar e registrar o cashback'
         : 'cadastrar e dar o primeiro carimbo';
   const foundAction = lookup?.associatedHere
-    ? primaryAction
-    : !canEarn
+    ? withCashbackUse(primaryAction, applyCents, skipCashbackEarn)
+    : !grantingCreateBenefit
       ? 'Adicionar à loja'
       : earnMode === 'points'
         ? 'Adicionar à loja e registrar'
@@ -1189,11 +1236,15 @@ export default function CounterPage() {
   const customerResolved = Boolean(
     lookup?.found && lookup.customer && !lookup.multiple,
   );
+  const linkingOnly =
+    customerResolved && !lookup?.associatedHere && !grantingCreateBenefit;
   const awaitingCreate = Boolean(
     lookup && !lookup.found && !lookup.multiple,
   );
   const searchSettled = Boolean(lookup) && tillTask === 'earn';
-  const actionTone: StickyTone = !canEarn
+  const actionTone: StickyTone = linkingOnly
+    ? 'primary'
+    : !canEarn
     ? canApplyLeftover
       ? 'cashback'
       : 'primary'
@@ -1207,6 +1258,7 @@ export default function CounterPage() {
   // gray the button out and swallow the search.
   const stampChoiceOnScreen =
     needsStampPick &&
+    !linkingOnly &&
     (customerResolved || (awaitingCreate && grantingCreateBenefit));
   const stickyLabel =
     !voucherTask && stampChoiceOnScreen
@@ -1218,7 +1270,7 @@ export default function CounterPage() {
       : voucherTask
         ? fulfillingId
           ? '…'
-          : 'Usar'
+          : 'Confirmar'
         : customerResolved
           ? foundAction
           : awaitingCreate
@@ -1273,12 +1325,14 @@ export default function CounterPage() {
     setStampTarget(null);
     setError(null);
     setVoucherResult(null);
-    setApplyCashback(false);
     setLastSale(null);
     setQuery('');
     setCreateName('');
     setFullPhone('');
     setGrantBenefitOnCreate(true);
+    setApplyAmount('');
+    setUseAllCashback(false);
+    setSkipCashbackEarn(false);
     setFocus('none');
   }
 
@@ -1308,7 +1362,7 @@ export default function CounterPage() {
     }
     if (customerResolved && lookup) {
       if (lookup.associatedHere && lookup.membership) void earn();
-      else void createCustomer(canEarn);
+      else void createCustomer(grantingCreateBenefit);
       return;
     }
     if (awaitingCreate) {
@@ -1324,7 +1378,7 @@ export default function CounterPage() {
       return;
     }
     if (lookup.associatedHere && lookup.membership) void earn();
-    else void createCustomer(canEarn);
+    else void createCustomer(grantingCreateBenefit);
   }
 
   return (
@@ -1607,7 +1661,16 @@ export default function CounterPage() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setEarnMode(key)}
+                    onClick={() => {
+                      setEarnMode(key);
+                      if (key === 'stamps') {
+                        setApplyAmount('');
+                        setUseAllCashback(false);
+                        setSkipCashbackEarn(false);
+                      } else if (key !== 'cashback') {
+                        setSkipCashbackEarn(false);
+                      }
+                    }}
                     className={`flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-[11px] px-1 text-[13px] font-semibold whitespace-nowrap transition-all sm:gap-2 sm:text-[14px] ${
                       selected
                         ? selectedClass
@@ -1628,13 +1691,20 @@ export default function CounterPage() {
           </p>
         ) : null}
 
-        {earnMode === 'stamps' && customerResolved ? (
-          <StampPick
-            destinations={earnableStamps}
-            value={stampTarget}
-            onChange={setStampTarget}
-            className="mb-3"
-          />
+        {earnMode === 'stamps' && customerResolved && !linkingOnly ? (
+          <>
+            <StampPick
+              destinations={earnableStamps}
+              value={stampTarget}
+              onChange={setStampTarget}
+              className="mb-3"
+            />
+            {error && issueField(error) === 'stamp' ? (
+              <p className="mb-3 text-[15px] font-semibold text-[var(--color-danger)]" role="alert">
+                {error}
+              </p>
+            ) : null}
+          </>
         ) : null}
 
         {lookup ? null : (
@@ -1658,26 +1728,20 @@ export default function CounterPage() {
               className={`mt-2 min-h-20 w-full rounded-[12px] border bg-[var(--color-card)] px-3 text-center text-[35px] font-semibold leading-none md:min-h-24 md:text-[43px] ${
                 isLast4 ? 'tracking-[0.2em]' : 'tracking-normal'
               } ${
-                error
+                error && issueField(error) === 'phone'
                   ? 'border-[var(--color-danger)]'
                   : 'border-[var(--color-neutral-200)] focus:border-[var(--color-primary-500)]'
               }`}
               placeholder={isLast4 ? '4321' : '(11) 98765-4321'}
             />
           </label>
-          {error && (
-            <p className="text-[13px] text-[var(--color-danger)]" role="alert">
+          {error && issueField(error) === 'phone' && (
+            <p className="text-[15px] font-semibold text-[var(--color-danger)]" role="alert">
               {error}
             </p>
           )}
         </form>
         )}
-
-        {lookup && error ? (
-          <p className="mt-3 text-[13px] text-[var(--color-danger)]" role="alert">
-            {error}
-          </p>
-        ) : null}
 
         {lookup?.multiple && lookup.matches && (
           <section className="mt-4 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
@@ -1706,50 +1770,42 @@ export default function CounterPage() {
                 : 'Busca pelos 4 dígitos não achou. Informe o telefone completo com DDD para cadastrar.'}
             </p>
             {canEarn ? (
-              <div className="mt-4 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
-                {(
-                  [
-                    { grant: false, label: 'Só cadastrar' },
-                    { grant: true, label: createBenefitToggleLabel },
-                  ] as const
-                ).map((opt) => {
-                  const selected = grantBenefitOnCreate === opt.grant;
-                  return (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => setGrantBenefitOnCreate(opt.grant)}
-                      className={`flex min-h-11 flex-1 items-center justify-center rounded-[11px] px-2 text-center text-[13px] font-semibold ${
-                        selected
-                          ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
-                          : 'text-[var(--color-neutral-500)]'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <GrantToggle
+                grant={grantBenefitOnCreate}
+                benefitLabel={createBenefitToggleLabel}
+                onChange={setGrantBenefitOnCreate}
+              />
             ) : null}
             {queryIsFullPhone ? (
               <p className="mt-4 font-mono text-[28px] font-semibold tracking-wide text-[var(--color-ink)] md:text-[36px]">
                 {formatPhoneBr(digitsOnly(query))}
               </p>
             ) : (
-              <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
-                Telefone completo
-                <input
-                  ref={fullPhoneRef}
-                  value={fullPhone}
-                  onChange={(e) => setFullPhone(formatPhoneBr(e.target.value))}
-                  onFocus={() => setFocus('fullPhone')}
-                  onBlur={() => setFocus((f) => (f === 'fullPhone' ? 'none' : f))}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  className="mt-2 min-h-20 w-full rounded-[12px] border border-[var(--color-neutral-200)] px-3 text-[31px] font-semibold leading-none tracking-wide md:text-[35px]"
-                  placeholder="(19) 99488-5914"
-                />
-              </label>
+              <>
+                <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
+                  Telefone completo
+                  <input
+                    ref={fullPhoneRef}
+                    value={fullPhone}
+                    onChange={(e) => setFullPhone(formatPhoneBr(e.target.value))}
+                    onFocus={() => setFocus('fullPhone')}
+                    onBlur={() => setFocus((f) => (f === 'fullPhone' ? 'none' : f))}
+                    inputMode="tel"
+                    autoComplete="tel"
+                    className={`mt-2 min-h-20 w-full rounded-[12px] border px-3 text-[31px] font-semibold leading-none tracking-wide md:text-[35px] ${
+                      error && issueField(error) === 'fullPhone'
+                        ? 'border-[var(--color-danger)] bg-[var(--color-danger-bg)]'
+                        : 'border-[var(--color-neutral-200)]'
+                    }`}
+                    placeholder="(19) 99488-5914"
+                  />
+                </label>
+                {error && issueField(error) === 'fullPhone' ? (
+                  <p className="mt-2 text-[15px] font-semibold text-[var(--color-danger)]" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </>
             )}
             <label className="mt-4 block text-[13px] font-semibold uppercase tracking-[0.04em]">
               Nome (opcional)
@@ -1764,11 +1820,18 @@ export default function CounterPage() {
               />
             </label>
             {grantingCreateBenefit && earnMode === 'stamps' ? (
-              <StampPick
-                destinations={earnableStamps}
-                value={stampTarget}
-                onChange={setStampTarget}
-              />
+              <>
+                <StampPick
+                  destinations={earnableStamps}
+                  value={stampTarget}
+                  onChange={setStampTarget}
+                />
+                {error && issueField(error) === 'stamp' ? (
+                  <p className="mt-2 text-[15px] font-semibold text-[var(--color-danger)]" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </>
             ) : null}
             {showCreateAmount && (
               <AmountField
@@ -1783,6 +1846,7 @@ export default function CounterPage() {
                 showPointsRate={earnMode === 'points'}
                 onFocus={() => setFocus('amount')}
                 onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
+                error={error && issueField(error) === 'amount' ? error : null}
               />
             )}
           </section>
@@ -1827,11 +1891,20 @@ export default function CounterPage() {
               </div>
             ) : null}
             {!lookup.associatedHere && (
-              <p className="mt-2 rounded-[8px] bg-[var(--color-primary-50)] px-3 py-2 text-[13px] text-[var(--color-primary-800)]">
-                {(lookup.otherShopsCount ?? 0) > 0
-                  ? `Já está no Frego — ativo em ${lookup.otherShopsCount} outro${lookup.otherShopsCount === 1 ? '' : 's'} estabelecimento${lookup.otherShopsCount === 1 ? '' : 's'}. Adicione a esta loja para carimbar.`
-                  : 'Já está no Frego (aplicativo), mas ainda não nesta loja. Adicione para carimbar.'}
-              </p>
+              <>
+                <p className="mt-2 rounded-[8px] bg-[var(--color-primary-50)] px-3 py-2 text-[13px] text-[var(--color-primary-800)]">
+                  {(lookup.otherShopsCount ?? 0) > 0
+                    ? `Já está no Frego — ativo em ${lookup.otherShopsCount} outro${lookup.otherShopsCount === 1 ? '' : 's'} estabelecimento${lookup.otherShopsCount === 1 ? '' : 's'}. Ainda não nesta loja.`
+                    : 'Já está no Frego (aplicativo), mas ainda não nesta loja.'}
+                </p>
+                {canEarn ? (
+                  <GrantToggle
+                    grant={grantBenefitOnCreate}
+                    benefitLabel={createBenefitToggleLabel}
+                    onChange={setGrantBenefitOnCreate}
+                  />
+                ) : null}
+              </>
             )}
 
             {balanceCount > 0 && (
@@ -1880,80 +1953,77 @@ export default function CounterPage() {
                   </p>
                 </div>
               )}
-              {showCashbackPool && (
-                <div className="rounded-[14px] bg-[var(--color-cashback-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
-                    Cashback
-                  </p>
-                  <p className="mt-0.5 text-[18px] font-semibold leading-tight text-[var(--color-ink)]">
-                    {formatBrl(cashbackBalance)}
-                  </p>
-                </div>
-              )}
-            </div>
-            )}
-            {cashbackBalance > 0 && saleMode ? (
-              <div className="mt-2 rounded-[14px] bg-[var(--color-cashback-bg)] px-3 py-3 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
-                {cashbackPercent > 0 && earnMode === 'cashback' && (
-                  <p className="mb-2 text-[12px] text-[var(--color-cashback)]">
-                    {cashbackPercent}% do valor pago
-                  </p>
-                )}
-                <div>
-                    <label className="flex cursor-pointer items-center gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
-                      <input
-                        type="checkbox"
-                        checked={applyCashback}
-                        onChange={(e) => setApplyCashback(e.target.checked)}
-                        className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                      />
-                      Usar cashback nesta compra
-                    </label>
-                    {applyCashback && (
-                      <label className="mt-2 block text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
-                        Valor a usar (R$)
-                        <input
-                          value={applyAmount}
-                          onChange={(e) =>
-                            setApplyAmount(maskMoneyInput(e.target.value))
-                          }
-                          onFocus={() => setFocus('apply')}
-                          onBlur={() =>
-                            setFocus((f) => (f === 'apply' ? 'none' : f))
-                          }
-                          inputMode="numeric"
-                          className="mt-1.5 min-h-12 w-full rounded-[8px] border border-[var(--color-cashback-ring)] bg-[var(--color-card)] px-3 text-center text-[22px] font-semibold text-[var(--color-ink)]"
-                          placeholder={
-                            maxApplyCents > 0
-                              ? formatCentsAsInput(maxApplyCents)
-                              : '0,00'
-                          }
-                        />
-                      </label>
-                    )}
-                    <p className="mt-1.5 text-[12px] leading-relaxed text-[var(--color-cashback)]">
-                      {applyCashback && applyCents > 0
-                        ? `Desconta ${formatBrl(applyCents)} do saldo. O caixa da loja cobra ${formatBrl(paidCents || (amountCents ?? 0))}.`
-                        : `Saldo disponível: ${formatBrl(cashbackBalance)}. Informe quanto o outro sistema descontou.`}
+              {showCashbackPool &&
+                (saleMode && cashbackBalance > 0 && !linkingOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (maxApplyCents <= 0) return;
+                      setUseAllCashback(true);
+                    }}
+                    className="min-h-12 rounded-[14px] bg-[var(--color-cashback-bg)] px-2.5 py-2.5 text-left ring-1 ring-inset ring-[var(--color-cashback-ring)]"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+                      Cashback
+                    </p>
+                    <p className="mt-0.5 text-[18px] font-semibold leading-tight text-[var(--color-ink)]">
+                      {formatBrl(cashbackBalance)}
+                    </p>
+                  </button>
+                ) : (
+                  <div className="rounded-[14px] bg-[var(--color-cashback-bg)] px-2.5 py-2.5 ring-1 ring-inset ring-[var(--color-cashback-ring)]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+                      Cashback
+                    </p>
+                    <p className="mt-0.5 text-[18px] font-semibold leading-tight text-[var(--color-ink)]">
+                      {formatBrl(cashbackBalance)}
                     </p>
                   </div>
-              </div>
-            ) : null}
-
-            {(earnMode === 'points' || earnMode === 'cashback') && showAmount && (
-              <AmountField
-                amount={amount}
-                setAmount={setAmount}
-                previewPoints={previewPoints}
-                pointsPerReal={pointsPerReal}
-                previewCashback={previewCashback}
-                cashbackPercent={cashbackPercent}
-                applyCents={applyCents}
-                paidCents={paidCents}
-                showPointsRate={earnMode === 'points'}
-                onFocus={() => setFocus('amount')}
-                onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
-              />
+                ))}
+            </div>
+            )}
+            {(earnMode === 'points' || earnMode === 'cashback') &&
+            showAmount &&
+            !linkingOnly && (
+              <>
+                <AmountField
+                  amount={amount}
+                  setAmount={setAmount}
+                  previewPoints={previewPoints}
+                  pointsPerReal={pointsPerReal}
+                  previewCashback={applyCents > 0 ? 0 : previewCashback}
+                  cashbackPercent={cashbackPercent}
+                  showPointsRate={earnMode === 'points'}
+                  onFocus={() => setFocus('amount')}
+                  onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
+                error={error && issueField(error) === 'amount' ? error : null}
+                />
+                {cashbackBalance > 0 ? (
+                  <CashbackUseRow
+                    amount={applyAmount}
+                    setAmount={(next) => {
+                      setApplyAmount(next);
+                      if (parseMoneyToCents(next) !== maxApplyCents) {
+                        setUseAllCashback(false);
+                      }
+                    }}
+                    useAll={useAllCashback}
+                    onUseAllChange={(checked) => {
+                      setUseAllCashback(checked);
+                      if (!checked) setApplyAmount('');
+                    }}
+                    showSkipEarn={earnMode === 'cashback' && cashbackPercent > 0}
+                    skipEarn={skipCashbackEarn}
+                    onSkipEarnChange={setSkipCashbackEarn}
+                    applyCents={applyCents}
+                    paidCents={paidCents}
+                    previewCashback={previewCashback}
+                    compraTyped={amountCents != null}
+                    onFocus={() => setFocus('apply')}
+                    onBlur={() => setFocus((f) => (f === 'apply' ? 'none' : f))}
+                  />
+                ) : null}
+              </>
             )}
 
             {openVouchers.length > 0 && (
@@ -2016,27 +2086,56 @@ export default function CounterPage() {
               </div>
             )}
 
-            {showAmount && earnMode !== 'points' && earnMode !== 'cashback' && (
-              <AmountField
-                amount={amount}
-                setAmount={setAmount}
-                previewPoints={previewPoints}
-                pointsPerReal={pointsPerReal}
-                previewCashback={previewCashback}
-                cashbackPercent={cashbackPercent}
-                applyCents={applyCents}
-                paidCents={paidCents}
-                showPointsRate={false}
-                onFocus={() => setFocus('amount')}
-                onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
-              />
+            {showAmount &&
+            earnMode !== 'points' &&
+            earnMode !== 'cashback' &&
+            !linkingOnly && (
+              <>
+                <AmountField
+                  amount={amount}
+                  setAmount={setAmount}
+                  previewPoints={previewPoints}
+                  pointsPerReal={pointsPerReal}
+                  previewCashback={applyCents > 0 ? 0 : previewCashback}
+                  cashbackPercent={cashbackPercent}
+                  showPointsRate={false}
+                  onFocus={() => setFocus('amount')}
+                  onBlur={() => setFocus((f) => (f === 'amount' ? 'none' : f))}
+                error={error && issueField(error) === 'amount' ? error : null}
+                />
+                {cashbackBalance > 0 ? (
+                  <CashbackUseRow
+                    amount={applyAmount}
+                    setAmount={(next) => {
+                      setApplyAmount(next);
+                      if (parseMoneyToCents(next) !== maxApplyCents) {
+                        setUseAllCashback(false);
+                      }
+                    }}
+                    useAll={useAllCashback}
+                    onUseAllChange={(checked) => {
+                      setUseAllCashback(checked);
+                      if (!checked) setApplyAmount('');
+                    }}
+                    showSkipEarn={false}
+                    skipEarn={skipCashbackEarn}
+                    onSkipEarnChange={setSkipCashbackEarn}
+                    applyCents={applyCents}
+                    paidCents={paidCents}
+                    previewCashback={previewCashback}
+                    compraTyped={amountCents != null}
+                    onFocus={() => setFocus('apply')}
+                    onBlur={() => setFocus((f) => (f === 'apply' ? 'none' : f))}
+                  />
+                ) : null}
+              </>
             )}
 
-            <p className="mt-3 text-[13px] text-[var(--color-neutral-500)]">
-              {earnMode === 'cashback'
-                ? 'O pagamento acontece no caixa da loja. Aqui só registramos o valor e o cashback usado.'
-                : 'O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher ao entregar o prêmio.'}
-            </p>
+            {earnMode !== 'cashback' && !linkingOnly ? (
+              <p className="mt-3 text-[13px] text-[var(--color-neutral-500)]">
+                O resgate de carimbos e pontos é no aplicativo do cliente. Confirme o voucher ao entregar o prêmio.
+              </p>
+            ) : null}
 
             {(lookup.recentSales?.length ?? 0) > 0 && (
               <div className="mt-5 border-t border-[var(--color-hairline)] pt-4">
@@ -2095,8 +2194,12 @@ export default function CounterPage() {
 
         {toast ? (
           <div
-            className="fixed inset-x-0 z-50 mx-auto w-[min(calc(100%-2rem),24rem)] rounded-full bg-[var(--color-ink)] px-4 py-3 text-center text-[14px] text-white shadow-[var(--shadow-raised)] bottom-[calc(13.5rem+env(safe-area-inset-bottom))] md:left-[var(--app-sidebar-w)] md:bottom-[9.5rem]"
-            role="status"
+            className={`fixed inset-x-0 z-50 mx-auto w-[min(calc(100%-2rem),24rem)] px-4 py-3 text-center shadow-[var(--shadow-raised)] bottom-[calc(13.5rem+env(safe-area-inset-bottom))] md:left-[var(--app-sidebar-w)] md:bottom-[9.5rem] ${
+              toastTone === 'danger'
+                ? 'rounded-[16px] bg-[var(--color-danger-fill)] text-[16px] font-semibold text-white'
+                : 'rounded-full bg-[var(--color-ink)] text-[14px] text-white'
+            }`}
+            role={toastTone === 'danger' ? 'alert' : 'status'}
           >
             {toast}
           </div>
@@ -2557,6 +2660,165 @@ function StampPick({
   );
 }
 
+function issueField(
+  message: string,
+): 'phone' | 'fullPhone' | 'amount' | 'stamp' | 'general' {
+  if (/valor da compra/i.test(message)) return 'amount';
+  if (/carimbo entra/i.test(message)) return 'stamp';
+  if (/4 últimos|últimos 4/i.test(message)) return 'phone';
+  if (/telefone/i.test(message)) return 'fullPhone';
+  return 'general';
+}
+
+function GrantToggle({
+  grant,
+  benefitLabel,
+  onChange,
+}: {
+  grant: boolean;
+  benefitLabel: string;
+  onChange: (grant: boolean) => void;
+}) {
+  return (
+    <div className="mt-4 flex gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1">
+      {(
+        [
+          { grant: false, label: 'Só cadastrar' },
+          { grant: true, label: benefitLabel },
+        ] as const
+      ).map((opt) => {
+        const selected = grant === opt.grant;
+        return (
+          <button
+            key={opt.label}
+            type="button"
+            onClick={() => onChange(opt.grant)}
+            className={`flex min-h-11 flex-1 items-center justify-center rounded-[11px] px-2 text-center text-[13px] font-semibold ${
+              selected
+                ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
+                : 'text-[var(--color-neutral-500)]'
+            }`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function withCashbackUse(
+  label: string,
+  applyCents: number,
+  skipEarn = false,
+): string {
+  if (applyCents <= 0) return label;
+  const money = formatBrl(applyCents);
+  if (skipEarn && (label === 'Registrar cashback' || label === 'Usar cashback')) {
+    return `Usar ${money}`;
+  }
+  if (label === 'Registrar cashback') return `Registrar · usar ${money}`;
+  if (label === 'Usar cashback') return `Usar ${money}`;
+  return `${label} · usar ${money}`;
+}
+
+function cashbackSlip(
+  applyCents: number,
+  paidCents: number,
+  previewCashback: number,
+  compraTyped: boolean,
+): string {
+  if (applyCents <= 0) {
+    return 'Marque para usar o saldo todo, ou informe um valor.';
+  }
+  if (!compraTyped) return `− ${formatBrl(applyCents)} do saldo`;
+  const base = `− ${formatBrl(applyCents)} · a pagar ${formatBrl(paidCents)}`;
+  if (previewCashback <= 0) return base;
+  return `${base} · entra + ${formatBrl(previewCashback)}`;
+}
+
+function CashbackUseRow({
+  amount,
+  setAmount,
+  useAll,
+  onUseAllChange,
+  showSkipEarn,
+  skipEarn,
+  onSkipEarnChange,
+  applyCents,
+  paidCents,
+  previewCashback,
+  compraTyped,
+  onFocus,
+  onBlur,
+}: {
+  amount: string;
+  setAmount: (v: string) => void;
+  useAll: boolean;
+  onUseAllChange: (checked: boolean) => void;
+  showSkipEarn: boolean;
+  skipEarn: boolean;
+  onSkipEarnChange: (checked: boolean) => void;
+  applyCents: number;
+  paidCents: number;
+  previewCashback: number;
+  compraTyped: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
+}) {
+  return (
+    <div className="mt-3">
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[15px] font-semibold text-[var(--color-ink)]">
+        <input
+          type="checkbox"
+          checked={useAll}
+          onChange={(e) => onUseAllChange(e.target.checked)}
+          className="h-5 w-5 rounded border-[var(--color-neutral-300)]"
+        />
+        Usar todo o saldo
+      </label>
+      <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
+        Cashback
+        <input
+          value={amount}
+          readOnly={useAll}
+          onChange={(e) => setAmount(maskMoneyInput(e.target.value))}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          inputMode="numeric"
+          placeholder="0,00"
+          className="mt-1.5 min-h-12 w-full rounded-[8px] border border-[var(--color-cashback-ring)] bg-[var(--color-card)] px-3 text-center text-[22px] font-semibold text-[var(--color-ink)] read-only:bg-[var(--color-cashback-bg)]"
+        />
+      </label>
+      {showSkipEarn ? (
+        <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 text-[15px] font-semibold text-[var(--color-ink)]">
+          <input
+            type="checkbox"
+            checked={skipEarn}
+            onChange={(e) => onSkipEarnChange(e.target.checked)}
+            className="mt-0.5 h-5 w-5 rounded border-[var(--color-neutral-300)]"
+          />
+          <span>
+            Não entra cashback nesta compra
+            <span className="mt-0.5 block text-[12px] font-normal leading-relaxed text-[var(--color-neutral-500)]">
+              O cliente só usa o saldo. Esta compra não gera cashback.
+            </span>
+          </span>
+        </label>
+      ) : null}
+      <p
+        className={`mt-1.5 text-center text-[13px] leading-relaxed ${
+          applyCents > 0
+            ? 'font-semibold text-[var(--color-cashback)]'
+            : 'text-[var(--color-neutral-500)]'
+        }`}
+      >
+        {cashbackSlip(applyCents, paidCents, previewCashback, compraTyped)}
+      </p>
+    </div>
+  );
+}
+
 function AmountField({
   amount,
   setAmount,
@@ -2569,6 +2831,7 @@ function AmountField({
   showPointsRate = true,
   onFocus,
   onBlur,
+  error,
 }: {
   amount: string;
   setAmount: (v: string) => void;
@@ -2581,6 +2844,7 @@ function AmountField({
   showPointsRate?: boolean;
   onFocus?: () => void;
   onBlur?: () => void;
+  error?: string | null;
 }) {
   const chips = [2000, 4000, 6000, 10000];
   return (
@@ -2588,15 +2852,25 @@ function AmountField({
       <label className="block text-[13px] font-semibold uppercase tracking-[0.04em]">
         Valor da compra (R$)
         <input
+          id="compra-valor"
           value={amount}
           onChange={(e) => setAmount(maskMoneyInput(e.target.value))}
           onFocus={onFocus}
           onBlur={onBlur}
           inputMode="numeric"
-          className="mt-2 min-h-14 w-full rounded-[8px] border border-[var(--color-neutral-200)] px-3 text-center text-[23px] font-semibold"
+          className={`mt-2 min-h-14 w-full rounded-[8px] border px-3 text-center text-[23px] font-semibold ${
+            error
+              ? 'border-[var(--color-danger)] bg-[var(--color-danger-bg)]'
+              : 'border-[var(--color-neutral-200)]'
+          }`}
           placeholder="0,00"
         />
       </label>
+      {error ? (
+        <p className="mt-2 text-center text-[15px] font-semibold text-[var(--color-danger)]" role="alert">
+          {error}
+        </p>
+      ) : null}
       {showPointsRate && (
         <p className="mt-1 text-[12px] text-[var(--color-neutral-400)]">
           Taxa da loja: R$ {pointsPerReal} → 1 ponto

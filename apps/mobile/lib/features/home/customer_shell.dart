@@ -96,23 +96,21 @@ class _CustomerShellState extends State<CustomerShell> {
   void _openPendingPush() {
     final target = PendingPushOpen.take();
     if (target == null || !mounted) return;
-    debugPrint(
-      'CustomerShell open push ${target.type} ${target.businessId}',
-    );
+    debugPrint('CustomerShell open push ${target.type} ${target.businessId}');
     final page = switch (target.type) {
-      'campaign_new' || 'campaign_ending' when target.campaignId != null &&
-          target.campaignId!.isNotEmpty =>
+      'campaign_new' || 'campaign_ending'
+          when target.campaignId != null && target.campaignId!.isNotEmpty =>
         CampaignDetailPage(
           businessId: target.businessId,
           campaignId: target.campaignId!,
         ),
       'pesquisa' => PesquisaPage(businessId: target.businessId),
       'earn' => EarnDetailPage(
-          businessId: target.businessId,
-          unitKind: target.unitKind,
-          transactionId: target.transactionId,
-          quantity: target.quantity,
-        ),
+        businessId: target.businessId,
+        unitKind: target.unitKind,
+        transactionId: target.transactionId,
+        quantity: target.quantity,
+      ),
       _ => ShopDetailPage(businessId: target.businessId),
     };
     FregoAdaptive.push(context, page, rootNavigator: true);
@@ -131,10 +129,8 @@ class _CustomerShellState extends State<CustomerShell> {
     unawaited(FregoTelemetry.screen(_tabScreens[i]));
   }
 
-  Widget _shopsPage() => ShopsPage(
-        phoneE164: widget.phoneE164,
-        refreshToken: _shopsRefresh,
-      );
+  Widget _shopsPage() =>
+      ShopsPage(phoneE164: widget.phoneE164, refreshToken: _shopsRefresh);
 
   Widget _explorePage() => ExplorePage(refreshToken: _exploreRefresh);
 
@@ -143,15 +139,15 @@ class _CustomerShellState extends State<CustomerShell> {
   Widget _historyPage() => HistoryPage(refreshToken: _historyRefresh);
 
   Widget _profilePage() => ProfilePage(
-        phoneE164: widget.phoneE164,
-        onProfileSaved: () {
-          setState(() {
-            _shopsRefresh++;
-            _exploreRefresh++;
-            _rewardsRefresh++;
-          });
-        },
-      );
+    phoneE164: widget.phoneE164,
+    onProfileSaved: () {
+      setState(() {
+        _shopsRefresh++;
+        _exploreRefresh++;
+        _rewardsRefresh++;
+      });
+    },
+  );
 
   Widget _pageAt(int index) {
     switch (index) {
@@ -183,63 +179,60 @@ class _CustomerShellState extends State<CustomerShell> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          home,
-          CidadeGatePage(
-            onPicked: () => setState(() => _needsCidade = false),
-          ),
+          // Own widget so the shell does not rebuild when the keyboard opens.
+          _HomeBehindSheet(child: home),
+          CidadeGatePage(onPicked: () => setState(() => _needsCidade = false)),
         ],
       ),
     );
   }
 
   Widget _cupertinoHome() {
-      return CupertinoTabScaffold(
-        controller: _cupertinoTabs,
-        tabBar: CupertinoTabBar(
-          backgroundColor: FregoColors.card,
-          activeColor: FregoColors.ink,
-          inactiveColor: FregoColors.neutral500,
-          border: const Border(
-            top: BorderSide(color: FregoColors.hairline, width: 0.5),
-          ),
-          onTap: (i) {
-            _cupertinoTabs.index = i;
-            _onTab(i);
-          },
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(FregoIcons.shops),
-              activeIcon: Icon(FregoIcons.shopsFilled),
-              label: 'Lojas',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FregoIcons.explore),
-              activeIcon: Icon(FregoIcons.exploreFilled),
-              label: 'Explorar',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FregoIcons.rewards),
-              activeIcon: Icon(FregoIcons.rewardsFilled),
-              label: 'Prêmios',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FregoIcons.history),
-              activeIcon: Icon(FregoIcons.historyFilled),
-              label: 'Histórico',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(FregoIcons.profile),
-              activeIcon: Icon(FregoIcons.profileFilled),
-              label: 'Perfil',
-            ),
-          ],
+    return CupertinoTabScaffold(
+      controller: _cupertinoTabs,
+      tabBar: CupertinoTabBar(
+        backgroundColor: FregoColors.card,
+        activeColor: FregoColors.ink,
+        inactiveColor: FregoColors.neutral500,
+        border: const Border(
+          top: BorderSide(color: FregoColors.hairline, width: 0.5),
         ),
-        tabBuilder: (context, index) {
-          return CupertinoTabView(
-            builder: (_) => _pageAt(index),
-          );
+        onTap: (i) {
+          _cupertinoTabs.index = i;
+          _onTab(i);
         },
-      );
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.shops),
+            activeIcon: Icon(FregoIcons.shopsFilled),
+            label: 'Lojas',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.explore),
+            activeIcon: Icon(FregoIcons.exploreFilled),
+            label: 'Explorar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.rewards),
+            activeIcon: Icon(FregoIcons.rewardsFilled),
+            label: 'Prêmios',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.history),
+            activeIcon: Icon(FregoIcons.historyFilled),
+            label: 'Histórico',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.profile),
+            activeIcon: Icon(FregoIcons.profileFilled),
+            label: 'Perfil',
+          ),
+        ],
+      ),
+      tabBuilder: (context, index) {
+        return CupertinoTabView(builder: (_) => _pageAt(index));
+      },
+    );
   }
 
   Widget _materialHome() {
@@ -287,6 +280,22 @@ class _CustomerShellState extends State<CustomerShell> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Keeps the tab scaffold from resizing when the city sheet's keyboard opens.
+class _HomeBehindSheet extends StatelessWidget {
+  const _HomeBehindSheet({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return MediaQuery.removeViewInsets(
+      context: context,
+      removeBottom: true,
+      child: child,
     );
   }
 }

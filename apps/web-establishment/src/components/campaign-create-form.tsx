@@ -733,6 +733,22 @@ export function CampaignCreateForm({
                 placeholder={TYPE_DEFAULTS[form.type].name}
               />
             </label>
+
+            <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+              Descrição
+              <input
+                value={form.rewardDescription}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, rewardDescription: e.target.value }))
+                }
+                maxLength={200}
+                className={inputClass}
+                placeholder="Uma linha a mais, se quiser"
+              />
+              <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                Opcional. Aparece no cartão do cliente.
+              </span>
+            </label>
           </Section>
 
           <Section

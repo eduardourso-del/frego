@@ -535,6 +535,7 @@ class PdvApi {
     int? quantity,
     int? amountCents,
     int? applyCashbackCents,
+    bool? earnCashback,
     String? campaignId,
   }) async {
     final json = await _post('/transactions', {
@@ -545,6 +546,7 @@ class PdvApi {
       if (unitKind != 'points' && unitKind != 'cashback') 'quantity': quantity ?? 1,
       if (applyCashbackCents != null && applyCashbackCents > 0)
         'applyCashbackCents': applyCashbackCents,
+      if (earnCashback == false) 'earnCashback': false,
       if (campaignId != null) 'campaignId': campaignId,
     });
     final pools =

@@ -12,7 +12,7 @@ Testar no aparelho real ou em viewport ≤ 480px com teclado virtual. Alvos ≥ 
 - [ ] Foco no telefone → sticky diz **Buscar**.
 - [ ] Enter / teclado Search dispara a busca.
 - [ ] 4 dígitos ou telefone completo com DDD funcionam.
-- [ ] Erro aparece acima do sticky, próximo do campo.
+- [ ] Erro de um campo (valor, telefone, carimbo) marca esse campo e sobe um aviso acima do botão. Os outros erros sobem só o aviso.
 - [ ] **Nova busca** limpa o cliente e volta ao campo.
 
 ## Matches
@@ -29,17 +29,19 @@ Testar no aparelho real ou em viewport ≤ 480px com teclado virtual. Alvos ≥ 
 - [ ] **Corrigir** abre a folha com nome e telefone. Salvar o nome atualiza a identidade.
 - [ ] Trocar o telefone de um cadastro sem app (só nesta loja) deixa o saldo no número certo. Se o número já existe, o saldo entra nessa conta.
 - [ ] Cliente que já usa o app, ou de outra loja: o telefone não muda; a mensagem pede para desfazer e buscar o número certo.
-- [ ] Sticky: **Carimbar** / **Registrar gasto** / **Registrar cashback** / **Adicionar à loja…**.
+- [ ] Cliente já no Frego, de outro estabelecimento: **Só cadastrar** adiciona à loja sem carimbo, pontos ou cashback. O outro lado do toggle registra o benefício.
+- [ ] Sticky: **Carimbar** / **Registrar gasto** / **Registrar cashback** / **Adicionar à loja**. Com cashback preenchido: **Registrar · usar R$ …**, **Registrar gasto · usar R$ …**, ou **Usar R$ …**.
+- [ ] Saldo de cashback: **Usar todo o saldo** preenche o menor entre saldo e compra, sem digitar. Dá para informar um valor menor. **Não entra cashback nesta compra** usa o saldo e não gera cashback. A linha mostra `− R$ … · a pagar R$ …` e, se entra, `· entra + R$ …`. Carimbo não mostra a linha.
 - [ ] Foco no valor ou no cashback a usar: sticky continua a ação de registrar (não vira Buscar).
 - [ ] Sem campanha e sem cashback: CTA desabilitado (“Sem campanha ativa”).
 
 ## Voucher
 - [ ] Toggle **Registrar | Voucher** no topo; **Registrar** é o default.
 - [ ] Em Registrar, o bloco de código do voucher não aparece (só os vouchers abertos do cliente encontrado).
-- [ ] Em Voucher, o campo de código aparece na hora; sticky **Usar** (mínimo 4 caracteres).
+- [ ] Em Voucher, o campo de código aparece na hora; sticky **Confirmar** (mínimo 4 caracteres).
 - [ ] PDV e web mobile (com câmera): **Escanear QR** secundário; folha com viewfinder; QR válido preenche `XXX-XXX` e limpa o valor; PIX/lixo: “Não é um voucher Frego”; permissão negada: “Sem câmera. Digite o código.”
 - [ ] Web desktop (`md+`): sem **Escanear QR**.
-- [ ] Valor desta compra é opcional; **Usar** funciona sem valor.
+- [ ] Valor desta compra é opcional; **Confirmar** funciona sem valor.
 - [ ] Se o valor do lançamento já estiver preenchido, o voucher herda esse valor ao trocar de modo.
 - [ ] Código inválido / já usado / ok: banner claro. Confirmação com valor mostra o R$ no banner.
 - [ ] Expirado: sticky **Aceitar mesmo assim**.
@@ -56,4 +58,4 @@ Testar no aparelho real ou em viewport ≤ 480px com teclado virtual. Alvos ≥ 
 ## Contraste e toque
 - [ ] Botão primário 52px de altura, largura total.
 - [ ] Chips de valor e Confirmar voucher ≥ 44px.
-- [ ] Não há dois CTAs primários iguais na mesma tela (inline “Usar” no voucher é atalho; o sticky replica).
+- [ ] Não há dois CTAs primários iguais na mesma tela (inline “Confirmar” no voucher é atalho; o sticky replica).

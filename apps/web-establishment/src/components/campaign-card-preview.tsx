@@ -154,6 +154,11 @@ export function CampaignCardPreview({
               <p className="truncate text-[15px] font-semibold tracking-[-0.02em]">
                 {campaignName.trim() || 'Sua campanha'}
               </p>
+              {rewardDescription?.trim() ? (
+                <p className="mt-1 line-clamp-2 text-[12px] font-medium leading-snug text-[var(--color-neutral-500)]">
+                  {rewardDescription.trim()}
+                </p>
+              ) : null}
 
               {campaignType === 'birthday' ? (
                 <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-[#FDF2F8] px-2.5 py-2">
@@ -248,9 +253,6 @@ export function CampaignCardPreview({
           {!hasImage && campaignType !== 'birthday' && campaignType !== 'cashback' && campaignType !== 'promo' && (
             <p className="mt-2 truncate text-[12px] font-medium text-[var(--color-neutral-500)]">
               {reward}
-              {rewardDescription?.trim()
-                ? ` · ${rewardDescription.trim()}`
-                : ''}
             </p>
           )}
 
