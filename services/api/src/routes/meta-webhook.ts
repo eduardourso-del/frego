@@ -7,6 +7,8 @@ import {
   EARN_TEMPLATE_LANG,
   EARN_TEMPLATE_NAME,
   PESQUISA_TEMPLATE_NAME,
+  NOTICE_TEMPLATE_LANG,
+  NOTICE_TEMPLATE_NAME,
   WELCOME_TEMPLATE_LANG,
   WELCOME_TEMPLATE_NAME,
   mapWebhookTemplateEvent,
@@ -97,6 +99,7 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
                 templateLang === EARN_TEMPLATE_LANG ||
                 templateLang === WELCOME_TEMPLATE_LANG ||
                 templateLang === CAMPAIGN_TEMPLATE_LANG ||
+                templateLang === NOTICE_TEMPLATE_LANG ||
                 templateLang === 'pt-BR';
               if (wabaId && mapped && langOk) {
                 const conn = await prisma.businessWhatsAppConnection.findFirst({
@@ -125,6 +128,18 @@ export const metaWebhookRoutes: FastifyPluginAsync = async (app) => {
                           ? String(change.value.message_template_id)
                           : conn.templatePesquisaId,
                         templatePesquisaSyncedAt: new Date(),
+                        ...(mapped === 'approved' ? { lastError: null } : {}),
+                      },
+                    });
+                  } else if (templateName === NOTICE_TEMPLATE_NAME) {
+                    await prisma.businessWhatsAppConnection.update({
+                      where: { id: conn.id },
+                      data: {
+                        templateNoticeStatus: mapped,
+                        templateNoticeId: change.value?.message_template_id
+                          ? String(change.value.message_template_id)
+                          : conn.templateNoticeId,
+                        templateNoticeSyncedAt: new Date(),
                         ...(mapped === 'approved' ? { lastError: null } : {}),
                       },
                     });

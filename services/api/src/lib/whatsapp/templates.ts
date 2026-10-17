@@ -9,6 +9,9 @@ export const WELCOME_TEMPLATE_LANG = 'pt_BR';
 export const CAMPAIGN_TEMPLATE_NAME = 'frego_campaign_notice_v3';
 export const CAMPAIGN_TEMPLATE_LANG = 'pt_BR';
 
+export const NOTICE_TEMPLATE_NAME = 'frego_account_notice_v1';
+export const NOTICE_TEMPLATE_LANG = 'pt_BR';
+
 export type EarnTemplateStatus =
   | 'missing'
   | 'pending'
@@ -31,6 +34,9 @@ const WELCOME_BODY_TEXT =
 
 const CAMPAIGN_BODY_TEXT =
   'Olá. Atualização da conta na *{{1}}*.\n\nFoi registrado na sua conta: {{2}}.\n\nO saldo desta conta não mudou com esta mensagem.';
+
+const NOTICE_BODY_TEXT =
+  'Olá. Atualização da conta na *{{1}}*.\n\n{{2}}\n\nO saldo desta conta não mudou com esta mensagem.';
 
 export const PESQUISA_TEMPLATE_NAME = 'frego_earn_pesquisa_v3';
 export const PESQUISA_TEMPLATE_LANG = 'pt_BR';
@@ -394,6 +400,29 @@ export async function fetchPesquisaTemplateState(
   language = PESQUISA_TEMPLATE_LANG,
 ): Promise<EarnTemplateState> {
   return fetchTemplateState(wabaId, accessToken, name, language);
+}
+
+export async function fetchAccountNoticeTemplateState(
+  wabaId: string,
+  accessToken: string,
+  name = NOTICE_TEMPLATE_NAME,
+  language = NOTICE_TEMPLATE_LANG,
+): Promise<EarnTemplateState> {
+  return fetchTemplateState(wabaId, accessToken, name, language);
+}
+
+export async function ensureAccountNoticeTemplate(
+  wabaId: string,
+  accessToken: string,
+  name = NOTICE_TEMPLATE_NAME,
+  language = NOTICE_TEMPLATE_LANG,
+): Promise<EarnTemplateState> {
+  return ensureTemplate(wabaId, accessToken, {
+    name,
+    language,
+    bodyText: NOTICE_BODY_TEXT,
+    exampleParams: ['Café Bloom', '3 carimbos vencem em 2 dias.'],
+  });
 }
 
 export async function ensureCampaignTemplate(

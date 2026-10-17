@@ -100,7 +100,7 @@ class _CustomerShellState extends State<CustomerShell> {
       'CustomerShell open push ${target.type} ${target.businessId}',
     );
     final page = switch (target.type) {
-      'campaign_new' when target.campaignId != null &&
+      'campaign_new' || 'campaign_ending' when target.campaignId != null &&
           target.campaignId!.isNotEmpty =>
         CampaignDetailPage(
           businessId: target.businessId,

@@ -41,6 +41,11 @@ type Connection = {
   templatePesquisaStatus?: string;
   templatePesquisaId?: string | null;
   templatePesquisaSyncedAt?: string | null;
+  templateNoticeName?: string;
+  templateNoticeLang?: string;
+  templateNoticeStatus?: string;
+  templateNoticeId?: string | null;
+  templateNoticeSyncedAt?: string | null;
   coexistence: boolean;
   smbSyncStartedAt: string | null;
   connectedAt: string;
@@ -93,6 +98,8 @@ const MESSAGE_BODIES = {
     'Olá. Atualização da conta na *{{1}}*.\n\nFoi registrado na sua conta: {{2}}.\n\nO saldo desta conta não mudou com esta mensagem.',
   pesquisa:
     'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nPesquisa sobre esta compra: {{5}}.\n\nA pesquisa refere-se somente a esta compra.',
+  notice:
+    'Olá. Atualização da conta na *{{1}}*.\n\n{{2}}\n\nO saldo desta conta não mudou com esta mensagem.',
 } as const;
 
 type MessageKey = keyof typeof MESSAGE_BODIES;
@@ -127,6 +134,13 @@ function messageSample(key: MessageKey, businessName: string) {
         'https://frego.app.br/p/exemplo',
       ]),
     },
+    notice: {
+      label: 'Lembrete',
+      body: fillTemplate(MESSAGE_BODIES.notice, [
+        shop,
+        '3 carimbos vencem em 2 dias.',
+      ]),
+    },
   };
   return samples[key];
 }
@@ -154,6 +168,7 @@ function noticeStatuses(connection: Connection): string[] {
     connection.templateWelcomeStatus ?? 'missing',
     connection.templateCampaignStatus ?? 'missing',
     connection.templatePesquisaStatus ?? 'missing',
+    connection.templateNoticeStatus ?? 'missing',
   ];
 }
 
@@ -406,6 +421,9 @@ export function WhatsAppSettingsCard() {
   const pesquisaTone = connection
     ? templateStatusLabel(connection.templatePesquisaStatus ?? 'missing')
     : null;
+  const noticeTone = connection
+    ? templateStatusLabel(connection.templateNoticeStatus ?? 'missing')
+    : null;
   const needsTemplate = Boolean(
     connection && noticeStatuses(connection).some((status) => status !== 'approved'),
   );
@@ -493,6 +511,7 @@ export function WhatsAppSettingsCard() {
                 ['welcome', 'Boas-vindas', welcomeTone],
                 ['campaign', 'Campanha', campaignTone],
                 ['pesquisa', 'Pesquisa', pesquisaTone],
+                ['notice', 'Lembrete', noticeTone],
               ] as const
             ).map(([key, label, tone]) =>
               tone ? (

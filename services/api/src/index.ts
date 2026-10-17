@@ -20,6 +20,8 @@ import { publicBusinessRoutes } from './routes/public-business.js';
 import { explorationRoutes } from './routes/exploration.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
+import { reminderRoutes } from './routes/reminders.js';
+import { startAccountReminderSchedule } from './lib/reminders/run.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -59,8 +61,10 @@ async function main() {
   await app.register(pesquisaRoutes);
   await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
+  await app.register(reminderRoutes);
 
   await app.listen({ port, host });
+  startAccountReminderSchedule(app.log);
   app.log.info(`Frego API listening on http://${host}:${port}`);
 }
 

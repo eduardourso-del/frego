@@ -20,7 +20,7 @@ class PushOpenTarget {
     this.quantity,
   });
 
-  /// `campaign_new` or `earn`.
+  /// `campaign_new`, `campaign_ending`, `earn`, or `wallet_expiry`.
   final String type;
   final String businessId;
   final String? campaignId;

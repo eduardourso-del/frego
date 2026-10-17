@@ -63,6 +63,7 @@ for key in (
     "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
     "WHATSAPP_GRAPH_VERSION",
     "WHATSAPP_MAINTENANCE_SECRET",
+    "REMINDER_SECRET",
 ):
     value = os.environ.get(key, "").strip()
     if value:

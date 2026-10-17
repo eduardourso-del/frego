@@ -304,11 +304,32 @@ model Membership {
   tags         MembershipTag[]
   convites     Convite[]
   respostas    Resposta[]
+  accountNotices AccountNotice[]
 
   @@unique([customerId, businessId])
   @@index([businessId])
   @@index([customerId, isFavorite])
   @@map("memberships")
+}
+
+/// One claim per expiring wallet date or ending Promoção, so the daily
+/// reminder does not repeat a channel that already landed.
+model AccountNotice {
+  id            String    @id @default(cuid())
+  membershipId  String    @map("membership_id")
+  /// expiry | campaign_end
+  kind          String
+  noticeKey     String    @unique @map("notice_key")
+  /// sent | skipped. Null means that channel can still be tried.
+  pushState     String?   @map("push_state")
+  whatsappState String?   @map("whatsapp_state")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("account_notices")
 }
 
 /// A Cliente's private mark on an Estabelecimento. Not a Clube.
@@ -662,6 +683,12 @@ model BusinessWhatsAppConnection {
   templatePesquisaStatus WhatsAppTemplateStatus   @default(missing) @map("template_pesquisa_status")
   templatePesquisaId     String?                  @map("template_pesquisa_id")
   templatePesquisaSyncedAt DateTime?              @map("template_pesquisa_synced_at")
+  /// Expiring wallet or a Promoção that is ending while Resgatar is open.
+  templateNoticeName   String                   @default("frego_account_notice_v1") @map("template_notice_name")
+  templateNoticeLang   String                   @default("pt_BR") @map("template_notice_lang")
+  templateNoticeStatus WhatsAppTemplateStatus   @default(missing) @map("template_notice_status")
+  templateNoticeId     String?                  @map("template_notice_id")
+  templateNoticeSyncedAt DateTime?              @map("template_notice_synced_at")
   /// True when onboarded via WhatsApp Business app coexistence (keep app + Cloud API).
   coexistence        Boolean                  @default(false)
   smbSyncStartedAt   DateTime?                @map("smb_sync_started_at")

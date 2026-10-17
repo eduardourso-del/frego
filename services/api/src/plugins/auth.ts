@@ -44,7 +44,8 @@ function isPublicPath(url: string) {
   return (
     path.startsWith('/health') ||
     path.startsWith('/webhooks/meta') ||
-    path.startsWith('/public/')
+    path.startsWith('/public/') ||
+    path === '/internal/reminders'
   );
 }
 
