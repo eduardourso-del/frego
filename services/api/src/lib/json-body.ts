@@ -12,12 +12,13 @@ export function allowEmptyJsonBody(app: FastifyInstance): void {
     'application/json',
     { parseAs: 'string' },
     (_request, body, done) => {
-      if (body.length === 0) {
+      const raw = typeof body === 'string' ? body : body.toString('utf8');
+      if (raw.length === 0) {
         done(null, {});
         return;
       }
       try {
-        done(null, JSON.parse(body) as unknown);
+        done(null, JSON.parse(raw) as unknown);
       } catch {
         const err = Object.assign(
           new Error(
