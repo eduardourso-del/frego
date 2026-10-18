@@ -42,12 +42,10 @@ export function BusinessPerformanceTable({
   rows,
   busyId,
   onAct,
-  onDelete,
 }: {
   rows: BusinessPerformanceRow[];
   busyId?: string | null;
   onAct?: (id: string, action: 'approve' | 'reject') => void;
-  onDelete?: (id: string, name: string) => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
@@ -147,16 +145,6 @@ export function BusinessPerformanceTable({
                         Recusar
                       </button>
                     </>
-                  )}
-                  {onDelete && (
-                    <button
-                      type="button"
-                      disabled={busyId === b.id}
-                      onClick={() => onDelete(b.id, b.name)}
-                      className="min-h-9 rounded-[8px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
-                    >
-                      Excluir
-                    </button>
                   )}
                   <Link
                     href={`/businesses/${b.id}`}

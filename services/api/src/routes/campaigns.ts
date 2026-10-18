@@ -45,7 +45,7 @@ const campaignFields = z.object({
     .default('stamps'),
   status: z.nativeEnum(CampaignStatus).optional(),
   stampsNeeded: z.number().int().positive().max(10_000).optional(),
-  pointsPerReal: z.number().int().positive().max(100).optional(),
+  pointsPerReal: z.number().int().positive().max(1000).optional(),
   rewardTitle: z.string().max(80).optional(),
   rewardDescription: z
     .union([z.string().max(200), z.null()])
@@ -304,6 +304,210 @@ async function assertSingleActiveBirthday(
   );
 }
 
+export async function patchBusinessCampaign(input: {
+  businessId: string;
+  campaignId: string;
+  body: unknown;
+  log?: (msg: string, extra?: Record<string, unknown>) => void;
+}) {
+  const body = campaignFields.partial().parse(input.body);
+  const existing = await prisma.campaign.findFirst({
+    where: { id: input.campaignId, businessId: input.businessId },
+  });
+  if (!existing) {
+    return { ok: false as const, status: 404, body: { error: 'NOT_FOUND' } };
+  }
+
+  const nextType = body.type ?? existing.type;
+  const nextStatus = body.status ?? existing.status;
+
+  if (
+    nextType === 'spend' &&
+    nextStatus === 'active' &&
+    body.pointsPerReal == null &&
+    existing.pointsPerReal == null
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'POINTS_PER_REAL_REQUIRED' },
+    };
+  }
+
+  const nextCashbackPercent =
+    body.cashbackPercent !== undefined
+      ? body.cashbackPercent
+      : existing.cashbackPercent;
+  if (
+    nextType === 'cashback' &&
+    nextStatus === 'active' &&
+    !(nextCashbackPercent && nextCashbackPercent > 0)
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'CASHBACK_PERCENT_REQUIRED' },
+    };
+  }
+
+  const nextReward =
+    body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
+  if (
+    (nextType === 'birthday' || nextType === 'promo') &&
+    !(nextReward?.trim())
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'REWARD_TITLE_REQUIRED' },
+    };
+  }
+  const promoErr = promoError({
+    type: nextType,
+    startsOn:
+      body.startsOn !== undefined ? body.startsOn : civilYmd(existing.startsOn),
+    endsOn:
+      body.endsOn !== undefined ? body.endsOn : civilYmd(existing.endsOn),
+    redeemMax:
+      body.redeemMax !== undefined ? body.redeemMax : existing.redeemMax,
+    redeemPeriod:
+      body.redeemPeriod !== undefined
+        ? body.redeemPeriod
+        : existing.redeemPeriod,
+    rewardTitle: nextReward ?? undefined,
+  });
+  if (promoErr) {
+    return { ok: false as const, status: 400, body: { error: promoErr } };
+  }
+
+  if (
+    body.audienceSegmentId &&
+    !(await assertAudienceBelongs(input.businessId, body.audienceSegmentId))
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'INVALID_AUDIENCE' },
+    };
+  }
+
+  const dupBirthday = await assertSingleActiveBirthday(
+    input.businessId,
+    nextStatus,
+    nextType,
+    input.campaignId,
+  );
+  if (dupBirthday) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        error: 'BIRTHDAY_CAMPAIGN_EXISTS',
+        existingId: dupBirthday.id,
+        existingName: dupBirthday.name,
+      },
+    };
+  }
+
+  const {
+    locationIds,
+    audienceSegmentId,
+    startsOn: _startsOn,
+    endsOn: _endsOn,
+    weekdays: _weekdays,
+    redeemMax: _redeemMax,
+    redeemPeriod: _redeemPeriod,
+    cartela: requestedCartela,
+    ...data
+  } = body;
+  const cartelaWrite = resolveCartelaWrite({
+    nextType,
+    requested: requestedCartela,
+    existing: {
+      type: existing.type,
+      cartela: existing.cartela,
+      activatedAt: existing.activatedAt,
+    },
+  });
+  if (!cartelaWrite.ok) {
+    return {
+      ok: false as const,
+      status: cartelaWrite.error === 'CARTELA_LOCKED' ? 409 : 400,
+      body: { error: cartelaWrite.error, message: cartelaWrite.message },
+    };
+  }
+  const promo = promoWriteData({ ...body, type: nextType }, existing);
+  const campaign = await prisma.$transaction(async (tx) => {
+    if (locationIds) {
+      await tx.campaignLocation.deleteMany({
+        where: { campaignId: input.campaignId },
+      });
+      if (locationIds.length) {
+        await tx.campaignLocation.createMany({
+          data: locationIds.map((locationId: string) => ({
+            campaignId: input.campaignId,
+            locationId,
+          })),
+        });
+      }
+    }
+    return tx.campaign.update({
+      where: { id: input.campaignId },
+      data: {
+        ...data,
+        type: data.type as CampaignType | undefined,
+        stampsNeeded: noMetaType(nextType)
+          ? 1
+          : (data.stampsNeeded ?? existing.stampsNeeded),
+        pointsPerReal:
+          nextType === 'stamps' ||
+          nextType === 'birthday' ||
+          nextType === 'cashback' ||
+          nextType === 'promo'
+            ? null
+            : (data.pointsPerReal ?? existing.pointsPerReal ?? 1),
+        cashbackPercent:
+          nextType === 'cashback'
+            ? (data.cashbackPercent ?? existing.cashbackPercent ?? 0)
+            : null,
+        startsOn: promo.startsOn,
+        endsOn: promo.endsOn,
+        weekdays: promo.weekdays,
+        redeemMax: promo.redeemMax,
+        redeemPeriod: promo.redeemPeriod,
+        ...(audienceSegmentId !== undefined ? { audienceSegmentId } : {}),
+        cartela: cartelaWrite.cartela,
+        activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
+      },
+      include: {
+        locations: true,
+        audienceSegment: { select: { id: true, name: true } },
+      },
+    });
+  });
+
+  const nextAudienceId =
+    audienceSegmentId !== undefined
+      ? audienceSegmentId
+      : existing.audienceSegmentId;
+  if (
+    shouldQueueCampaignAudiencePush({
+      previousStatus: existing.status,
+      nextStatus: campaign.status,
+      audienceSegmentId: nextAudienceId,
+      alreadySent: Boolean(existing.audiencePushSentAt),
+    })
+  ) {
+    queueCampaignAudiencePush({
+      campaignId: campaign.id,
+      businessId: input.businessId,
+      log: input.log ?? (() => {}),
+    });
+  }
+
+  return { ok: true as const, campaign };
+}
+
 export const campaignRoutes: FastifyPluginAsync = async (app) => {
   app.get('/campaigns', async (request) => {
     const auth = requireAuth(request);
@@ -483,184 +687,14 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ error: 'FORBIDDEN' });
     }
     const { id } = request.params as { id: string };
-    const body = campaignFields.partial().parse(request.body);
-
-    const existing = await prisma.campaign.findFirst({
-      where: { id, businessId: auth.businessId },
+    const result = await patchBusinessCampaign({
+      businessId: auth.businessId,
+      campaignId: id,
+      body: request.body,
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
-    if (!existing) {
-      return reply.code(404).send({ error: 'NOT_FOUND' });
-    }
-
-    const nextType = body.type ?? existing.type;
-    const nextStatus = body.status ?? existing.status;
-
-    if (
-      nextType === 'spend' &&
-      nextStatus === 'active' &&
-      body.pointsPerReal == null &&
-      existing.pointsPerReal == null
-    ) {
-      return reply.code(400).send({ error: 'POINTS_PER_REAL_REQUIRED' });
-    }
-
-    const nextCashbackPercent =
-      body.cashbackPercent !== undefined
-        ? body.cashbackPercent
-        : existing.cashbackPercent;
-    if (
-      nextType === 'cashback' &&
-      nextStatus === 'active' &&
-      !(nextCashbackPercent && nextCashbackPercent > 0)
-    ) {
-      return reply.code(400).send({ error: 'CASHBACK_PERCENT_REQUIRED' });
-    }
-
-    const nextReward =
-      body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
-    if (
-      (nextType === 'birthday' || nextType === 'promo') &&
-      !(nextReward?.trim())
-    ) {
-      return reply.code(400).send({ error: 'REWARD_TITLE_REQUIRED' });
-    }
-    const promoErr = promoError({
-      type: nextType,
-      startsOn:
-        body.startsOn !== undefined
-          ? body.startsOn
-          : civilYmd(existing.startsOn),
-      endsOn:
-        body.endsOn !== undefined ? body.endsOn : civilYmd(existing.endsOn),
-      redeemMax:
-        body.redeemMax !== undefined ? body.redeemMax : existing.redeemMax,
-      redeemPeriod:
-        body.redeemPeriod !== undefined
-          ? body.redeemPeriod
-          : existing.redeemPeriod,
-      rewardTitle: nextReward ?? undefined,
-    });
-    if (promoErr) {
-      return reply.code(400).send({ error: promoErr });
-    }
-
-    if (
-      body.audienceSegmentId &&
-      !(await assertAudienceBelongs(auth.businessId, body.audienceSegmentId))
-    ) {
-      return reply.code(400).send({ error: 'INVALID_AUDIENCE' });
-    }
-
-    const dupBirthday = await assertSingleActiveBirthday(
-      auth.businessId,
-      nextStatus,
-      nextType,
-      id,
-    );
-    if (dupBirthday) {
-      return reply.code(409).send({
-        error: 'BIRTHDAY_CAMPAIGN_EXISTS',
-        existingId: dupBirthday.id,
-        existingName: dupBirthday.name,
-      });
-    }
-
-    const {
-      locationIds,
-      audienceSegmentId,
-      startsOn: _startsOn,
-      endsOn: _endsOn,
-      weekdays: _weekdays,
-      redeemMax: _redeemMax,
-      redeemPeriod: _redeemPeriod,
-      cartela: requestedCartela,
-      ...data
-    } = body;
-    const cartelaWrite = resolveCartelaWrite({
-      nextType,
-      requested: requestedCartela,
-      existing: {
-        type: existing.type,
-        cartela: existing.cartela,
-        activatedAt: existing.activatedAt,
-      },
-    });
-    if (!cartelaWrite.ok) {
-      return reply.code(cartelaWrite.error === 'CARTELA_LOCKED' ? 409 : 400).send({
-        error: cartelaWrite.error,
-        message: cartelaWrite.message,
-      });
-    }
-    const promo = promoWriteData({ ...body, type: nextType }, existing);
-    const campaign = await prisma.$transaction(async (tx) => {
-      if (locationIds) {
-        await tx.campaignLocation.deleteMany({ where: { campaignId: id } });
-        if (locationIds.length) {
-          await tx.campaignLocation.createMany({
-            data: locationIds.map((locationId: string) => ({
-              campaignId: id,
-              locationId,
-            })),
-          });
-        }
-      }
-      return tx.campaign.update({
-        where: { id },
-        data: {
-          ...data,
-          type: data.type as CampaignType | undefined,
-          stampsNeeded: noMetaType(nextType)
-            ? 1
-            : (data.stampsNeeded ?? existing.stampsNeeded),
-          pointsPerReal:
-            nextType === 'stamps' ||
-            nextType === 'birthday' ||
-            nextType === 'cashback' ||
-            nextType === 'promo'
-              ? null
-              : (data.pointsPerReal ?? existing.pointsPerReal ?? 1),
-          cashbackPercent:
-            nextType === 'cashback'
-              ? (data.cashbackPercent ?? existing.cashbackPercent ?? 0)
-              : null,
-          startsOn: promo.startsOn,
-          endsOn: promo.endsOn,
-          weekdays: promo.weekdays,
-          redeemMax: promo.redeemMax,
-          redeemPeriod: promo.redeemPeriod,
-          ...(audienceSegmentId !== undefined
-            ? { audienceSegmentId }
-            : {}),
-          cartela: cartelaWrite.cartela,
-          activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
-        },
-        include: {
-          locations: true,
-          audienceSegment: { select: { id: true, name: true } },
-        },
-      });
-    });
-
-    const nextAudienceId =
-      audienceSegmentId !== undefined
-        ? audienceSegmentId
-        : existing.audienceSegmentId;
-    if (
-      shouldQueueCampaignAudiencePush({
-        previousStatus: existing.status,
-        nextStatus: campaign.status,
-        audienceSegmentId: nextAudienceId,
-        alreadySent: Boolean(existing.audiencePushSentAt),
-      })
-    ) {
-      queueCampaignAudiencePush({
-        campaignId: campaign.id,
-        businessId: auth.businessId,
-        log: (msg, extra) => request.log.info(extra ?? {}, msg),
-      });
-    }
-
-    return { campaign };
+    if (!result.ok) return reply.code(result.status).send(result.body);
+    return { campaign: result.campaign };
   });
 
   app.delete('/campaigns/:id', async (request, reply) => {

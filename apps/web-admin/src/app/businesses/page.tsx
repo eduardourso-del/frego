@@ -54,29 +54,6 @@ export default function BusinessesPage() {
     void load();
   }, [load]);
 
-  async function remove(id: string, name: string) {
-    const ok = window.confirm(
-      `Excluir ${name}?\n\nCampanhas, pesquisas, equipe e o histórico deste estabelecimento somem. A conta do cliente na Frego permanece.`,
-    );
-    if (!ok) return;
-    setBusyId(id);
-    setError(null);
-    try {
-      const token = await getToken();
-      const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error ?? 'Falha ao excluir');
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro');
-    } finally {
-      setBusyId(null);
-    }
-  }
-
   async function act(id: string, action: 'approve' | 'reject') {
     setBusyId(id);
     try {
@@ -162,7 +139,6 @@ export default function BusinessesPage() {
           rows={rows}
           busyId={busyId}
           onAct={(id, action) => void act(id, action)}
-          onDelete={(id, name) => void remove(id, name)}
         />
       )}
     </AdminShell>
