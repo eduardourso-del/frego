@@ -150,6 +150,16 @@ function campaignRules(campaign: Detail['campaigns'][number]) {
       `${campaign.redeemMax} resgate${campaign.redeemMax === 1 ? '' : 's'}${period ? ` ${period}` : ''}`,
     );
   }
+  if (campaign.type === 'birthday') {
+    const days = campaign.birthdayWindowDays ?? 7;
+    parts.push(
+      campaign.birthdayWindow === 'month'
+        ? 'No mês do aniversário'
+        : days === 1
+          ? 'No dia do aniversário'
+          : `${days} dias a partir do aniversário`,
+    );
+  }
   if (campaign.audienceName) parts.push(campaign.audienceName);
   return parts;
 }

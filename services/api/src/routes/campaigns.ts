@@ -84,6 +84,8 @@ const campaignFields = z.object({
     ])
     .optional(),
   cartela: z.boolean().optional(),
+  birthdayWindow: z.enum(['days', 'month']).optional(),
+  birthdayWindowDays: z.number().int().min(1).max(90).optional(),
 });
 
 function parseDateOnly(value: string | null | undefined): Date | null | undefined {
@@ -94,6 +96,31 @@ function parseDateOnly(value: string | null | undefined): Date | null | undefine
 
 function noMetaType(type: string) {
   return type === 'birthday' || type === 'cashback' || type === 'promo';
+}
+
+function birthdayWindowWrite(
+  body: {
+    type?: string;
+    birthdayWindow?: 'days' | 'month';
+    birthdayWindowDays?: number;
+  },
+  existing?: {
+    type: string;
+    birthdayWindow: 'days' | 'month';
+    birthdayWindowDays: number;
+  } | null,
+): { birthdayWindow: 'days' | 'month'; birthdayWindowDays: number } | null {
+  const type = body.type ?? existing?.type;
+  if (type !== 'birthday') return null;
+  const treatAsCreate = !existing || existing.type !== 'birthday';
+  return {
+    birthdayWindow:
+      body.birthdayWindow ??
+      (treatAsCreate ? 'days' : existing.birthdayWindow),
+    birthdayWindowDays:
+      body.birthdayWindowDays ??
+      (treatAsCreate ? 7 : existing.birthdayWindowDays),
+  };
 }
 
 function promoError(
@@ -418,6 +445,8 @@ export async function patchBusinessCampaign(input: {
     redeemMax: _redeemMax,
     redeemPeriod: _redeemPeriod,
     cartela: requestedCartela,
+    birthdayWindow: _birthdayWindow,
+    birthdayWindowDays: _birthdayWindowDays,
     ...data
   } = body;
   const cartelaWrite = resolveCartelaWrite({
@@ -437,6 +466,7 @@ export async function patchBusinessCampaign(input: {
     };
   }
   const promo = promoWriteData({ ...body, type: nextType }, existing);
+  const birthday = birthdayWindowWrite({ ...body, type: nextType }, existing);
   const campaign = await prisma.$transaction(async (tx) => {
     if (locationIds) {
       await tx.campaignLocation.deleteMany({
@@ -475,6 +505,7 @@ export async function patchBusinessCampaign(input: {
         weekdays: promo.weekdays,
         redeemMax: promo.redeemMax,
         redeemPeriod: promo.redeemPeriod,
+        ...(birthday ?? {}),
         ...(audienceSegmentId !== undefined ? { audienceSegmentId } : {}),
         cartela: cartelaWrite.cartela,
         activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
@@ -617,6 +648,7 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       ? 1
       : (body.stampsNeeded ?? (body.type === 'spend' ? 100 : 10));
     const promo = promoWriteData(body);
+    const birthday = birthdayWindowWrite(body);
     const cartelaWrite = resolveCartelaWrite({
       nextType: body.type,
       requested: body.cartela,
@@ -652,6 +684,7 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
         weekdays: promo.weekdays,
         redeemMax: promo.redeemMax,
         redeemPeriod: promo.redeemPeriod,
+        ...(birthday ?? {}),
         locations: body.locationIds?.length
           ? {
               create: body.locationIds.map((locationId) => ({ locationId })),

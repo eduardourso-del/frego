@@ -52,6 +52,10 @@ _Avoid_: card, cartão, punch card, pool
 A Campanha whose Prêmio is entitled by Audiência, the Estabelecimento calendar, and a Resgatar frequency cap — not by stamps or points.
 _Avoid_: offer, gift, brinde, perk
 
+**Janela**:
+The span in which a birthday Campanha may be Resgatada, taken from the Cliente's birthday. Either that birthday's calendar month, or a number of days that begin on the birthday.
+_Avoid_: promo calendar, shop calendar, validade
+
 **Audiência**:
 A saved set of Clientes. A Campanha or a Pesquisa can be limited to one. With none set, every Cliente qualifies.
 _Avoid_: segment, list, filter, audience

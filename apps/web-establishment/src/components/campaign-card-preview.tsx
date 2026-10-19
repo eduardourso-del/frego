@@ -25,6 +25,7 @@ type CampaignCardPreviewProps = {
   rewardDescription?: string;
   rewardImageUrl?: string | null;
   promoHint?: string;
+  birthdayHint?: string;
   startsOn?: string | null;
   endsOn?: string | null;
   weekdays?: number[];
@@ -44,6 +45,7 @@ export function CampaignCardPreview({
   rewardDescription,
   rewardImageUrl,
   promoHint,
+  birthdayHint,
   endsOn,
   weekdays,
 }: CampaignCardPreviewProps) {
@@ -164,7 +166,7 @@ export function CampaignCardPreview({
                 <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-[#FDF2F8] px-2.5 py-2">
                   <span className="text-[14px]">🎂</span>
                   <p className="text-[11px] font-medium text-[#9D174D]">
-                    {reward} · 1× ao ano
+                    {reward} · {birthdayHint ?? '1× ao ano'}
                   </p>
                 </div>
               ) : campaignType === 'promo' ? (

@@ -117,6 +117,26 @@ const WALLET_CAMPAIGN_TYPES = [
 /** Janela de resgate: dia do aniversário + 6 dias seguintes. */
 export const BIRTHDAY_WINDOW_DAYS = 7;
 
+export type BirthdayWindowKind = 'days' | 'month';
+
+export type BirthdayWindowSpec = {
+  kind: BirthdayWindowKind;
+  /** Inclusive day count starting on the birthday. Ignored when kind is month. */
+  days: number;
+};
+
+export function birthdayWindowSpec(
+  kind: string | null | undefined,
+  days: number | null | undefined,
+): BirthdayWindowSpec {
+  const safeDays =
+    days != null && Number.isFinite(days) && days >= 1
+      ? Math.floor(days)
+      : BIRTHDAY_WINDOW_DAYS;
+  if (kind === 'month') return { kind: 'month', days: safeDays };
+  return { kind: 'days', days: safeDays };
+}
+
 function campaignUnitKind(type: string): UnitKind | null {
   if (type === 'spend') return 'points';
   if (type === 'stamps') return 'stamps';
@@ -171,11 +191,29 @@ function addUtcDays(d: Date, days: number): Date {
   return new Date(d.getTime() + days * 86_400_000);
 }
 
+function windowBounds(
+  year: number,
+  month: number,
+  day: number,
+  spec: BirthdayWindowSpec,
+): { start: Date; end: Date } {
+  if (spec.kind === 'month') {
+    return {
+      start: new Date(Date.UTC(year, month, 1)),
+      end: new Date(Date.UTC(year, month + 1, 0)),
+    };
+  }
+  const start = new Date(Date.UTC(year, month, day));
+  return { start, end: addUtcDays(start, spec.days - 1) };
+}
+
 /**
- * Status da janela de aniversário (UTC, alinhado ao campo Date do Prisma).
+ * Status da Janela de aniversário (UTC, alinhado ao campo Date do Prisma).
+ * `days` começa no aniversário. `month` é o mês civil dessa data.
  */
 export function birthdayWindowStatus(
   birthday: Date | null | undefined,
+  spec: BirthdayWindowSpec = birthdayWindowSpec('days', BIRTHDAY_WINDOW_DAYS),
   now = new Date(),
 ): {
   inWindow: boolean;
@@ -183,6 +221,8 @@ export function birthdayWindowStatus(
   unlocksAt: Date | null;
   daysUntil: number | null;
   windowYear: number | null;
+  windowStart: Date | null;
+  windowEnd: Date | null;
 } {
   if (!birthday) {
     return {
@@ -191,63 +231,70 @@ export function birthdayWindowStatus(
       unlocksAt: null,
       daysUntil: null,
       windowYear: null,
+      windowStart: null,
+      windowEnd: null,
     };
   }
 
-  const bMonth = birthday.getUTCMonth();
-  const bDay = birthday.getUTCDate();
+  const month = birthday.getUTCMonth();
+  const day = birthday.getUTCDate();
   const today = utcDateOnly(now);
   const year = today.getUTCFullYear();
 
-  const candidates = [
-    new Date(Date.UTC(year - 1, bMonth, bDay)),
-    new Date(Date.UTC(year, bMonth, bDay)),
-    new Date(Date.UTC(year + 1, bMonth, bDay)),
-  ];
-
-  for (const start of candidates) {
-    const end = addUtcDays(start, BIRTHDAY_WINDOW_DAYS - 1);
-    if (today >= start && today <= end) {
+  for (const y of [year - 1, year, year + 1]) {
+    const bounds = windowBounds(y, month, day, spec);
+    if (today >= bounds.start && today <= bounds.end) {
       return {
         inWindow: true,
         lockedReason: null,
-        unlocksAt: start,
+        unlocksAt: bounds.start,
         daysUntil: 0,
-        windowYear: start.getUTCFullYear(),
+        windowYear: bounds.start.getUTCFullYear(),
+        windowStart: bounds.start,
+        windowEnd: bounds.end,
       };
     }
   }
 
-  let next = new Date(Date.UTC(year, bMonth, bDay));
-  if (next < today) {
-    next = new Date(Date.UTC(year + 1, bMonth, bDay));
+  let next: { start: Date; end: Date } | null = null;
+  for (const y of [year - 1, year, year + 1, year + 2]) {
+    const bounds = windowBounds(y, month, day, spec);
+    if (bounds.start >= today && (next == null || bounds.start < next.start)) {
+      next = bounds;
+    }
   }
+  if (!next) next = windowBounds(year + 1, month, day, spec);
+
   const daysUntil = Math.round(
-    (next.getTime() - today.getTime()) / 86_400_000,
+    (next.start.getTime() - today.getTime()) / 86_400_000,
   );
 
   return {
     inWindow: false,
     lockedReason: 'outside_window',
-    unlocksAt: next,
+    unlocksAt: next.start,
     daysUntil,
-    windowYear: next.getUTCFullYear(),
+    windowYear: next.start.getUTCFullYear(),
+    windowStart: next.start,
+    windowEnd: next.end,
   };
 }
 
-function redeemedInYear(
+function redeemedInWindow(
   transactions: Array<{
     type: string;
     campaignId: string | null;
     createdAt?: Date;
   }>,
   campaignId: string,
-  year: number,
+  start: Date,
+  end: Date,
 ): boolean {
   return transactions.some((tx) => {
     if (tx.type !== 'redeem' || tx.campaignId !== campaignId) return false;
     if (!tx.createdAt) return true;
-    return tx.createdAt.getUTCFullYear() === year;
+    const day = utcDateOnly(tx.createdAt);
+    return day >= start && day <= end;
   });
 }
 
@@ -407,6 +454,8 @@ export async function deriveWallet(
         weekdays: true,
         redeemMax: true,
         redeemPeriod: true,
+        birthdayWindow: true,
+        birthdayWindowDays: true,
       },
     }),
     prisma.transaction.findMany({
@@ -592,17 +641,25 @@ export async function deriveWallet(
     };
   });
 
-  const window = birthdayWindowStatus(birthday);
-
   for (const campaign of birthdayCampaigns) {
+    const window = birthdayWindowStatus(
+      birthday,
+      birthdayWindowSpec(campaign.birthdayWindow, campaign.birthdayWindowDays),
+    );
     let lockedReason = window.lockedReason;
     let canRedeem = window.inWindow;
     let rewardsAvailable = canRedeem ? 1 : 0;
 
     if (
       canRedeem &&
-      window.windowYear != null &&
-      redeemedInYear(transactions, campaign.id, window.windowYear)
+      window.windowStart &&
+      window.windowEnd &&
+      redeemedInWindow(
+        transactions,
+        campaign.id,
+        window.windowStart,
+        window.windowEnd,
+      )
     ) {
       lockedReason = 'already_redeemed';
       canRedeem = false;

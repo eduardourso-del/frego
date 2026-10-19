@@ -403,8 +403,9 @@ export function GuideView() {
                   onFill="var(--color-grafite)"
                 >
                   <p>
-                    Um presente por ano, na data de aniversário que o cliente
-                    informou no app. O prêmio é obrigatório.
+                    Um presente por ano, na janela do aniversário que o
+                    estabelecimento define: o mês da data, ou alguns dias a
+                    partir dela. O prêmio é obrigatório.
                   </p>
                 </TypeCard>
                 <TypeCard

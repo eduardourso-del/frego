@@ -7,6 +7,7 @@ import { StoreBadges } from '@/components/store-badges';
 import { RemoteImg, BusinessLogo } from '@/components/remote-img';
 import { Banknote, Cake, Coins, MapPin, Percent, Stamp } from 'lucide-react';
 import { businessTypeLabel } from '@frego/tokens';
+import { birthdayWindowLabel } from '@/lib/birthday-window';
 import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
 import type {
   PublicShopCampaign,
@@ -20,7 +21,7 @@ function campaignHint(
   reaisPerPoint = 1,
 ): string {
   if (c.type === 'birthday') {
-    return 'Presente especial no aniversário — e nos 6 dias seguintes';
+    return birthdayWindowLabel(c.birthdayWindow, c.birthdayWindowDays);
   }
   if (c.type === 'promo') {
     return promoHint(c);

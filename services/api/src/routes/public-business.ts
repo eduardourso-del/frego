@@ -58,6 +58,8 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
               weekdays: true,
               redeemMax: true,
               redeemPeriod: true,
+              birthdayWindow: true,
+              birthdayWindowDays: true,
             },
           },
         },
@@ -103,6 +105,8 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           rewardTitle: c.rewardTitle,
           rewardDescription: c.rewardDescription,
           rewardImageUrl: c.rewardImageUrl,
+          birthdayWindow: c.birthdayWindow,
+          birthdayWindowDays: c.birthdayWindowDays,
         })),
       };
     },

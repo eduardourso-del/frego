@@ -25,6 +25,8 @@ export type AdminCampaign = {
   weekdays: number[];
   redeemMax: number | null;
   redeemPeriod: string | null;
+  birthdayWindow?: 'days' | 'month' | null;
+  birthdayWindowDays?: number | null;
   audienceSegmentId: string | null;
   audienceName: string | null;
   earns30d: number;
@@ -136,6 +138,12 @@ export function CampaignEditor({
     campaign.redeemPeriod ?? (campaign.type === 'promo' ? 'campaign' : 'day'),
   );
   const [cartela, setCartela] = useState(campaign.cartela);
+  const [birthdayWindow, setBirthdayWindow] = useState<'days' | 'month'>(
+    campaign.birthdayWindow === 'month' ? 'month' : 'days',
+  );
+  const [birthdayWindowDays, setBirthdayWindowDays] = useState(
+    campaign.birthdayWindowDays ?? 7,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -207,6 +215,16 @@ export function CampaignEditor({
           weekdays: [],
           ...quota,
           cartela,
+        });
+      } else if (type === 'birthday') {
+        Object.assign(body, {
+          startsOn: null,
+          endsOn: null,
+          weekdays: [],
+          redeemMax: null,
+          redeemPeriod: null,
+          birthdayWindow,
+          birthdayWindowDays,
         });
       } else if (known) {
         Object.assign(body, {
@@ -444,6 +462,49 @@ export function CampaignEditor({
               O balcão usa a taxa da configuração do estabelecimento.
             </span>
           </label>
+        </div>
+      )}
+
+      {type === 'birthday' && (
+        <div className="mt-4 flex flex-col gap-3">
+          <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
+            Quando libera
+            <select
+              value={birthdayWindow}
+              onChange={(e) =>
+                setBirthdayWindow(e.target.value === 'month' ? 'month' : 'days')
+              }
+              className={inputClass}
+            >
+              <option value="days">Dias a partir do aniversário</option>
+              <option value="month">Mês do aniversário</option>
+            </select>
+          </label>
+          {birthdayWindow === 'days' ? (
+            <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
+              Dias
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={birthdayWindowDays}
+                onChange={(e) =>
+                  setBirthdayWindowDays(
+                    Math.max(1, Math.min(90, Number(e.target.value) || 1)),
+                  )
+                }
+                className={inputClass}
+              />
+              <span className="mt-1 block text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-400)]">
+                O dia do aniversário entra na conta. 15 dias = o dia e os 14
+                seguintes.
+              </span>
+            </label>
+          ) : (
+            <p className="text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-400)]">
+              Do dia 1 ao último dia do mês da data que o cliente cadastrou.
+            </p>
+          )}
         </div>
       )}
 

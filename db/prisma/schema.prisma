@@ -45,6 +45,12 @@ enum CampaignType {
   promo
 }
 
+/// Birthday Campanha: days begin on the birthday, or that birthday's calendar month.
+enum BirthdayWindow {
+  days
+  month
+}
+
 /// How often a customer may Resgatar a Promoção. Null on the Campanha means unlimited.
 enum PromoRedeemPeriod {
   day
@@ -412,6 +418,10 @@ model Campaign {
   cartela      Boolean   @default(false)
   /// Set the first time the Campanha becomes active. Locks cartela.
   activatedAt  DateTime? @map("activated_at")
+  /// Birthday: days starting on the birthday, or the birthday's calendar month.
+  birthdayWindow     BirthdayWindow @default(days) @map("birthday_window")
+  /// Inclusive day count when birthdayWindow is days. Kept when the Janela is the month.
+  birthdayWindowDays Int            @default(7) @map("birthday_window_days")
   /// Se definido, só membros da audiência podem resgatar.
   audienceSegmentId String?   @map("audience_segment_id")
   /// Set when audience FCM was claimed/sent. Re-activate does not send again.
