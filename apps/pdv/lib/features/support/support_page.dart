@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../terminal/terminal_info.dart';
 import '../../theme/frego_theme.dart';
 
-const fregoSupportEmail = 'contato@bearlabs.com.br';
+const fregoSupportEmail = 'contato@frego.app.br';
 
 void openSupport(BuildContext context) {
   Navigator.of(context).push(

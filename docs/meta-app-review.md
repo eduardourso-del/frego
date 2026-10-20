@@ -14,7 +14,7 @@ Privacy: https://frego.app.br/privacidade
 Terms: https://frego.app.br/termos  
 Support: https://frego.app.br/suporte  
 Establishment app: https://frego.app.br/login  
-Contact: contato@bearlabs.com.br
+Contact: contato@frego.app.br
 
 ---
 
@@ -53,7 +53,7 @@ If Meta lets you drop `public_profile` from this request without breaking Embedd
 Answer truthfully and specifically. Platform Data here means WABA IDs, phone number IDs, access tokens, template status, webhook delivery events, and (for coexistence) SMB contact/history sync events Meta sends.
 
 **Data controller:** Bearlabs (operator of Frego), Brazil.  
-**Privacy contact:** contato@bearlabs.com.br  
+**Privacy contact:** contato@frego.app.br  
 **Policy:** https://frego.app.br/privacidade
 
 **What we receive from Meta:** identifiers of the shop’s WhatsApp Business Account and phone, encrypted Cloud API access tokens, template approval status, message send results, and webhook events (delivery, template status, and coexistence sync: `history`, `smb_app_state_sync`, `smb_message_echoes`). Customer phone numbers used as WhatsApp destinations are the same numbers the shop already stored in Frego for loyalty (the phone is the customer account). We do not ingest Facebook friend lists or consumer Facebook profiles.
@@ -99,7 +99,7 @@ How to review (videos attached per permission):
    thread showing the message from the shop’s number.
 
 We are not providing Facebook account credentials. If a dashboard login is
-required, contact contato@bearlabs.com.br and we will provision a reviewer
+required, contact contato@frego.app.br and we will provision a reviewer
 tenant the same day.
 
 Notes:

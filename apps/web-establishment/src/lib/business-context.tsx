@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -91,6 +92,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const [businessId, setBusinessIdState] = useState<string | null>(null);
   const [business, setBusiness] = useState<BusinessBrand | null>(null);
   const [loading, setLoading] = useState(true);
+  // Cadastro autentica o Firebase antes de existir a loja. O refresh desse
+  // login pode voltar vazio e não pode apagar o carregamento feito depois.
+  const userRef = useRef(user);
+  userRef.current = user;
+  const refreshGen = useRef(0);
 
   const setBusinessId = useCallback(
     (id: string) => {
@@ -122,7 +128,12 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    const gen = ++refreshGen.current;
+    const current = () => gen === refreshGen.current;
+    const currentUser = userRef.current;
+
+    if (!currentUser) {
+      if (!current()) return;
       resetBusinessState();
       setLoading(false);
       return;
@@ -131,6 +142,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const token = await getToken();
+      if (!current()) return;
       if (!token) {
         resetBusinessState();
         return;
@@ -138,7 +150,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
       const stored =
         typeof window !== 'undefined'
-          ? localStorage.getItem(storageKeyFor(user.uid))
+          ? localStorage.getItem(storageKeyFor(currentUser.uid))
           : null;
       // Preferência só se ainda for válida depois da listagem
       const preferId = businessId ?? stored ?? null;
@@ -153,6 +165,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         headers: listHeaders,
       });
       const listJson = await listRes.json();
+      if (!current()) return;
       if (!listRes.ok) {
         throw new Error(listJson.error ?? 'Não foi possível listar as lojas.');
       }
@@ -167,14 +180,14 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         resetBusinessState();
         clearLegacyStorage();
         if (typeof window !== 'undefined') {
-          localStorage.removeItem(storageKeyFor(user.uid));
+          localStorage.removeItem(storageKeyFor(currentUser.uid));
         }
         return;
       }
 
       setBusinessIdState(activeId);
       if (typeof window !== 'undefined') {
-        localStorage.setItem(storageKeyFor(user.uid), activeId);
+        localStorage.setItem(storageKeyFor(currentUser.uid), activeId);
         clearLegacyStorage();
       }
 
@@ -184,15 +197,17 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       };
       const res = await fetch(`${API_URL}/business`, { headers });
       const json = await res.json();
+      if (!current()) return;
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar a loja.');
       const next = json.business as BusinessBrand;
       setBusiness(next);
     } catch {
+      if (!current()) return;
       resetBusinessState();
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [getToken, businessId, user, resetBusinessState]);
+  }, [getToken, businessId, resetBusinessState]);
 
   const updateBusiness = useCallback(
     async (patch: Partial<BusinessBrand>) => {

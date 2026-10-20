@@ -10,6 +10,7 @@ import {
   getFirebaseAuth,
 } from '@/lib/firebase';
 import { API_URL } from '@/lib/api';
+import { useBusiness } from '@/lib/business-context';
 import {
   Alert,
   Button,
@@ -120,6 +121,7 @@ function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { refresh } = useBusiness();
   const configured = isFirebaseConfigured();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +224,9 @@ export default function RegisterPage() {
         window.localStorage.setItem(key, json.business.id);
       }
 
+      // O login do Firebase dispara um carregamento antes desta loja existir.
+      // Recarrega agora para o painel abrir já em "Aguardando aprovação".
+      await refresh();
       router.replace('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível concluir o cadastro.');
