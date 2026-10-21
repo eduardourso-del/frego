@@ -11,7 +11,10 @@ import {
 } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
 import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
-import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
+import {
+  queueEarnNotify,
+  releaseEarnNotifyHold,
+} from '../lib/whatsapp/earn-notify-hold.js';
 import {
   closeConvitesForSale,
   openConviteForEarn,
@@ -365,7 +368,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    queueEarnNotify({
+    await queueEarnNotify({
       businessId: auth.businessId,
       businessName: business.name,
       customerId: membership.customer.id,
@@ -374,6 +377,7 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       quantity,
       amountCents,
       cashbackCents: cashbackEarned > 0 ? cashbackEarned : null,
+      saleId,
       transactionId: anchorId,
       wallet,
       stampEarn: unitKind === 'stamps' ? stampEarn : null,
@@ -560,6 +564,23 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
     await closeConvitesForSale(saleId ?? target.id);
 
     const wallet = await deriveWallet(target.membershipId, auth.businessId);
+    try {
+      const owner = await prisma.membership.findUnique({
+        where: { id: target.membershipId },
+        select: { customerId: true },
+      });
+      if (owner) {
+        await releaseEarnNotifyHold({
+          businessId: auth.businessId,
+          customerId: owner.customerId,
+          saleId,
+          transactionIds: toReverse.map((tx) => tx.id),
+          wallet,
+        });
+      }
+    } catch (err) {
+      request.log.error({ err }, 'earn_notify_release_failed');
+    }
     return {
       reversedIds: toReverse.map((tx) => tx.id),
       saleId: saleId ?? target.id,

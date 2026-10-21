@@ -32,6 +32,35 @@ set +a
 
 TAG="${1:-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/voltei/api:${TAG}"
+QUEUE=frego-earn-notify
+
+echo "==> Cloud Tasks queue $QUEUE"
+gcloud services enable cloudtasks.googleapis.com --project="$PROJECT"
+if ! gcloud tasks queues describe "$QUEUE" --project="$PROJECT" --location="$REGION" >/dev/null 2>&1; then
+  gcloud tasks queues create "$QUEUE" \
+    --project="$PROJECT" \
+    --location="$REGION" \
+    --max-dispatches-per-second=5 \
+    --max-concurrent-dispatches=2 \
+    --max-attempts=3
+fi
+gcloud tasks queues update "$QUEUE" \
+  --project="$PROJECT" \
+  --location="$REGION" \
+  --max-dispatches-per-second=5 \
+  --max-concurrent-dispatches=2
+gcloud tasks queues add-iam-policy-binding "$QUEUE" \
+  --project="$PROJECT" \
+  --location="$REGION" \
+  --member="serviceAccount:${SA}" \
+  --role="roles/cloudtasks.enqueuer" >/dev/null
+
+EXISTING_URL=$(gcloud run services describe "$SERVICE" \
+  --project="$PROJECT" \
+  --region="$REGION" \
+  --format='value(status.url)')
+export CLOUD_TASKS_QUEUE="projects/${PROJECT}/locations/${REGION}/queues/${QUEUE}"
+export EARN_NOTIFY_FLUSH_URL="${EXISTING_URL}/internal/earn-notifies"
 
 echo "==> Building $IMAGE"
 gcloud builds submit \
@@ -64,6 +93,8 @@ for key in (
     "WHATSAPP_GRAPH_VERSION",
     "WHATSAPP_MAINTENANCE_SECRET",
     "REMINDER_SECRET",
+    "CLOUD_TASKS_QUEUE",
+    "EARN_NOTIFY_FLUSH_URL",
 ):
     value = os.environ.get(key, "").strip()
     if value:
@@ -94,6 +125,35 @@ URL=$(gcloud run services describe "$SERVICE" \
   --project="$PROJECT" \
   --region="$REGION" \
   --format='value(status.url)')
+
+if [[ -n "${REMINDER_SECRET:-}" ]]; then
+  echo "==> Cloud Scheduler earn-notify flush (backstop, every minute)"
+  JOB=frego-earn-notify-flush
+  HEADER="^|^x-reminder-secret=${REMINDER_SECRET}"
+  if gcloud scheduler jobs describe "$JOB" --project="$PROJECT" --location="$REGION" >/dev/null 2>&1; then
+    gcloud scheduler jobs update http "$JOB" \
+      --project="$PROJECT" \
+      --location="$REGION" \
+      --schedule="* * * * *" \
+      --uri="${URL}/internal/earn-notifies" \
+      --http-method=POST \
+      --update-headers="$HEADER" \
+      --attempt-deadline=180s \
+      || echo "Warning: could not update $JOB"
+  else
+    gcloud scheduler jobs create http "$JOB" \
+      --project="$PROJECT" \
+      --location="$REGION" \
+      --schedule="* * * * *" \
+      --uri="${URL}/internal/earn-notifies" \
+      --http-method=POST \
+      --headers="$HEADER" \
+      --attempt-deadline=180s \
+      || echo "Warning: could not create $JOB"
+  fi
+else
+  echo "Skipping earn-notify scheduler (REMINDER_SECRET unset)"
+fi
 
 echo ""
 echo "API: $URL"

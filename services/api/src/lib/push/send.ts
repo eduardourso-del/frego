@@ -7,11 +7,18 @@ export const FCM_BATCH_SIZE = 500;
 /** iOS needs custom keys next to `aps` or a tap arrives with an empty data map. */
 export function apnsWithData(
   data: Record<string, string>,
+  alert?: { title: string; body: string },
 ): NonNullable<MulticastMessage['apns']> {
   return {
-    headers: { 'apns-priority': '10' },
+    headers: {
+      'apns-priority': '10',
+      ...(alert ? { 'apns-push-type': 'alert' } : {}),
+    },
     payload: {
-      aps: { sound: 'default' },
+      aps: {
+        sound: 'default',
+        ...(alert ? { alert } : {}),
+      },
       ...data,
     },
   };

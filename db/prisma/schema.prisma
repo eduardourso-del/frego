@@ -180,6 +180,7 @@ model Business {
   whatsapp     BusinessWhatsAppConnection?
   whatsappWebhookEvents WhatsAppWebhookEvent[]
   favorites    Favorite[]
+  earnNotifyHolds EarnNotifyHold[]
 
   @@map("businesses")
 }
@@ -271,6 +272,7 @@ model Customer {
   transactions Transaction[] @relation("CustomerActorTransactions")
   convites     Convite[]
   respostas    Resposta[]
+  earnNotifyHolds EarnNotifyHold[]
 
   @@index([phoneLast4])
   @@index([deletedAt])
@@ -336,6 +338,27 @@ model AccountNotice {
 
   @@index([membershipId])
   @@map("account_notices")
+}
+
+/// One pending earn message per Cliente at an Estabelecimento.
+/// Taps inside the quiet window fold into this row; the flush sends once.
+model EarnNotifyHold {
+  id         String   @id @default(cuid())
+  businessId String   @map("business_id")
+  customerId String   @map("customer_id")
+  /// Increments whenever the held burst changes.
+  version    Int      @default(1)
+  sendAfter  DateTime @map("send_after")
+  payload    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, customerId])
+  @@index([sendAfter])
+  @@map("earn_notify_holds")
 }
 
 /// A Cliente's private mark on an Estabelecimento. Not a Clube.

@@ -51,6 +51,7 @@ export async function notifyEarnWhatsAppForBusiness(
     cashbackCents: input.cashbackCents,
     wallet: input.wallet,
     stampEarn: input.stampEarn,
+    summaryLine: input.summaryLine,
   });
 
   const pesquisaTemplate =
@@ -98,8 +99,10 @@ export async function notifyEarnWhatsAppForBusiness(
   return { sent: true };
 }
 
-export function queueEarnWhatsAppForBusiness(input: EarnNotifyInput): void {
-  void notifyEarnWhatsAppForBusiness(input).then((result) => {
+export function queueEarnWhatsAppForBusiness(
+  input: EarnNotifyInput,
+): Promise<void> {
+  return notifyEarnWhatsAppForBusiness(input).then((result) => {
     if (result.sent) {
       input.log?.('whatsapp_earn_sent', { businessId: input.businessId });
       return;
@@ -118,18 +121,23 @@ export function queueEarnWhatsAppForBusiness(input: EarnNotifyInput): void {
   });
 }
 
-/** WhatsApp, the earn push, and a push for the Convite. Fire-and-forget. */
-export function queueEarnNotify(input: EarnNotifyInput): void {
-  queueEarnWhatsAppForBusiness(input);
-  queueEarnPush(input);
+/** WhatsApp, the earn push, and a push for the Convite. */
+export async function deliverEarnNotify(input: EarnNotifyInput): Promise<void> {
+  const tasks: Promise<void>[] = [
+    queueEarnWhatsAppForBusiness(input),
+    queueEarnPush(input),
+  ];
   if (input.pesquisa) {
-    queuePesquisaPush({
-      customerId: input.customerId,
-      businessId: input.businessId,
-      businessName: input.businessName,
-      sentence: input.pesquisa.sentence,
-      conviteId: input.pesquisa.conviteId,
-      log: input.log,
-    });
+    tasks.push(
+      queuePesquisaPush({
+        customerId: input.customerId,
+        businessId: input.businessId,
+        businessName: input.businessName,
+        sentence: input.pesquisa.sentence,
+        conviteId: input.pesquisa.conviteId,
+        log: input.log,
+      }),
+    );
   }
+  await Promise.all(tasks);
 }

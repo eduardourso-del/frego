@@ -21,7 +21,9 @@ import { explorationRoutes } from './routes/exploration.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
 import { reminderRoutes } from './routes/reminders.js';
+import { earnNotifyRoutes } from './routes/earn-notifies.js';
 import { startAccountReminderSchedule } from './lib/reminders/run.js';
+import { startEarnNotifyFlushSchedule } from './lib/whatsapp/earn-notify-hold.js';
 import { allowEmptyJsonBody } from './lib/json-body.js';
 
 const port = Number(process.env.PORT ?? 8080);
@@ -65,9 +67,11 @@ async function main() {
   await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
   await app.register(reminderRoutes);
+  await app.register(earnNotifyRoutes);
 
   await app.listen({ port, host });
   startAccountReminderSchedule(app.log);
+  startEarnNotifyFlushSchedule(app.log);
   app.log.info(`Frego API listening on http://${host}:${port}`);
 }
 

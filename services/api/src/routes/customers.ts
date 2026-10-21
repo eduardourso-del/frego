@@ -11,7 +11,7 @@ import {
   resolveStampEarnCampaignId,
 } from '../lib/stamp-destination.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
-import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
+import { queueEarnNotify } from '../lib/whatsapp/earn-notify-hold.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isPesquisaCredit, shouldOmitFromLedger } from '../lib/ledger-meta.js';
@@ -780,6 +780,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         ? { cartela: chosen.cartela, label: chosen.label, balance: 0 }
         : null;
 
+      const saleId = newSaleId();
       stampTransaction = await prisma.transaction.create({
         data: {
           businessId: auth.businessId,
@@ -790,7 +791,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           type: 'stamp',
           quantity: 1,
           unitKind: 'stamps',
-          metadata: { saleId: newSaleId(), role: 'earn' },
+          metadata: { saleId, role: 'earn' },
         },
       });
       wallet = await deriveWallet(membership.id, auth.businessId);
@@ -805,13 +806,14 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         };
       }
 
-      queueEarnNotify({
+      await queueEarnNotify({
         businessId: auth.businessId,
         businessName: business?.name ?? 'Frego',
         customerId: customer.id,
         toE164: customer.phoneE164,
         unitKind: 'stamps',
         quantity: 1,
+        saleId,
         transactionId: stampTransaction.id,
         wallet,
         stampEarn,
