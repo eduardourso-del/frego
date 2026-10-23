@@ -1,5 +1,6 @@
 import { prisma } from '@frego/db';
 import { membershipMatchesAudience, parseAudienceRules } from './audience.js';
+import { campaignDateStatus } from './promo.js';
 
 export type CashbackEarnTarget = {
   campaignId: string;
@@ -20,6 +21,8 @@ export async function resolveCashbackEarn(
     select: {
       id: true,
       cashbackPercent: true,
+      startsOn: true,
+      endsOn: true,
       audienceSegmentId: true,
       audienceSegment: { select: { rules: true } },
     },
@@ -28,7 +31,7 @@ export async function resolveCashbackEarn(
   const eligible: CashbackEarnTarget[] = [];
   for (const c of campaigns) {
     const percent = c.cashbackPercent ?? 0;
-    if (percent <= 0) continue;
+    if (percent <= 0 || !campaignDateStatus(c).open) continue;
     if (c.audienceSegment) {
       const ok = await membershipMatchesAudience(
         membershipId,

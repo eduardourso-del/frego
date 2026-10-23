@@ -1,6 +1,7 @@
 import { prisma } from '@frego/db';
 import { shouldOmitFromLedger } from './ledger-meta.js';
 import {
+  campaignDateStatus,
   civilYmd,
   evaluatePromoEntitlement,
   evaluateRedeemQuota,
@@ -491,7 +492,7 @@ export async function deriveWallet(
   const cashbackPercent = Math.max(
     0,
     ...campaigns
-      .filter((c) => c.type === 'cashback')
+      .filter((c) => c.type === 'cashback' && campaignDateStatus(c).open)
       .map((c) => c.cashbackPercent ?? 0),
   );
 
@@ -616,6 +617,8 @@ export async function deriveWallet(
         ? Math.min(poolRewards, quota.remaining ?? 0)
         : poolRewards;
     const quotaBlocked = quota?.exhausted === true && poolRewards >= 1;
+    const dates = campaignDateStatus(campaign);
+    const dateBlocked = !dates.open;
     return {
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -623,13 +626,23 @@ export async function deriveWallet(
       unitsNeeded: needed,
       stampsNeeded: needed,
       pointsPerReal: campaign.pointsPerReal,
-      canRedeem: rewardsAvailable >= 1 && !quotaBlocked,
-      rewardsAvailable: quotaBlocked ? 0 : rewardsAvailable,
+      canRedeem: !dateBlocked && rewardsAvailable >= 1 && !quotaBlocked,
+      rewardsAvailable: dateBlocked || quotaBlocked ? 0 : rewardsAvailable,
       rewardTitle: campaign.rewardTitle,
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
-      lockedReason: quotaBlocked ? 'quota_exhausted' : null,
-      unlocksAt: quotaBlocked ? quota?.unlocksAt ?? null : null,
+      lockedReason: dateBlocked
+        ? 'outside_dates'
+        : quotaBlocked
+          ? 'quota_exhausted'
+          : null,
+      unlocksAt: dateBlocked
+        ? dates.unlocksAt
+        : quotaBlocked
+          ? (quota?.unlocksAt ?? null)
+          : null,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       redeemMax: campaign.type === 'stamps' ? campaign.redeemMax : undefined,
       redeemPeriod: campaign.type === 'stamps' ? campaign.redeemPeriod : undefined,
       audienceSegmentId: campaign.audienceSegmentId,
@@ -642,12 +655,15 @@ export async function deriveWallet(
   });
 
   for (const campaign of birthdayCampaigns) {
+    const dates = campaignDateStatus(campaign);
     const window = birthdayWindowStatus(
       birthday,
       birthdayWindowSpec(campaign.birthdayWindow, campaign.birthdayWindowDays),
     );
-    let lockedReason = window.lockedReason;
-    let canRedeem = window.inWindow;
+    let lockedReason: CampaignLockedReason | null = dates.open
+      ? window.lockedReason
+      : 'outside_dates';
+    let canRedeem = dates.open && window.inWindow;
     let rewardsAvailable = canRedeem ? 1 : 0;
 
     if (
@@ -679,9 +695,13 @@ export async function deriveWallet(
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
       lockedReason,
-      unlocksAt: window.unlocksAt
-        ? window.unlocksAt.toISOString().slice(0, 10)
-        : null,
+      unlocksAt: dates.open
+        ? window.unlocksAt
+          ? window.unlocksAt.toISOString().slice(0, 10)
+          : null
+        : dates.unlocksAt,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       daysUntilBirthday: window.daysUntil,
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: null,
@@ -728,6 +748,7 @@ export async function deriveWallet(
   }
 
   for (const campaign of cashbackCampaigns) {
+    const dates = campaignDateStatus(campaign);
     entries.push({
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -742,6 +763,10 @@ export async function deriveWallet(
       rewardTitle: campaign.rewardTitle,
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
+      lockedReason: dates.open ? null : 'outside_dates',
+      unlocksAt: dates.unlocksAt,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: null,
       audienceName: null,
@@ -752,10 +777,13 @@ export async function deriveWallet(
   }
 
   const activeShared = campaigns
-    .filter((c) => c.type === 'stamps' && !c.cartela)
+    .filter(
+      (c) =>
+        c.type === 'stamps' && !c.cartela && campaignDateStatus(c).open,
+    )
     .map((c) => ({ id: c.id, name: c.name }));
   const activeCartelas = campaigns
-    .filter((c) => isCartelaCampaign(c))
+    .filter((c) => isCartelaCampaign(c) && campaignDateStatus(c).open)
     .map((c) => ({
       id: c.id,
       name: c.name,
@@ -784,7 +812,12 @@ export function presentCustomerCampaigns(
 ): CampaignWalletEntry[] {
   const eligibleCashback = campaigns
     .filter((c) => c.type === 'cashback' && c.lockedReason !== 'audience')
-    .sort((a, b) => (b.cashbackPercent ?? 0) - (a.cashbackPercent ?? 0));
+    .sort((a, b) => {
+      const aOpen = a.lockedReason === 'outside_dates' ? 0 : 1;
+      const bOpen = b.lockedReason === 'outside_dates' ? 0 : 1;
+      if (aOpen !== bOpen) return bOpen - aOpen;
+      return (b.cashbackPercent ?? 0) - (a.cashbackPercent ?? 0);
+    });
   const winnerId = eligibleCashback[0]?.campaignId ?? null;
 
   const next = campaigns

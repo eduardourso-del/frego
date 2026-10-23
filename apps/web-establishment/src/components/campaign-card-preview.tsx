@@ -5,6 +5,7 @@ import { Banknote, Cake, CalendarRange, Coins, Gift, ImageIcon, Percent, Stamp }
 import { RemoteImg } from '@/components/remote-img';
 import {
   WEEKDAY_LABELS,
+  campaignValidityLine,
   promoEndsLine,
   promoRestrictsWeekdays,
   promoWeekdays,
@@ -46,18 +47,24 @@ export function CampaignCardPreview({
   rewardImageUrl,
   promoHint,
   birthdayHint,
+  startsOn,
   endsOn,
   weekdays,
 }: CampaignCardPreviewProps) {
-  const needed = Math.max(1, Math.min(unitsNeeded || 10, 24));
+  const goal = Math.max(1, unitsNeeded || 1);
+  // Stamp dots stay capped so a long cartela does not blow up the card.
+  const stampSlots = Math.min(goal, 24);
+  const needed = campaignType === 'stamps' ? stampSlots : goal;
   const sampleProgress =
     campaignType === 'stamps'
-      ? Math.min(3, Math.max(0, needed - 1))
-      : Math.min(Math.round(needed * 0.35), Math.max(0, needed - 1));
+      ? Math.min(3, Math.max(0, stampSlots - 1))
+      : Math.min(Math.round(goal * 0.35), Math.max(0, goal - 1));
   const remaining = Math.max(0, needed - sampleProgress);
   const letter = businessName.trim().charAt(0).toUpperCase() || 'V';
   const reward = rewardTitle.trim() || 'Recompensa';
   const hasImage = Boolean(rewardImageUrl?.trim());
+  const validity =
+    campaignType === 'promo' ? null : campaignValidityLine({ startsOn, endsOn });
 
   return (
     <div>
@@ -257,6 +264,12 @@ export function CampaignCardPreview({
               {reward}
             </p>
           )}
+
+          {validity ? (
+            <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
+              {validity}
+            </p>
+          ) : null}
 
           <button
             type="button"

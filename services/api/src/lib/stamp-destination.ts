@@ -1,4 +1,5 @@
 import { prisma } from '@frego/db';
+import { campaignDateStatus } from './promo.js';
 
 export type StampDestination = {
   /** Null on the shared pile. A Cartela uses its Campanha id. */
@@ -177,10 +178,19 @@ export async function loadEarnStampDestinations(businessId: string) {
       status: 'active',
       type: { in: ['stamps', 'visits'] },
     },
-    select: { id: true, name: true, type: true, cartela: true },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      cartela: true,
+      startsOn: true,
+      endsOn: true,
+    },
     orderBy: { createdAt: 'asc' },
   });
-  return earnStampDestinations(rows);
+  return earnStampDestinations(
+    rows.filter((row) => campaignDateStatus(row).open),
+  );
 }
 
 export function nextActivatedAt(

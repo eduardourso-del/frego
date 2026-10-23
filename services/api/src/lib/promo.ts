@@ -193,6 +193,33 @@ export function evaluateRedeemQuota(
   };
 }
 
+export type CampaignDateStatus = {
+  open: boolean;
+  lockedReason: 'outside_dates' | null;
+  /** Next day the Campanha opens, when it has not started yet. */
+  unlocksAt: string | null;
+};
+
+/** Empty dates stay open until the shop pauses or archives the Campanha. */
+export function campaignDateStatus(
+  campaign: {
+    startsOn: Date | string | null | undefined;
+    endsOn: Date | string | null | undefined;
+  },
+  now = new Date(),
+): CampaignDateStatus {
+  const today = ymdInSaoPaulo(now);
+  const startsOn = civilYmd(campaign.startsOn);
+  const endsOn = civilYmd(campaign.endsOn);
+  if (startsOn && today < startsOn) {
+    return { open: false, lockedReason: 'outside_dates', unlocksAt: startsOn };
+  }
+  if (endsOn && today > endsOn) {
+    return { open: false, lockedReason: 'outside_dates', unlocksAt: null };
+  }
+  return { open: true, lockedReason: null, unlocksAt: null };
+}
+
 export function hasOpenPromoVoucher(
   redemptions: PromoRedemption[],
   now: Date,
@@ -212,8 +239,8 @@ export function evaluatePromoEntitlement(
   now = new Date(),
 ): PromoEntitlement {
   const today = ymdInSaoPaulo(now);
-  const startsOn = civilYmd(campaign.startsOn);
   const endsOn = civilYmd(campaign.endsOn);
+  const dates = campaignDateStatus(campaign, now);
   const weekdays = normalizeWeekdays(campaign.weekdays);
   const allowed = weekdays.length > 0 ? weekdays : [0, 1, 2, 3, 4, 5, 6];
   const redeemMax =
@@ -230,11 +257,8 @@ export function evaluatePromoEntitlement(
     redeemedInPeriod: 0,
   };
 
-  if (startsOn && today < startsOn) {
-    return { ...none, lockedReason: 'outside_dates', unlocksAt: startsOn };
-  }
-  if (endsOn && today > endsOn) {
-    return { ...none, lockedReason: 'outside_dates' };
+  if (!dates.open) {
+    return { ...none, lockedReason: 'outside_dates', unlocksAt: dates.unlocksAt };
   }
 
   const dow = weekdayFromYmd(today);

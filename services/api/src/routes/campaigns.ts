@@ -133,15 +133,13 @@ function promoError(
     rewardTitle?: string;
   },
 ): string | null {
-  if (body.type !== 'promo' && body.type !== 'stamps') return null;
   if (body.type === 'promo' && !(body.rewardTitle?.trim())) {
     return 'REWARD_TITLE_REQUIRED';
   }
-  if (body.type === 'promo') {
-    const start = body.startsOn ?? null;
-    const end = body.endsOn ?? null;
-    if (start && end && start > end) return 'INVALID_PROMO_DATES';
-  }
+  const start = body.startsOn ?? null;
+  const end = body.endsOn ?? null;
+  if (start && end && start > end) return 'INVALID_PROMO_DATES';
+  if (body.type !== 'promo' && body.type !== 'stamps') return null;
   if (body.redeemMax != null && !body.redeemPeriod) {
     return 'REDEEM_PERIOD_REQUIRED';
   }
@@ -198,6 +196,22 @@ function stampQuotaWrite(
   return { redeemMax, redeemPeriod };
 }
 
+function scheduleDates(
+  body: { startsOn?: string | null; endsOn?: string | null },
+  existing?: { startsOn: Date | null; endsOn: Date | null },
+) {
+  return {
+    startsOn:
+      body.startsOn !== undefined
+        ? (parseDateOnly(body.startsOn) ?? null)
+        : (existing?.startsOn ?? null),
+    endsOn:
+      body.endsOn !== undefined
+        ? (parseDateOnly(body.endsOn) ?? null)
+        : (existing?.endsOn ?? null),
+  };
+}
+
 function promoWriteData(
   body: {
     type?: string;
@@ -217,11 +231,11 @@ function promoWriteData(
   },
 ) {
   const type = body.type ?? existing?.type ?? 'stamps';
+  const dates = scheduleDates(body, existing);
   if (type === 'stamps') {
     const quota = stampQuotaWrite(body, existing);
     return {
-      startsOn: null as Date | null,
-      endsOn: null as Date | null,
+      ...dates,
       weekdays: [] as number[],
       redeemMax: quota.redeemMax,
       redeemPeriod: quota.redeemPeriod,
@@ -229,8 +243,7 @@ function promoWriteData(
   }
   if (type !== 'promo') {
     return {
-      startsOn: null as Date | null,
-      endsOn: null as Date | null,
+      ...dates,
       weekdays: [] as number[],
       redeemMax: null as number | null,
       redeemPeriod: null as null,
@@ -238,18 +251,6 @@ function promoWriteData(
   }
 
   const treatAsCreate = !existing || existing.type !== 'promo';
-  const startsOn =
-    body.startsOn !== undefined
-      ? parseDateOnly(body.startsOn) ?? null
-      : treatAsCreate
-        ? null
-        : existing.startsOn;
-  const endsOn =
-    body.endsOn !== undefined
-      ? parseDateOnly(body.endsOn) ?? null
-      : treatAsCreate
-        ? null
-        : existing.endsOn;
   const weekdays =
     body.weekdays !== undefined
       ? normalizeWeekdays(body.weekdays)
@@ -281,7 +282,7 @@ function promoWriteData(
               | 'campaign'
               | null);
 
-  return { startsOn, endsOn, weekdays, redeemMax, redeemPeriod };
+  return { ...dates, weekdays, redeemMax, redeemPeriod };
 }
 
 async function assertAudienceBelongs(

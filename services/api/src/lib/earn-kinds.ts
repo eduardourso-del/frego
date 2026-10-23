@@ -1,4 +1,5 @@
 import { prisma } from '@frego/db';
+import { campaignDateStatus } from './promo.js';
 
 export const EARN_KINDS = ['stamps', 'points', 'cashback'] as const;
 export type EarnKind = (typeof EARN_KINDS)[number];
@@ -30,9 +31,11 @@ export async function activeEarnKindsForBusiness(
       status: 'active',
       type: { in: [...EARN_CAMPAIGN_TYPES] },
     },
-    select: { type: true },
+    select: { type: true, startsOn: true, endsOn: true },
   });
-  return earnKindsFromCampaignTypes(rows.map((row) => row.type));
+  return earnKindsFromCampaignTypes(
+    rows.filter((row) => campaignDateStatus(row).open).map((row) => row.type),
+  );
 }
 
 export async function activeEarnKindsByBusinessIds(
@@ -48,12 +51,13 @@ export async function activeEarnKindsByBusinessIds(
       status: 'active',
       type: { in: [...EARN_CAMPAIGN_TYPES] },
     },
-    select: { businessId: true, type: true },
+    select: { businessId: true, type: true, startsOn: true, endsOn: true },
   });
 
   const sets = new Map<string, Set<EarnKind>>();
   for (const id of businessIds) sets.set(id, new Set());
   for (const row of rows) {
+    if (!campaignDateStatus(row).open) continue;
     const kind = earnKindFromCampaignType(row.type);
     if (kind) sets.get(row.businessId)?.add(kind);
   }

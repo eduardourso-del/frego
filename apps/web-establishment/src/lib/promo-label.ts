@@ -57,6 +57,19 @@ export function promoEndsLine(endsOn?: string | Date | null): string | null {
   return to ? `Válida até ${to}` : null;
 }
 
+/** Shop-facing range. Empty means the Campanha runs until it is paused or archived. */
+export function campaignValidityLine(input: {
+  startsOn?: string | Date | null;
+  endsOn?: string | Date | null;
+}): string | null {
+  const start = ymdShortLabel(input.startsOn);
+  const end = ymdShortLabel(input.endsOn);
+  if (start && end) return `Válida de ${start} a ${end}`;
+  if (end) return `Válida até ${end}`;
+  if (start) return `Válida a partir de ${start}`;
+  return null;
+}
+
 /** Empty or all seven days = any day of the week. */
 export function promoWeekdays(weekdays?: number[] | null): number[] {
   const days = [...new Set((weekdays ?? []).filter((d) => d >= 0 && d <= 6))].sort(

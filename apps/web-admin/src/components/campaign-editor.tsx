@@ -201,25 +201,23 @@ export function CampaignEditor({
       }
       if (type === 'spend') body.pointsPerReal = pointsPerReal;
       if (type === 'cashback') body.cashbackPercent = cashbackPercent;
+      Object.assign(body, {
+        startsOn: startsOn || null,
+        endsOn: endsOn || null,
+      });
       if (type === 'promo') {
         Object.assign(body, {
-          startsOn: startsOn || null,
-          endsOn: endsOn || null,
           weekdays,
           ...quota,
         });
       } else if (type === 'stamps') {
         Object.assign(body, {
-          startsOn: null,
-          endsOn: null,
           weekdays: [],
           ...quota,
           cartela,
         });
       } else if (type === 'birthday') {
         Object.assign(body, {
-          startsOn: null,
-          endsOn: null,
           weekdays: [],
           redeemMax: null,
           redeemPeriod: null,
@@ -228,8 +226,6 @@ export function CampaignEditor({
         });
       } else if (known) {
         Object.assign(body, {
-          startsOn: null,
-          endsOn: null,
           weekdays: [],
           redeemMax: null,
           redeemPeriod: null,
@@ -389,6 +385,31 @@ export function CampaignEditor({
         />
       )}
 
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
+          Início
+          <input
+            type="date"
+            value={startsOn}
+            onChange={(e) => setStartsOn(e.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
+          Fim
+          <input
+            type="date"
+            value={endsOn}
+            onChange={(e) => setEndsOn(e.target.value)}
+            className={inputClass}
+          />
+        </label>
+        <p className="text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-400)] sm:col-span-2">
+          Vazio = sem data. A campanha segue até ser pausada ou arquivada. Dias
+          em Brasília.
+        </p>
+      </div>
+
       {type === 'stamps' && (
         <div className="mt-4 flex flex-col gap-4">
           <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
@@ -528,26 +549,6 @@ export function CampaignEditor({
 
       {type === 'promo' && (
         <div className="mt-4 flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
-              Início
-              <input
-                type="date"
-                value={startsOn}
-                onChange={(e) => setStartsOn(e.target.value)}
-                className={inputClass}
-              />
-            </label>
-            <label className="text-[13px] font-semibold uppercase tracking-[0.04em]">
-              Fim
-              <input
-                type="date"
-                value={endsOn}
-                onChange={(e) => setEndsOn(e.target.value)}
-                className={inputClass}
-              />
-            </label>
-          </div>
           <div>
             <p className="text-[13px] font-semibold uppercase tracking-[0.04em]">
               Dias

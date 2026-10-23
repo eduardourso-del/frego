@@ -18,7 +18,11 @@ import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { formatCoverage } from '@/lib/campaign-return';
 import { birthdayWindowLabel } from '@/lib/birthday-window';
-import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
+import {
+  campaignValidityLine,
+  promoFrequencyHint,
+  promoHint,
+} from '@/lib/promo-label';
 import { CampaignCompareChart } from '@/components/campaign-compare-chart';
 import { TermInfo } from '@/components/term-info';
 import { formatBrl } from '@/lib/money';
@@ -683,18 +687,16 @@ function CampaignsPageContent() {
         rewardDescription: form.rewardDescription.trim() || null,
         rewardImageUrl: form.rewardImageUrl || null,
         audienceSegmentId: form.audienceSegmentId || null,
+        startsOn: form.startsOn || null,
+        endsOn: form.endsOn || null,
         ...(form.type === 'promo'
           ? {
-              startsOn: form.startsOn || null,
-              endsOn: form.endsOn || null,
               weekdays: form.weekdays,
               redeemMax: form.unlimited ? null : form.redeemMax,
               redeemPeriod: form.unlimited ? null : form.redeemPeriod,
             }
           : form.type === 'stamps'
             ? {
-                startsOn: null,
-                endsOn: null,
                 weekdays: [],
                 redeemMax: form.unlimited ? null : form.redeemMax,
                 redeemPeriod: form.unlimited ? null : form.redeemPeriod,
@@ -702,8 +704,6 @@ function CampaignsPageContent() {
               }
             : form.type === 'birthday'
               ? {
-                  startsOn: null,
-                  endsOn: null,
                   weekdays: [],
                   redeemMax: null,
                   redeemPeriod: null,
@@ -711,8 +711,6 @@ function CampaignsPageContent() {
                   birthdayWindowDays: form.birthdayWindowDays,
                 }
             : {
-                startsOn: null,
-                endsOn: null,
                 weekdays: [],
                 redeemMax: null,
                 redeemPeriod: null,
@@ -1055,6 +1053,9 @@ function CampaignsPageContent() {
                               : c.redeemMax != null
                                 ? `${c.stampsNeeded} carimbos · ${promoFrequencyHint(c)}`
                                 : `${c.stampsNeeded} carimbos`}
+                      {c.type !== 'promo' && campaignValidityLine(c)
+                        ? ` · ${campaignValidityLine(c)}`
+                        : ''}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
                     {perfById[c.id] && (
