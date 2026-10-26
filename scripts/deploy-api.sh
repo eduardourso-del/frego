@@ -29,6 +29,10 @@ set +a
 : "${META_APP_ID:?META_APP_ID required}"
 : "${META_APP_SECRET:?META_APP_SECRET required}"
 : "${WHATSAPP_TOKEN_ENCRYPTION_KEY:?WHATSAPP_TOKEN_ENCRYPTION_KEY required}"
+: "${RESEND_API_KEY:?RESEND_API_KEY required}"
+# Approval links must open the live painel, never a developer machine.
+export ESTABLISHMENT_APP_ORIGIN="https://frego.app.br"
+export MAIL_FROM="${MAIL_FROM:-Frego <noreply@frego.app.br>}"
 
 TAG="${1:-$(date +%Y%m%d-%H%M%S)}"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/voltei/api:${TAG}"
@@ -95,6 +99,9 @@ for key in (
     "REMINDER_SECRET",
     "CLOUD_TASKS_QUEUE",
     "EARN_NOTIFY_FLUSH_URL",
+    "RESEND_API_KEY",
+    "MAIL_FROM",
+    "ESTABLISHMENT_APP_ORIGIN",
 ):
     value = os.environ.get(key, "").strip()
     if value:

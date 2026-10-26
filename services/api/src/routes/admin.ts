@@ -8,6 +8,10 @@ import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { civilYmd } from '../lib/promo.js';
 import { loadTagsByMembershipIds } from '../lib/tags.js';
 import { patchBusinessCampaign } from './campaigns.js';
+import {
+  emailOwnerIfApproved,
+  emailOwnerIfRefused,
+} from '../lib/mail/business-approved.js';
 
 const STATUSES = [
   'pending',
@@ -905,7 +909,19 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     });
 
     if (body.status && body.status !== existing.status) {
-      await setBusinessStatus(id, body.status);
+      const updated = await setBusinessStatus(id, body.status);
+      await emailOwnerIfApproved(
+        request.log,
+        existing.status,
+        body.status,
+        updated,
+      );
+      await emailOwnerIfRefused(
+        request.log,
+        existing.status,
+        body.status,
+        updated,
+      );
     }
 
     const detail = await loadBusinessDetail(id);
@@ -964,6 +980,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const updated = await setBusinessStatus(id, 'trial');
+    await emailOwnerIfApproved(request.log, 'pending', 'trial', updated);
 
     return {
       business: {
@@ -990,6 +1007,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const updated = await setBusinessStatus(id, 'suspended');
+    await emailOwnerIfRefused(request.log, 'pending', 'suspended', updated);
 
     return {
       business: {

@@ -1,9 +1,10 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { signInStaff } from '@/lib/firebase';
+import { pathAfterStaffSignIn } from '@/lib/register-account';
 import { useAuth } from '@/lib/auth-context';
 import { FregoWordmark } from '@/components/brand';
 import { AuthScreen, authCardClass } from '@/components/auth-screen';
@@ -17,10 +18,12 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordUpdated, setPasswordUpdated] = useState(false);
+  const redirecting = useRef(false);
 
   useEffect(() => {
-    if (!loading && user) router.replace('/dashboard');
-  }, [loading, user, router]);
+    if (loading || !user || busy || redirecting.current) return;
+    router.replace('/dashboard');
+  }, [loading, user, busy, router]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -37,8 +40,10 @@ export default function LoginPage() {
     setError(null);
     try {
       await signInStaff(email, password);
-      router.replace('/dashboard');
+      redirecting.current = true;
+      router.replace(await pathAfterStaffSignIn());
     } catch (err) {
+      redirecting.current = false;
       const message =
         err instanceof Error ? err.message : 'Não foi possível entrar.';
       setError(

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   LayoutDashboard,
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { memberDisplayName, useBusiness } from '@/lib/business-context';
+import { API_URL } from '@/lib/api';
 import { BusinessLogo } from '@/components/remote-img';
 import { FregoWordmark } from '@/components/brand';
 import { PendingGate } from '@/components/pending-gate';
@@ -78,8 +79,15 @@ export function AppShell({
   skipPendingGate = false,
 }: AppShellProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
-  const { business, businesses, businessId, setBusinessId } = useBusiness();
+  const router = useRouter();
+  const { user, logout, loading: authLoading } = useAuth();
+  const {
+    business,
+    businesses,
+    businessId,
+    setBusinessId,
+    loading: businessLoading,
+  } = useBusiness();
   const [moreOpen, setMoreOpen] = useState(false);
 
   const name = businessName ?? business?.name ?? 'Frego';
@@ -111,6 +119,29 @@ export function AppShell({
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (authLoading || businessLoading || !user || business) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await user.getIdToken();
+        if (cancelled) return;
+        const res = await fetch(`${API_URL}/businesses/register`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const json = (await res.json()) as { application?: unknown };
+        if (!json.application || cancelled) return;
+        router.replace('/confirmar-email');
+      } catch {
+        // A failed lookup is not a missing cadastro.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, businessLoading, user, business, router]);
 
   useEffect(() => {
     document.documentElement.classList.add('app-shell-lock');

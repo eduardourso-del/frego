@@ -1034,6 +1034,9 @@ export default function SettingsPage() {
           title="Ajustar logo"
           description="O logo começa inteiro no quadrado. Arraste e use o zoom se quiser aproximar."
           fileNamePrefix="logo"
+          // Largest logo in the app is ~72px. 384 stays sharp at 3×.
+          outputWidth={384}
+          quality={0.9}
           onCancel={closeCrop}
           onConfirm={uploadCroppedLogo}
         />
@@ -1046,7 +1049,9 @@ export default function SettingsPage() {
           title="Ajustar capa"
           description="Enquadre a foto 16:9. Ela aparece no topo da página pública e no app."
           fileNamePrefix="hero"
-          outputWidth={1600}
+          // Full-width phone header is about 430px at 3×.
+          outputWidth={1280}
+          quality={0.8}
           onCancel={closeCrop}
           onConfirm={uploadCroppedHero}
         />

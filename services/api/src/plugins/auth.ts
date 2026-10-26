@@ -22,6 +22,7 @@ export type FirebaseUserContext = {
   uid: string;
   email: string | null;
   phoneNumber: string | null;
+  emailVerified: boolean;
 };
 
 export type CustomerAuthContext = {
@@ -52,7 +53,9 @@ function isPublicPath(url: string) {
 
 function isRegisterPath(request: FastifyRequest) {
   const path = request.url.split('?')[0];
-  return request.method === 'POST' && path === '/businesses/register';
+  return (
+    path === '/businesses/register' || path === '/businesses/register/confirm'
+  );
 }
 
 function isAdminPath(url: string) {
@@ -85,6 +88,7 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
           uid: decoded.uid,
           email: decoded.email?.toLowerCase() ?? null,
           phoneNumber: decoded.phone_number ?? null,
+          emailVerified: decoded.email_verified === true,
         };
         request.firebaseUser = firebaseUser;
 
@@ -142,6 +146,7 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
           uid: process.env.AUTH_BYPASS_FIREBASE_UID ?? 'seed_register_uid',
           email: process.env.AUTH_BYPASS_EMAIL ?? 'novo@loja.com',
           phoneNumber: null,
+          emailVerified: true,
         };
         return;
       }
@@ -163,6 +168,7 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
           uid: admin.firebaseUid,
           email: admin.email,
           phoneNumber: null,
+          emailVerified: true,
         };
         return;
       }
@@ -192,6 +198,7 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
           uid: customer.firebaseUid ?? 'seed_customer_uid',
           email: null,
           phoneNumber: customer.phoneE164,
+          emailVerified: false,
         };
         return;
       }
@@ -226,6 +233,7 @@ const authPluginImpl: FastifyPluginAsync = async (app) => {
         uid: member.firebaseUid,
         email: member.email,
         phoneNumber: null,
+        emailVerified: true,
       };
       return;
     }

@@ -239,6 +239,27 @@ model TeamMember {
   @@map("team_members")
 }
 
+/// Owner's Cadastro. Not an Estabelecimento until the e-mail is confirmed.
+model BusinessApplication {
+  id               String   @id @default(cuid())
+  firebaseUid      String   @unique @map("firebase_uid")
+  email            String
+  ownerName        String   @map("owner_name")
+  businessName     String   @map("business_name")
+  type             String
+  slogan           String?
+  cnpj             String?
+  primaryColor     String   @default("#070707") @map("primary_color")
+  primaryColorDark String   @default("#070707") @map("primary_color_dark")
+  locationName     String   @map("location_name")
+  address          Json
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([email])
+  @@map("business_applications")
+}
+
 // ─── Global customer identity ────────────────────────────────────────────────
 
 /// Platform-level person. Phone is the account. Never scoped to a business.

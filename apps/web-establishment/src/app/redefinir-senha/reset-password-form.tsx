@@ -20,7 +20,8 @@ export function ResetPasswordForm() {
   const params = useSearchParams();
   const code = params.get('oobCode') ?? '';
   const mode = params.get('mode');
-  const unsupported = Boolean(mode && mode !== 'resetPassword');
+  const isVerifyEmail = mode === 'verifyEmail';
+  const unsupported = Boolean(mode && mode !== 'resetPassword' && !isVerifyEmail);
   const { configured } = useAuth();
   const [status, setStatus] = useState<Status>(
     unsupported ? 'invalid' : code ? 'checking' : 'missing',
@@ -32,7 +33,13 @@ export function ResetPasswordForm() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!configured || !code || unsupported) return;
+    if (!isVerifyEmail) return;
+    const search = params.toString();
+    router.replace(search ? `/confirmar-email?${search}` : '/confirmar-email');
+  }, [isVerifyEmail, params, router]);
+
+  useEffect(() => {
+    if (!configured || !code || unsupported || isVerifyEmail) return;
     let cancelled = false;
     verifyStaffPasswordReset(code)
       .then((accountEmail) => {
@@ -46,7 +53,18 @@ export function ResetPasswordForm() {
     return () => {
       cancelled = true;
     };
-  }, [code, configured, unsupported]);
+  }, [code, configured, unsupported, isVerifyEmail]);
+
+  if (isVerifyEmail) {
+    return (
+      <AuthScreen
+        title="Confirmando e-mail"
+        description="Abrindo a confirmação."
+      >
+        <p className="text-[14px] text-[var(--color-neutral-500)]">Um momento…</p>
+      </AuthScreen>
+    );
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
