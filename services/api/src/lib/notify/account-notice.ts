@@ -18,6 +18,8 @@ export type EndingCampaignNotice = {
   campaignName: string;
   endsOn: string;
   daysLeft: number;
+  /** She can Resgatar today. False means a later day in the Promoção still opens it. */
+  ready: boolean;
 };
 
 export function civilDaysBetween(fromYmd: string, toYmd: string): number {
@@ -76,8 +78,18 @@ export function collectExpiryNotices(
   );
 }
 
+function canStillReach(
+  unlocksAt: string | null | undefined,
+  endsOn: string,
+): boolean {
+  return Boolean(unlocksAt && unlocksAt <= endsOn);
+}
+
 /**
- * Active Promoção the Cliente can Resgatar, whose last day is inside the window.
+ * Promoção ending inside the window that she can Resgatar now,
+ * or can still reach before the last day.
+ * A weekday or a quota that opens again in time counts as close.
+ * An Audiência she is outside, an open voucher, or a quota that does not return does not.
  */
 export function collectEndingCampaigns(
   campaigns: Array<{
@@ -86,22 +98,32 @@ export function collectEndingCampaigns(
     type: string;
     canRedeem: boolean;
     endsOn?: string | null;
+    lockedReason?: string | null;
+    unlocksAt?: string | null;
+    audienceEligible?: boolean | null;
   }>,
   todayYmd: string,
   windowDays = ACCOUNT_NOTICE_WINDOW_DAYS,
 ): EndingCampaignNotice[] {
   const out: EndingCampaignNotice[] = [];
   for (const campaign of campaigns) {
-    if (campaign.type !== 'promo' || !campaign.canRedeem || !campaign.endsOn) {
-      continue;
-    }
+    if (campaign.type !== 'promo' || !campaign.endsOn) continue;
+    if (campaign.audienceEligible === false) continue;
     const daysLeft = civilDaysBetween(todayYmd, campaign.endsOn);
     if (daysLeft < 0 || daysLeft > windowDays) continue;
+    const ready = campaign.canRedeem;
+    const soon =
+      !ready &&
+      (campaign.lockedReason === 'wrong_weekday' ||
+        campaign.lockedReason === 'quota_exhausted') &&
+      canStillReach(campaign.unlocksAt, campaign.endsOn);
+    if (!ready && !soon) continue;
     out.push({
       campaignId: campaign.campaignId,
       campaignName: campaign.campaignName.trim() || 'Campanha',
       endsOn: campaign.endsOn,
       daysLeft,
+      ready,
     });
   }
   return out.sort(
@@ -157,7 +179,14 @@ export function campaignEndingDetail(items: EndingCampaignNotice[]): string {
   const lines = ordered.map(
     (item) => `${item.campaignName} encerra ${whenPhrase(item.daysLeft)}`,
   );
-  return `${lines.join('. ')}. O resgate está disponível.`;
+  const anyReady = ordered.some((item) => item.ready);
+  const anySoon = ordered.some((item) => !item.ready);
+  const tail = anyReady
+    ? anySoon
+      ? 'O resgate está disponível, e nas outras ainda dá tempo.'
+      : 'O resgate está disponível.'
+    : 'Ainda dá tempo de resgatar.';
+  return `${lines.join('. ')}. ${tail}`;
 }
 
 export function accountNoticeCopy(businessName: string, detail: string) {

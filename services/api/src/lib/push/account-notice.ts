@@ -29,7 +29,7 @@ export function buildAccountNoticePush(input: {
         channelId: 'frego_campaigns',
       },
     },
-    apns: apnsWithData(data),
+    apns: apnsWithData(data, { title: input.title, body: input.body }),
   };
 }
 

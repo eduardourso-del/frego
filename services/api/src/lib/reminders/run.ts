@@ -242,6 +242,8 @@ async function deliver(input: {
   detailFor: (keys: string[]) => string;
   pushType: 'wallet_expiry' | 'campaign_ending';
   campaignId?: string | null;
+  /** One push per key, each opening that Promoção. */
+  campaignIdFor?: (key: string) => string | null;
   businessId: string;
   businessName: string;
   phoneE164: string;
@@ -263,25 +265,36 @@ async function deliver(input: {
   let sent = false;
   if (claimedPush.length > 0) {
     try {
-      const copy = accountNoticeCopy(
-        input.businessName,
-        input.detailFor(claimedPush),
-      );
-      const push = await sendAccountNoticePush({
-        tokens: input.tokens,
-        notificationsEnabled: input.notificationsEnabled,
-        title: copy.title,
-        body: copy.body,
-        type: input.pushType,
-        businessId: input.businessId,
-        campaignId: input.campaignId,
-      });
-      const settled = channelSettled('push', push);
-      if (settled === 'retry') await releaseChannel(claimedPush, 'push');
-      else {
-        await markChannel(claimedPush, 'push', settled);
-        if (settled === 'sent') sent = true;
+      const groups = input.campaignIdFor
+        ? claimedPush.map((key) => [key])
+        : [claimedPush];
+      const sentKeys: string[] = [];
+      const skippedKeys: string[] = [];
+      const retryKeys: string[] = [];
+      for (const keys of groups) {
+        const copy = accountNoticeCopy(
+          input.businessName,
+          input.detailFor(keys),
+        );
+        const push = await sendAccountNoticePush({
+          tokens: input.tokens,
+          notificationsEnabled: input.notificationsEnabled,
+          title: copy.title,
+          body: copy.body,
+          type: input.pushType,
+          businessId: input.businessId,
+          campaignId:
+            input.campaignIdFor?.(keys[0]!) ?? input.campaignId ?? null,
+        });
+        const settled = channelSettled('push', push);
+        if (settled === 'retry') retryKeys.push(...keys);
+        else if (settled === 'sent') sentKeys.push(...keys);
+        else skippedKeys.push(...keys);
       }
+      await releaseChannel(retryKeys, 'push');
+      await markChannel(sentKeys, 'push', 'sent');
+      await markChannel(skippedKeys, 'push', 'skipped');
+      if (sentKeys.length > 0) sent = true;
     } catch (err) {
       await releaseChannel(claimedPush, 'push');
       throw err;
@@ -436,7 +449,8 @@ export async function runAccountReminders(input?: {
               );
             },
             pushType: 'campaign_ending',
-            campaignId: ending.length === 1 ? ending[0]?.campaignId : null,
+            campaignIdFor: (key) =>
+              keyed.find((item) => item.noticeKey === key)?.campaignId ?? null,
             businessId: business.id,
             businessName: business.name,
             phoneE164: membership.customer.phoneE164,

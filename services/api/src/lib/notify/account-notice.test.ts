@@ -127,6 +127,45 @@ describe('collectEndingCampaigns', () => {
     );
     assert.equal(notices.length, 0);
   });
+
+  it('includes a Promoção she can still reach before the last day', () => {
+    const notices = collectEndingCampaigns(
+      [
+        {
+          campaignId: 'p1',
+          campaignName: 'Sexta',
+          type: 'promo',
+          canRedeem: false,
+          lockedReason: 'wrong_weekday',
+          unlocksAt: '2026-10-18',
+          endsOn: '2026-10-19',
+          audienceEligible: true,
+        },
+        {
+          campaignId: 'p2',
+          campaignName: 'Fora da audiência',
+          type: 'promo',
+          canRedeem: false,
+          lockedReason: 'audience',
+          endsOn: '2026-10-18',
+          audienceEligible: false,
+        },
+        {
+          campaignId: 'p3',
+          campaignName: 'Cota depois do fim',
+          type: 'promo',
+          canRedeem: false,
+          lockedReason: 'quota_exhausted',
+          unlocksAt: '2026-10-20',
+          endsOn: '2026-10-19',
+        },
+      ],
+      today,
+    );
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0]?.campaignId, 'p1');
+    assert.equal(notices[0]?.ready, false);
+  });
 });
 
 describe('notice copy', () => {
@@ -170,6 +209,7 @@ describe('notice copy', () => {
           campaignName: 'Almoço',
           endsOn: '2026-10-17',
           daysLeft: 0,
+          ready: true,
         },
       ]),
       'Almoço encerra hoje. O resgate está disponível.',
@@ -181,15 +221,29 @@ describe('notice copy', () => {
           campaignName: 'Almoço',
           endsOn: '2026-10-19',
           daysLeft: 2,
+          ready: true,
         },
         {
           campaignId: 'p2',
           campaignName: 'Café',
           endsOn: '2026-10-18',
           daysLeft: 1,
+          ready: true,
         },
       ]),
       'Café encerra amanhã. Almoço encerra em 2 dias. O resgate está disponível.',
+    );
+    assert.equal(
+      campaignEndingDetail([
+        {
+          campaignId: 'p1',
+          campaignName: 'Almoço',
+          endsOn: '2026-10-18',
+          daysLeft: 1,
+          ready: false,
+        },
+      ]),
+      'Almoço encerra amanhã. Ainda dá tempo de resgatar.',
     );
   });
 
