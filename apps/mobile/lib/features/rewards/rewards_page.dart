@@ -5,13 +5,19 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/empty_state.dart';
-import '../../ui/loyalty_campaign_card.dart';
-import '../../ui/promo_copy.dart';
+import '../../ui/reward_campaign_card.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/shop_detail_page.dart';
+
+/// Bumped when Explorar or Lojas asks Prêmios to open on Prontos.
+final readyRewardsRequest = ValueNotifier<int>(0);
+
+void openReadyRewards() {
+  readyRewardsRequest.value++;
+}
 
 /// Lista todos os prêmios disponíveis nas lojas do cliente.
 class RewardsPage extends StatefulWidget {
@@ -90,11 +96,29 @@ class _RewardsPageState extends State<RewardsPage> {
   String? _error;
   List<_RewardItem> _items = [];
   _RewardFilter _filter = _RewardFilter.all;
+  late int _seenReadyRequest;
 
   @override
   void initState() {
     super.initState();
+    _seenReadyRequest = readyRewardsRequest.value;
+    if (_seenReadyRequest > 0) _filter = _RewardFilter.ready;
+    readyRewardsRequest.addListener(_onReadyRequest);
     _load();
+  }
+
+  @override
+  void dispose() {
+    readyRewardsRequest.removeListener(_onReadyRequest);
+    super.dispose();
+  }
+
+  void _onReadyRequest() {
+    final request = readyRewardsRequest.value;
+    if (request == _seenReadyRequest) return;
+    _seenReadyRequest = request;
+    if (!mounted) return;
+    setState(() => _filter = _RewardFilter.ready);
   }
 
   @override
@@ -369,122 +393,21 @@ class _RewardsPageState extends State<RewardsPage> {
         )
       else
         ...filtered.map((item) {
-          final name = item.business['name'] as String? ?? 'Loja';
-          final logoUrl = item.business['logoUrl'] as String?;
-          final primary =
-              _parseHex(item.business['primaryColor'] as String?) ??
-                  0xFF070707;
-          final primaryDark =
-              _parseHex(item.business['primaryColorDark'] as String?) ??
-                  0xFF070707;
-          final type = item.type;
-          final needed = item.needed <= 0 ? 1 : item.needed;
-          final canRedeem = item.canRedeem;
-          final expireHint = _expireHint(item);
-          final birthdayHint = type == 'birthday'
-              ? _birthdayStatusLine(item.campaign)
-              : null;
-          final promoHint = type == 'promo'
-              ? promoStatusLine(
-                  lockedReason: item.campaign['lockedReason'] as String?,
-                  canRedeem: canRedeem,
-                  unlocksAt: item.campaign['unlocksAt'] as String?,
-                )
-              : null;
-          final stampQuotaHint = type == 'stamps'
-              ? stampQuotaStatusLine(
-                  lockedReason: item.campaign['lockedReason'] as String?,
-                  unlocksAt: item.campaign['unlocksAt'] as String?,
-                )
-              : null;
-          final stampFrequency =
-              type == 'stamps' ? stampFrequencyLine(item.campaign) : null;
-          final audienceEligible = item.campaign['audienceEligible'] == true;
-          final audienceLocked = item.campaign['lockedReason'] == 'audience';
-          final unlockMessage =
-              item.campaign['audienceUnlockMessage'] as String?;
-          final statusHint = [
-            if (audienceLocked) 'Promo exclusiva para outro perfil',
-            if (!audienceLocked && unlockMessage != null) unlockMessage,
-            ?birthdayHint,
-            ?promoHint,
-            ?stampQuotaHint,
-            if (stampQuotaHint == null) ?stampFrequency,
-            if (!audienceLocked && type != 'promo') ?expireHint,
-          ].join(' · ');
-
-          late final String buttonLabel;
-          if (type == 'birthday') {
-            final locked = item.campaign['lockedReason'] as String?;
-            buttonLabel = canRedeem
-                ? 'Resgatar e mostrar'
-                : locked == 'no_birthday'
-                    ? 'Informe seu aniversário'
-                    : locked == 'already_redeemed'
-                        ? 'Já resgatado este ano'
-                        : 'Ainda não liberou';
-          } else if (type == 'promo') {
-            buttonLabel = promoButtonLabel(
-              lockedReason: item.campaign['lockedReason'] as String?,
-              canRedeem: canRedeem,
-            );
-          } else if (type == 'cashback') {
-            buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
-          } else if (audienceLocked) {
-            buttonLabel = 'Indisponível pra você';
-          } else if (item.campaign['lockedReason'] == 'quota_exhausted') {
-            buttonLabel = 'Já resgatado';
-          } else {
-            buttonLabel = canRedeem
-                ? 'Resgatar e mostrar'
-                : needed > item.pool
-                    ? 'Ainda falta ${needed - item.pool}'
-                    : 'Continuar acumulando';
-          }
-
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: LoyaltyCampaignCard(
-              businessName: name,
-              businessLogoUrl: logoUrl,
-              primary: primary,
-              primaryDark: primaryDark,
-              campaignName:
-                  item.campaign['campaignName'] as String? ?? 'Campanha',
-              campaignType: type,
-              unitsNeeded: needed,
-              currentUnits: item.pool,
-              rewardTitle:
-                  item.campaign['rewardTitle'] as String? ?? 'Prêmio',
-              rewardDescription:
-                  item.campaign['rewardDescription'] as String?,
-              rewardImageUrl: item.campaign['rewardImageUrl'] as String?,
-              canRedeem: canRedeem,
-              buttonLabel: buttonLabel,
-              statusHint: statusHint.isEmpty ? null : statusHint,
-              pointsPerReal: item.business['pointsPerReal'] as int?,
-              cashbackPercent:
-                  (item.campaign['cashbackPercent'] as num?)?.toInt(),
-              cashbackBalanceCents: item.pool,
+            child: RewardCampaignCard(
+              business: item.business,
+              campaign: item.campaign,
+              stamps: item.stamps,
+              points: item.points,
+              stampsExpireDays: item.stampsExpireDays,
+              pointsExpireDays: item.pointsExpireDays,
+              stampSplit: item.stampSplit,
               busy: _redeeming,
-              promoCalendar:
-                  type == 'promo' ? PromoCalendar.fromCampaign(item.campaign) : null,
-              audienceUnlocked: audienceEligible && !audienceLocked,
-              audienceLabel: unlockMessage ??
-                  (audienceEligible
-                      ? 'Conquista liberada pra você'
-                      : null),
-              scopeLabel: stampScopeLabel(
-                item.campaign,
-                split: item.stampSplit,
-              ),
-              onRedeem: type == 'cashback' || !canRedeem || _redeeming
-                  ? null
-                  : () => _redeem(item),
+              onRedeem: () => _redeem(item),
               onOpenShop: () => _openShop(item.businessId),
               onOpen: () async {
-                final campaignId =
-                    item.campaign['campaignId'] as String?;
+                final campaignId = item.campaign['campaignId'] as String?;
                 if (campaignId == null) return;
                 await FregoAdaptive.push(
                   context,
@@ -509,50 +432,6 @@ class _RewardsPageState extends State<RewardsPage> {
         ),
       ),
     ];
-  }
-
-  String? _expireHint(_RewardItem item) {
-    final type = item.type;
-    if (type == 'birthday') return null;
-    if (type == 'spend') {
-      final days = item.pointsExpireDays;
-      if (days == null) return null;
-      return 'Pontos válidos por $days ${_daysWord(days)}';
-    }
-    final days = item.stampsExpireDays;
-    if (days == null) return null;
-    return 'Carimbos válidos por $days ${_daysWord(days)}';
-  }
-
-  String _daysWord(int days) => days == 1 ? 'dia' : 'dias';
-
-  String? _birthdayStatusLine(Map<String, dynamic> c) {
-    final canRedeem = c['canRedeem'] == true;
-    final lockedReason = c['lockedReason'] as String?;
-    final daysUntil = (c['daysUntilBirthday'] as num?)?.toInt();
-    if (canRedeem) return 'Disponível agora';
-    switch (lockedReason) {
-      case 'no_birthday':
-        return 'Adicione seu aniversário no perfil';
-      case 'already_redeemed':
-        return 'Já resgatado este ano';
-      case 'outside_window':
-        if (daysUntil != null && daysUntil > 0) {
-          return daysUntil == 1
-              ? 'Libera amanhã'
-              : 'Libera em $daysUntil dias';
-        }
-        return 'Fora da janela';
-      default:
-        return null;
-    }
-  }
-
-  int? _parseHex(String? hex) {
-    if (hex == null || hex.isEmpty) return null;
-    final cleaned = hex.replaceFirst('#', '');
-    if (cleaned.length != 6) return null;
-    return int.tryParse('FF$cleaned', radix: 16);
   }
 }
 

@@ -7,6 +7,8 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/empty_state.dart';
+import '../../ui/header_straddle.dart';
+import '../../ui/ready_rewards_card.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
 import 'campaign_detail_page.dart';
@@ -17,12 +19,14 @@ class ShopsPage extends StatefulWidget {
     super.key,
     required this.phoneE164,
     this.refreshToken = 0,
+    this.onOpenReadyRewards,
   });
 
   final String phoneE164;
 
   /// Bumped by the shell to reload in the background without remounting.
   final int refreshToken;
+  final VoidCallback? onOpenReadyRewards;
 
   @override
   State<ShopsPage> createState() => _ShopsPageState();
@@ -240,15 +244,6 @@ class _ShopsPageState extends State<ShopsPage> {
     return rows;
   }
 
-  int get _redeemableNow {
-    final fromStats = (_stats?['redeemableNow'] as num?)?.toInt();
-    if (fromStats != null) return fromStats;
-    return _memberships.fold<int>(
-      0,
-      (sum, m) => sum + ((m['redeemableCampaigns'] as num?)?.toInt() ?? 0),
-    );
-  }
-
   Map<String, dynamic>? get _nextReward =>
       _stats?['nextReward'] as Map<String, dynamic>?;
 
@@ -441,18 +436,19 @@ class _ShopsPageState extends State<ShopsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final top = MediaQuery.paddingOf(context).top;
     final greeting = _firstName == null ? 'Olá' : 'Olá, $_firstName';
-    final expanded = MediaQuery.sizeOf(context).height / 3;
     const toolbar = 68.0;
+    const chipBand = 52.0;
     final loadingHome = _loading && !_hydrated;
     final balances = loadingHome ? const <_BalanceChip>[] : _balanceChips();
+    final showChips = loadingHome || balances.isNotEmpty;
     final summary = loadingHome
-        ? const SizedBox.shrink()
+        ? const _ReadyCardSkeleton()
         : _InsightStrip(
-            redeemableNow: _redeemableNow,
+            readyLines: readyRewardLines(_memberships),
             nextReward: _nextReward,
             birthday: _birthdayHint(),
+            onOpenReady: widget.onOpenReadyRewards,
             onOpenShop: _openShop,
             onOpenCampaign: _openCampaign,
           );
@@ -472,7 +468,7 @@ class _ShopsPageState extends State<ShopsPage> {
         foregroundColor: FregoColors.white,
         systemOverlayStyle: _statusBarOnAzul,
         toolbarHeight: toolbar,
-        expandedHeight: expanded - top,
+        expandedHeight: toolbar + (showChips ? chipBand : 0),
         centerTitle: false,
         titleSpacing: 20,
         stretchTriggerOffset: 60,
@@ -510,7 +506,16 @@ class _ShopsPageState extends State<ShopsPage> {
           toolbarHeight: toolbar,
           loading: loadingHome,
           balances: balances,
-          summary: summary,
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: HeaderStraddle(
+          topGap: 16,
+          bottomGap: 12,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: summary,
+          ),
         ),
       ),
       if (loadingHome)
@@ -1382,13 +1387,11 @@ class _BalanceChip {
 class _FreguesHomeHeader extends StatelessWidget {
   const _FreguesHomeHeader({
     required this.toolbarHeight,
-    required this.summary,
     this.loading = false,
     this.balances = const [],
   });
 
   final double toolbarHeight;
-  final Widget summary;
   final bool loading;
   final List<_BalanceChip> balances;
 
@@ -1399,18 +1402,15 @@ class _FreguesHomeHeader extends StatelessWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final height = constraints.maxHeight;
-          final expanded = MediaQuery.sizeOf(context).height / 3;
-          final room = height - top - toolbarHeight - 16;
-          final fullRoom = expanded - top - toolbarHeight - 16;
-          final fade = fullRoom <= 0
-              ? 1.0
-              : (room / (fullRoom * 0.55)).clamp(0.0, 1.0);
+          const fullRoom = 44.0;
+          final room = height - top - toolbarHeight - 8;
+          final fade = (room / fullRoom).clamp(0.0, 1.0);
           return ColoredBox(
             color: FregoColors.azul,
             child: room < 8
                 ? const SizedBox.expand()
                 : Padding(
-                    padding: EdgeInsets.fromLTRB(20, top + toolbarHeight, 20, 16),
+                    padding: EdgeInsets.fromLTRB(20, top + toolbarHeight, 20, 8),
                     child: ClipRect(
                       child: OverflowBox(
                         alignment: Alignment.bottomCenter,
@@ -1428,11 +1428,8 @@ class _FreguesHomeHeader extends StatelessWidget {
                                   const _HomeHeaderSkeleton()
                                 else ...[
                                   const SizedBox(height: 6),
-                                  if (balances.isNotEmpty) ...[
+                                  if (balances.isNotEmpty)
                                     _BalanceChipRow(items: balances),
-                                    const SizedBox(height: 16),
-                                  ],
-                                  summary,
                                 ],
                               ],
                             ),
@@ -1508,6 +1505,51 @@ class _BalanceChipRow extends StatelessWidget {
   }
 }
 
+class _ReadyCardSkeleton extends StatelessWidget {
+  const _ReadyCardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x38041828),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: FregoColors.card,
+        borderRadius: BorderRadius.all(Radius.circular(16)),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(14, 14, 12, 14),
+          child: FregoSkeleton(
+            child: Row(
+              children: [
+                FregoBone(width: 40, height: 40, radius: 12),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      FregoBone(width: 168, height: 14, radius: 6),
+                      SizedBox(height: 8),
+                      FregoBone(width: 120, height: 10, radius: 5),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HomeHeaderSkeleton extends StatelessWidget {
   const _HomeHeaderSkeleton();
 
@@ -1547,44 +1589,6 @@ class _HomeHeaderSkeleton extends StatelessWidget {
                 highlight: _frostHot,
               ),
             ],
-          ),
-          SizedBox(height: 16),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.all(Radius.circular(16)),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0x38041828),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Material(
-              color: FregoColors.card,
-              borderRadius: BorderRadius.all(Radius.circular(16)),
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(14, 14, 12, 14),
-                child: Row(
-                  children: [
-                    FregoBone(width: 40, height: 40, radius: 12),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FregoBone(width: 168, height: 14, radius: 6),
-                          SizedBox(height: 8),
-                          FregoBone(width: 120, height: 10, radius: 5),
-                        ],
-                      ),
-                    ),
-                    SizedBox(width: 8),
-                    FregoBone(width: 8, height: 14, radius: 4),
-                  ],
-                ),
-              ),
-            ),
           ),
         ],
       ),
@@ -1633,16 +1637,18 @@ class _PinnedSearchSkeletonDelegate extends SliverPersistentHeaderDelegate {
 /// Destaques acionáveis: prêmio pronto, progresso ou aniversário.
 class _InsightStrip extends StatelessWidget {
   const _InsightStrip({
-    required this.redeemableNow,
+    required this.readyLines,
     required this.nextReward,
     required this.birthday,
+    required this.onOpenReady,
     required this.onOpenShop,
     required this.onOpenCampaign,
   });
 
-  final int redeemableNow;
+  final List<String> readyLines;
   final Map<String, dynamic>? nextReward;
   final Map<String, dynamic>? birthday;
+  final VoidCallback? onOpenReady;
   final Future<void> Function(String businessId) onOpenShop;
   final Future<void> Function({
     required String businessId,
@@ -1659,25 +1665,8 @@ class _InsightStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (redeemableNow > 0) {
-      final shopId = nextReward?['businessId'] as String?;
-      final shopName = nextReward?['businessName'] as String?;
-      final reward = nextReward?['rewardTitle'] as String?;
-      return _InsightCard(
-        icon: Icon(FregoIcons.gift, color: FregoColors.ink, size: 22),
-        title: redeemableNow == 1
-            ? 'Você tem 1 prêmio pronto'
-            : 'Você tem $redeemableNow prêmios prontos',
-        subtitle: reward != null && reward.isNotEmpty
-            ? (shopName != null ? '$reward · $shopName' : reward)
-            : (shopName != null
-                ? 'Toque para resgatar em $shopName'
-                : 'Toque numa loja para resgatar'),
-        onTap: _tap(
-          shopId: shopId,
-          campaignId: nextReward?['campaignId'] as String?,
-        ),
-      );
+    if (readyLines.isNotEmpty && onOpenReady != null) {
+      return ReadyRewardsCard(lines: readyLines, onTap: onOpenReady!);
     }
 
     if (birthday != null && birthday!['canRedeem'] == true) {

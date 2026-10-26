@@ -8,6 +8,14 @@ The Clube, at the till and in the Cliente's pocket. The phone number is the Clie
 The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
+**Cadastro**:
+The owner's request to open an Estabelecimento. It is not reviewed until the owner confirms the e-mail. An operator then approves or refuses it.
+_Avoid_: signup, registro, lead, conta
+
+**Tipo**:
+The kind of an Estabelecimento: Padaria, Café, Restaurante, Pizzaria, Hamburgueria, Lanchonete, Açaí, Bar, Sorveteria, Doceria, Salão, Barbearia, Varejo, Farmácia, Pet, Academia, or Outros.
+_Avoid_: categoria, grupo, Alimentação, Beleza, Comércio, Serviços
+
 **Unidade**:
 An address where an Estabelecimento operates. Its city and UF decide which Exploração lists that Estabelecimento.
 _Avoid_: loja, filial, location
@@ -115,9 +123,13 @@ The city and UF where the Cliente lives, kept on her profile. Only she sets it. 
 _Avoid_: endereço, GPS, localização
 
 **Exploração**:
-The city and UF a Cliente is browsing, and the Visível Estabelecimentos there, including ones where she already has a Clube. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
+The city and UF a Cliente is browsing, the Visível Estabelecimentos there (including ones where she already has a Clube), and the Campanhas that apply there. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
 _Avoid_: lojas, descoberta, catálogo
 
 **Visível**:
 An Estabelecimento an operator has chosen to include in Exploração. It stays out until that choice is made. The public page is not Exploração.
 _Avoid_: ativo, publicado, suspenso, status
+
+**Relevância**:
+The order of Tipos, Estabelecimentos, and Campanhas in one Cliente's Exploração. Her Resgatar and her Favoritos change it, and she is not shown a number.
+_Avoid_: score, ranking, algoritmo, nota

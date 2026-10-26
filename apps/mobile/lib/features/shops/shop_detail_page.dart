@@ -660,7 +660,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           final unlocksAt = c['unlocksAt'] as String?;
           final campaignId = c['campaignId'] as String? ?? '';
 
-          late final String buttonLabel;
+          late String buttonLabel;
           String? statusHint;
           final audienceEligible = c['audienceEligible'] == true;
           final audienceLocked = c['lockedReason'] == 'audience';
@@ -731,6 +731,17 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                         : 'Continuar acumulando';
           }
 
+          if (!isPromo) {
+            final window = outsideDatesLine(
+              lockedReason: lockedReason,
+              unlocksAt: unlocksAt,
+            );
+            if (window != null) {
+              statusHint = window;
+              if (!isCashback) buttonLabel = 'Fora do período';
+            }
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: LoyaltyCampaignCard(
@@ -752,8 +763,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               cashbackPercent: (c['cashbackPercent'] as num?)?.toInt(),
               cashbackBalanceCents: cashbackBalance,
               busy: _redeeming,
-              promoCalendar:
-                  isPromo ? PromoCalendar.fromCampaign(c) : null,
+              promoCalendar: PromoCalendar.fromCampaign(c),
               audienceUnlocked: audienceEligible && !audienceLocked,
               audienceLabel: unlockMessage ??
                   (audienceEligible ? 'Conquista liberada pra você' : null),

@@ -24,10 +24,13 @@ Future<void> main() async {
     yield LicenseEntryWithLineBreaks(['google_fonts'], license);
   });
   SystemChrome.setSystemUIOverlayStyle(FregoTheme.statusBar);
+  if (!kIsWeb) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+  }
   AppConfig.assertShipBuildUsesProductionApi();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await FregoTelemetry.attach();
   PushService.attachNative();
   runApp(FregoApp(analyticsObserver: FregoTelemetry.observer));
@@ -43,14 +46,9 @@ class FregoApp extends StatelessWidget {
     return MaterialApp(
       title: 'Frego',
       debugShowCheckedModeBanner: false,
-      navigatorObservers: [
-        ?analyticsObserver,
-      ],
+      navigatorObservers: [?analyticsObserver],
       locale: const Locale('pt', 'BR'),
-      supportedLocales: const [
-        Locale('pt', 'BR'),
-        Locale('en'),
-      ],
+      supportedLocales: const [Locale('pt', 'BR'), Locale('en')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
@@ -61,10 +59,10 @@ class FregoApp extends StatelessWidget {
       themeMode: ThemeMode.light,
       builder: (context, child) {
         final bodyStyle = Theme.of(context).textTheme.bodyMedium!.copyWith(
-              color: FregoColors.ink,
-              decoration: TextDecoration.none,
-              inherit: false,
-            );
+          color: FregoColors.ink,
+          decoration: TextDecoration.none,
+          inherit: false,
+        );
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: FregoTheme.statusBar,
           child: CupertinoTheme(

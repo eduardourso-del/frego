@@ -460,6 +460,12 @@ class _WalletPageState extends State<WalletPage> {
                                       buttonLabel: lockedReason == 'audience'
                                           ? 'Indisponível pra você'
                                           : 'Use no caixa',
+                                      statusHint: outsideDatesLine(
+                                        lockedReason: lockedReason,
+                                        unlocksAt: unlocksAt,
+                                      ),
+                                      promoCalendar:
+                                          PromoCalendar.fromCampaign(c),
                                       cashbackPercent: (c['cashbackPercent']
                                               as num?)
                                           ?.toInt(),
@@ -498,6 +504,13 @@ class _WalletPageState extends State<WalletPage> {
                                             'Presente de aniversário';
                                     buttonLabel = 'Bloqueado';
                                   }
+                                  if (lockedReason == 'outside_dates') {
+                                    subtitle = outsideDatesLine(
+                                      lockedReason: lockedReason,
+                                      unlocksAt: unlocksAt,
+                                    )!;
+                                    buttonLabel = 'Fora do período';
+                                  }
                                 } else if (isPromo) {
                                   subtitle = promoStatusLine(
                                     lockedReason: lockedReason,
@@ -531,11 +544,18 @@ class _WalletPageState extends State<WalletPage> {
                                   if (scope != null) {
                                     subtitle = '$scope · $subtitle';
                                   }
-                                  buttonLabel = lockedReason == 'quota_exhausted'
-                                      ? 'Já resgatado'
-                                      : canRedeem
-                                          ? 'Resgatar'
-                                          : 'Ainda falta';
+                                  final window = outsideDatesLine(
+                                    lockedReason: lockedReason,
+                                    unlocksAt: unlocksAt,
+                                  );
+                                  if (window != null) subtitle = window;
+                                  buttonLabel = window != null
+                                      ? 'Fora do período'
+                                      : lockedReason == 'quota_exhausted'
+                                          ? 'Já resgatado'
+                                          : canRedeem
+                                              ? 'Resgatar'
+                                              : 'Ainda falta';
                                 }
 
                                 if (isPromo) {
@@ -694,6 +714,13 @@ class _WalletPageState extends State<WalletPage> {
                                                 : FregoColors.neutral500,
                                           ),
                                         ),
+                                        if (campaignValidityLine(
+                                              PromoCalendar.fromCampaign(c),
+                                            )
+                                            case final validity?) ...[
+                                          const SizedBox(height: 8),
+                                          CampaignValidityRow(line: validity),
+                                        ],
                                         const SizedBox(height: 12),
                                         SizedBox(
                                           width: double.infinity,

@@ -107,15 +107,32 @@ String foldCityLabel(String value) {
   return buffer.toString().replaceAll(RegExp(r'\s+'), ' ');
 }
 
+/// Folded names, built once. Searching must not walk every município on each letter.
+class CityCatalog {
+  CityCatalog(this.cities)
+    : _city = [for (final city in cities) foldCityLabel(city.city)],
+      _label = [for (final city in cities) foldCityLabel(city.label)];
+
+  final List<CityChoice> cities;
+  final List<String> _city;
+  final List<String> _label;
+
+  List<CityChoice> search(String query, {int? limit}) {
+    final q = foldCityLabel(query);
+    final out = <CityChoice>[];
+    for (var i = 0; i < cities.length; i++) {
+      if (q.isNotEmpty && !_city[i].contains(q) && !_label[i].contains(q)) {
+        continue;
+      }
+      out.add(cities[i]);
+      if (limit != null && out.length >= limit) break;
+    }
+    return out;
+  }
+}
+
 List<CityChoice> filterCities(List<CityChoice> cities, String query) {
-  final q = foldCityLabel(query);
-  if (q.isEmpty) return cities;
-  return [
-    for (final city in cities)
-      if (foldCityLabel(city.city).contains(q) ||
-          foldCityLabel(city.label).contains(q))
-        city,
-  ];
+  return CityCatalog(cities).search(query);
 }
 
 class CityPickerPage extends StatefulWidget {
@@ -140,63 +157,105 @@ class CityPickerPage extends StatefulWidget {
 
 class _CityPickerPageState extends State<CityPickerPage> {
   final _search = TextEditingController();
+  final _query = ValueNotifier<String>('');
+  late final CityCatalog _catalog = CityCatalog(widget.cities);
+
+  @override
+  void initState() {
+    super.initState();
+    _search.addListener(_onSearch);
+  }
+
+  void _onSearch() {
+    _query.value = _search.text;
+  }
 
   @override
   void dispose() {
+    _search.removeListener(_onSearch);
     _search.dispose();
+    _query.dispose();
     super.dispose();
+  }
+
+  /// Close the keyboard before the route goes away. Popping a focused field
+  /// deadlocks the text input connection and the app stops responding.
+  void _choose(CityChoice city) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final navigator = Navigator.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      navigator.pop(city);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final query = _search.text.trim();
-    final waiting = widget.requireQuery && foldCityLabel(query).length < 2;
-    final matches = waiting ? const <CityChoice>[] : filterCities(widget.cities, query);
-    final cities = matches.length > 40 ? matches.sublist(0, 40) : matches;
-
-    return CityBlueHeader(
-      title: widget.title,
-      subtitle: widget.subtitle,
-      onBack: () => Navigator.of(context).pop(),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: FregoTextField(
-              controller: _search,
-              label: 'Buscar',
-              placeholder: 'Nome da cidade',
-              onChanged: (_) => setState(() {}),
+    return Material(
+      color: FregoColors.neutralBg,
+      child: CityBlueHeader(
+        title: widget.title,
+        subtitle: widget.subtitle,
+        onBack: () {
+          FocusManager.instance.primaryFocus?.unfocus();
+          Navigator.of(context).pop();
+        },
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+              child: FregoTextField(
+                controller: _search,
+                label: 'Buscar',
+                placeholder: 'Nome da cidade',
+                onTapOutside: (_) {},
+              ),
             ),
-          ),
-          Expanded(
-            child: waiting
-                ? const SizedBox.shrink()
-                : cities.isEmpty
-                    ? const _CityPrompt(text: 'Nenhuma cidade com esse nome.')
-                    : ListView.separated(
-                        primary: false,
-                        padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
-                        itemCount: cities.length + (matches.length > cities.length ? 1 : 0),
-                        separatorBuilder: (_, _) => const SizedBox(height: 2),
-                        itemBuilder: (context, index) {
-                          if (index >= cities.length) {
-                            return const _CityPrompt(
-                              text: 'Continue digitando para ver mais.',
-                            );
-                          }
-                          final city = cities[index];
-                          final selected = widget.selected?.city == city.city &&
-                              widget.selected?.state == city.state;
-                          return CityOption(
-                            label: city.label,
-                            selected: selected,
-                            onTap: () => Navigator.of(context).pop(city),
-                          );
-                        },
-                      ),
-          ),
-        ],
+            Expanded(
+              child: ValueListenableBuilder<String>(
+                valueListenable: _query,
+                builder: (context, raw, _) {
+                  final query = raw.trim();
+                  final waiting =
+                      widget.requireQuery && foldCityLabel(query).length < 2;
+                  if (waiting) return const SizedBox.shrink();
+                  final matches = _catalog.search(query, limit: 41);
+                  final more = matches.length > 40;
+                  final cities = more ? matches.sublist(0, 40) : matches;
+                  if (cities.isEmpty) {
+                    return const _CityPrompt(
+                      text: 'Nenhuma cidade com esse nome.',
+                    );
+                  }
+                  return ListView.separated(
+                    primary: false,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.manual,
+                    padding: const EdgeInsets.fromLTRB(0, 4, 0, 24),
+                    itemCount: cities.length + (more ? 1 : 0),
+                    separatorBuilder: (_, _) => const SizedBox(height: 2),
+                    itemBuilder: (context, index) {
+                      if (index >= cities.length) {
+                        return const _CityPrompt(
+                          text: 'Continue digitando para ver mais.',
+                        );
+                      }
+                      final city = cities[index];
+                      final selected =
+                          widget.selected?.city == city.city &&
+                          widget.selected?.state == city.state;
+                      return CityOption(
+                        label: city.label,
+                        selected: selected,
+                        onTap: () => _choose(city),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -246,7 +305,10 @@ class CityBlueHeader extends StatelessWidget {
                         child: const SizedBox(
                           width: 44,
                           height: 44,
-                          child: Icon(FregoIcons.back, color: FregoColors.white),
+                          child: Icon(
+                            FregoIcons.back,
+                            color: FregoColors.white,
+                          ),
                         ),
                       )
                     else
@@ -274,7 +336,9 @@ class CityBlueHeader extends StatelessWidget {
                                 style: TextStyle(
                                   fontSize: 15,
                                   height: 1.35,
-                                  color: FregoColors.white.withValues(alpha: 0.92),
+                                  color: FregoColors.white.withValues(
+                                    alpha: 0.92,
+                                  ),
                                 ),
                               ),
                             ],
@@ -347,8 +411,9 @@ class CityOption extends StatelessWidget {
                         label,
                         style: TextStyle(
                           fontSize: 17,
-                          fontWeight:
-                              selected ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                           color: enabled
                               ? FregoColors.ink
                               : FregoColors.neutral500,

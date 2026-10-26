@@ -20,7 +20,7 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 
-/// Shell do app do cliente: lojas + prêmios + histórico + perfil.
+/// Shell do app do cliente. Exploração abre o app; Lojas segue com os Clubes.
 class CustomerShell extends StatefulWidget {
   const CustomerShell({
     super.key,
@@ -39,8 +39,8 @@ class CustomerShell extends StatefulWidget {
 
 class _CustomerShellState extends State<CustomerShell> {
   static const _tabScreens = [
-    'shops',
     'explore',
+    'shops',
     'rewards',
     'history',
     'profile',
@@ -116,23 +116,38 @@ class _CustomerShellState extends State<CustomerShell> {
     FregoAdaptive.push(context, page, rootNavigator: true);
   }
 
+  void _openReadyRewards() {
+    openReadyRewards();
+    if (!mounted) return;
+    if (FregoAdaptive.useCupertino(context)) {
+      _cupertinoTabs.index = 2;
+    }
+    _onTab(2);
+  }
+
   void _onTab(int i) {
     setState(() {
       _index = i;
       // Soft-refresh in the background — keep the page mounted so content
       // does not flash away.
-      if (i == 0) _shopsRefresh++;
-      if (i == 1) _exploreRefresh++;
+      if (i == 0) _exploreRefresh++;
+      if (i == 1) _shopsRefresh++;
       if (i == 2) _rewardsRefresh++;
       if (i == 3) _historyRefresh++;
     });
     unawaited(FregoTelemetry.screen(_tabScreens[i]));
   }
 
-  Widget _shopsPage() =>
-      ShopsPage(phoneE164: widget.phoneE164, refreshToken: _shopsRefresh);
+  Widget _shopsPage() => ShopsPage(
+        phoneE164: widget.phoneE164,
+        refreshToken: _shopsRefresh,
+        onOpenReadyRewards: _openReadyRewards,
+      );
 
-  Widget _explorePage() => ExplorePage(refreshToken: _exploreRefresh);
+  Widget _explorePage() => ExplorePage(
+        refreshToken: _exploreRefresh,
+        onOpenReadyRewards: _openReadyRewards,
+      );
 
   Widget _rewardsPage() => RewardsPage(refreshToken: _rewardsRefresh);
 
@@ -152,7 +167,7 @@ class _CustomerShellState extends State<CustomerShell> {
   Widget _pageAt(int index) {
     switch (index) {
       case 1:
-        return _explorePage();
+        return _shopsPage();
       case 2:
         return _rewardsPage();
       case 3:
@@ -161,7 +176,7 @@ class _CustomerShellState extends State<CustomerShell> {
         return _profilePage();
       case 0:
       default:
-        return _shopsPage();
+        return _explorePage();
     }
   }
 
@@ -203,14 +218,14 @@ class _CustomerShellState extends State<CustomerShell> {
         },
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(FregoIcons.shops),
-            activeIcon: Icon(FregoIcons.shopsFilled),
-            label: 'Lojas',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(FregoIcons.explore),
             activeIcon: Icon(FregoIcons.exploreFilled),
             label: 'Explorar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(FregoIcons.shops),
+            activeIcon: Icon(FregoIcons.shopsFilled),
+            label: 'Lojas',
           ),
           BottomNavigationBarItem(
             icon: Icon(FregoIcons.rewards),
@@ -240,8 +255,8 @@ class _CustomerShellState extends State<CustomerShell> {
       body: IndexedStack(
         index: _index,
         children: [
-          _shopsPage(),
           _explorePage(),
+          _shopsPage(),
           _rewardsPage(),
           _historyPage(),
           _profilePage(),
@@ -254,14 +269,14 @@ class _CustomerShellState extends State<CustomerShell> {
         indicatorColor: FregoColors.primary50,
         destinations: const [
           NavigationDestination(
-            icon: Icon(FregoIcons.shops),
-            selectedIcon: Icon(FregoIcons.shopsFilled),
-            label: 'Lojas',
-          ),
-          NavigationDestination(
             icon: Icon(FregoIcons.explore),
             selectedIcon: Icon(FregoIcons.exploreFilled),
             label: 'Explorar',
+          ),
+          NavigationDestination(
+            icon: Icon(FregoIcons.shops),
+            selectedIcon: Icon(FregoIcons.shopsFilled),
+            label: 'Lojas',
           ),
           NavigationDestination(
             icon: Icon(FregoIcons.rewards),

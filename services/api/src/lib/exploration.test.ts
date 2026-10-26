@@ -2,10 +2,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   browsingCity,
+  buildExplorationFeed,
   campaignAppliesToCity,
   leadLine,
   orderLocationsForCity,
   type ExplorationCampaign,
+  type FeedCampaign,
+  type FeedPlace,
 } from './exploration.js';
 
 const city = { city: 'São Paulo', state: 'SP' };
@@ -110,6 +113,156 @@ describe('leadLine', () => {
       }),
     ]);
     assert.equal(line, 'Café');
+  });
+});
+
+describe('buildExplorationFeed', () => {
+  function place(
+    partial: Partial<FeedPlace> & Pick<FeedPlace, 'businessId' | 'name' | 'type'>,
+  ): FeedPlace {
+    return { isFavorite: false, ...partial };
+  }
+
+  function camp(
+    partial: Partial<FeedCampaign> &
+      Pick<FeedCampaign, 'campaignId' | 'businessId' | 'name' | 'type'>,
+  ): FeedCampaign {
+    return {
+      businessName: partial.businessId,
+      canRedeem: false,
+      isFavorite: false,
+      ...partial,
+    };
+  }
+
+  it('lifts a Tipo she can Resgatar ahead of a Favorito Tipo', () => {
+    const feed = buildExplorationFeed(
+      [
+        place({ businessId: 'padaria', name: 'Pão', type: 'padaria', isFavorite: true }),
+        place({ businessId: 'lanche', name: 'Lanche', type: 'lanchonete' }),
+      ],
+      [
+        camp({
+          campaignId: 'promo',
+          businessId: 'lanche',
+          businessName: 'Lanche',
+          name: 'Combo',
+          type: 'promo',
+          canRedeem: true,
+        }),
+      ],
+    );
+    assert.deepEqual(
+      feed.map((section) => section.type),
+      ['lanchonete', 'padaria'],
+    );
+  });
+
+  it('lists a Tipo that is both Resgatar and Favorito once', () => {
+    const feed = buildExplorationFeed(
+      [
+        place({
+          businessId: 'padaria',
+          name: 'Pão',
+          type: 'padaria',
+          isFavorite: true,
+        }),
+      ],
+      [
+        camp({
+          campaignId: 'cartela',
+          businessId: 'padaria',
+          businessName: 'Pão',
+          name: 'Café',
+          type: 'stamps',
+          canRedeem: true,
+          isFavorite: true,
+        }),
+      ],
+    );
+    assert.equal(feed.length, 1);
+    assert.equal(feed[0]?.type, 'padaria');
+  });
+
+  it('orders Campanhas by Resgatar, Favorito, Promoção, then name', () => {
+    const feed = buildExplorationFeed(
+      [
+        place({ businessId: 'padaria', name: 'Padaria', type: 'restaurant' }),
+        place({
+          businessId: 'cafe',
+          name: 'Café',
+          type: 'restaurant',
+          isFavorite: true,
+        }),
+        place({ businessId: 'lanche', name: 'Lanche', type: 'restaurant' }),
+      ],
+      [
+        camp({
+          campaignId: 'cash',
+          businessId: 'cafe',
+          businessName: 'Café',
+          name: 'Cashback',
+          type: 'cashback',
+          canRedeem: true,
+          isFavorite: true,
+        }),
+        camp({
+          campaignId: 'promo',
+          businessId: 'lanche',
+          businessName: 'Lanche',
+          name: 'Almoço',
+          type: 'promo',
+        }),
+        camp({
+          campaignId: 'cartela',
+          businessId: 'padaria',
+          businessName: 'Padaria',
+          name: 'Café',
+          type: 'stamps',
+          canRedeem: true,
+        }),
+        camp({
+          campaignId: 'birthday',
+          businessId: 'lanche',
+          businessName: 'Lanche',
+          name: 'Bolo',
+          type: 'birthday',
+        }),
+      ],
+    );
+    assert.deepEqual(
+      feed[0]?.campaigns.map((campaign) => campaign.campaignId),
+      ['cartela', 'cash', 'promo', 'birthday'],
+    );
+  });
+
+  it('orders Estabelecimentos by Favorito, then name', () => {
+    const feed = buildExplorationFeed(
+      [
+        place({ businessId: 'b', name: 'Beta', type: 'bar' }),
+        place({ businessId: 'a', name: 'Alfa', type: 'bar', isFavorite: true }),
+        place({ businessId: 'c', name: 'Casa', type: 'bar' }),
+      ],
+      [],
+    );
+    assert.deepEqual(
+      feed[0]?.places.map((item) => item.businessId),
+      ['a', 'b', 'c'],
+    );
+  });
+
+  it('keeps the fixed Tipo order when nobody can Resgatar or has a Favorito', () => {
+    const feed = buildExplorationFeed(
+      [
+        place({ businessId: 'l', name: 'Lanche', type: 'lanchonete' }),
+        place({ businessId: 'p', name: 'Pão', type: 'padaria' }),
+      ],
+      [],
+    );
+    assert.deepEqual(
+      feed.map((section) => section.type),
+      ['padaria', 'lanchonete'],
+    );
   });
 });
 

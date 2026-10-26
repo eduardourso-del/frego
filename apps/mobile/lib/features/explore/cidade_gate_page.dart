@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../api/frego_api.dart';
 import '../../theme/frego_theme.dart';
@@ -19,58 +18,46 @@ class CidadeGatePage extends StatefulWidget {
 class _CidadeGatePageState extends State<CidadeGatePage>
     with SingleTickerProviderStateMixin {
   final _search = TextEditingController();
+  final _query = ValueNotifier<String>('');
   final _focus = FocusNode();
   late final AnimationController _enter;
   bool _loading = true;
   bool _saving = false;
   String? _error;
   CityChoice? _selected;
-  List<CityChoice> _cities = const [];
-  int _keyboardRestores = 0;
+  CityCatalog? _catalog;
 
   @override
   void initState() {
     super.initState();
-    _focus.addListener(_onFocusChanged);
+    _search.addListener(_onSearch);
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
     )..forward();
-    _enter.addStatusListener((status) {
-      if (status == AnimationStatus.completed && mounted && !_saving) {
-        _focus.requestFocus();
-        SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-      }
-    });
+    _enter.addStatusListener(_onEnter);
     _load();
   }
 
   @override
   void dispose() {
-    _focus.removeListener(_onFocusChanged);
+    _enter.removeStatusListener(_onEnter);
+    _search.removeListener(_onSearch);
     _focus.dispose();
     _search.dispose();
+    _query.dispose();
     _enter.dispose();
     super.dispose();
   }
 
-  void _onFocusChanged() {
-    if (_focus.hasFocus || _saving || _selected != null || !mounted) return;
-    if (_keyboardRestores >= 4) return;
-    _keyboardRestores++;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _saving || _selected != null || _focus.hasFocus) return;
-      _focus.requestFocus();
-      SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-    });
+  void _onSearch() {
+    _query.value = _search.text;
   }
 
-  void _showKeyboard() {
-    _keyboardRestores = 0;
-    if (!_focus.hasFocus) {
-      _focus.requestFocus();
-    }
-    SystemChannels.textInput.invokeMethod<void>('TextInput.show');
+  void _onEnter(AnimationStatus status) {
+    if (status != AnimationStatus.completed || !mounted || _saving) return;
+    if (_selected != null || _focus.hasFocus) return;
+    _focus.requestFocus();
   }
 
   Future<void> _load() async {
@@ -78,7 +65,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
       final cities = await loadHomeCities();
       if (!mounted) return;
       setState(() {
-        _cities = cities;
+        _catalog = CityCatalog(cities);
         _loading = false;
       });
     } catch (e) {
@@ -91,9 +78,8 @@ class _CidadeGatePageState extends State<CidadeGatePage>
   }
 
   void _select(CityChoice city) {
-    _keyboardRestores = 4;
-    setState(() => _selected = city);
     _focus.unfocus();
+    setState(() => _selected = city);
   }
 
   bool _sameCity(CityChoice a, CityChoice b) {
@@ -101,12 +87,16 @@ class _CidadeGatePageState extends State<CidadeGatePage>
   }
 
   Future<void> _pick(CityChoice city) async {
+    _focus.unfocus();
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
       await updateMyCustomer(city: city.city, state: city.state);
+      if (!mounted) return;
+      // Drop the field only after the text input connection has closed.
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
       widget.onPicked();
     } catch (e) {
@@ -120,19 +110,21 @@ class _CidadeGatePageState extends State<CidadeGatePage>
 
   @override
   Widget build(BuildContext context) {
-    final screen = MediaQuery.sizeOf(context).height;
-    // The field has to sit above the keyboard without moving when it opens.
-    // Shifting the sheet with the inset makes iOS resign the field and the
-    // keyboard disappears before a letter can be typed.
-    final height = screen * 0.72;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 72% of the screen while the window is full. If the keyboard shrinks
+        // the window, stay inside it — a taller sheet overflows and tears the
+        // field down while she is typing.
+        final wanted = MediaQuery.sizeOf(context).height * 0.72;
+        final height = constraints.maxHeight < wanted
+            ? constraints.maxHeight
+            : wanted;
+        return _sheet(height);
+      },
+    );
+  }
 
-    final query = _search.text.trim();
-    final waiting = foldCityLabel(query).length < 2;
-    final matches = waiting
-        ? const <CityChoice>[]
-        : filterCities(_cities, query);
-    final cities = matches.length > 40 ? matches.sublist(0, 40) : matches;
-
+  Widget _sheet(double height) {
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -189,58 +181,54 @@ class _CidadeGatePageState extends State<CidadeGatePage>
                         ),
                       ),
                     ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                          child: Material(
-                            type: MaterialType.transparency,
-                            child: TextField(
-                              controller: _search,
-                              focusNode: _focus,
-                              enabled: !_saving,
-                              autofillHints: const [],
-                              enableSuggestions: false,
-                              autocorrect: false,
-                              scrollPadding: EdgeInsets.zero,
-                              textCapitalization: TextCapitalization.words,
-                              textInputAction: TextInputAction.search,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                color: FregoColors.ink,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: TextField(
+                          controller: _search,
+                          focusNode: _focus,
+                          enabled: !_saving,
+                          autofillHints: const [],
+                          enableSuggestions: false,
+                          autocorrect: false,
+                          scrollPadding: EdgeInsets.zero,
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.search,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            color: FregoColors.ink,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Nome da cidade',
+                            hintStyle: const TextStyle(
+                              fontSize: 17,
+                              color: FregoColors.neutral400,
+                            ),
+                            filled: true,
+                            fillColor: FregoColors.card,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 14,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: FregoColors.control,
                               ),
-                              decoration: InputDecoration(
-                                hintText: 'Nome da cidade',
-                                hintStyle: const TextStyle(
-                                  fontSize: 17,
-                                  color: FregoColors.neutral400,
-                                ),
-                                filled: true,
-                                fillColor: FregoColors.card,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 14,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: FregoColors.control,
-                                  ),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(
-                                    color: FregoColors.control,
-                                  ),
-                                ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: FregoColors.control,
                               ),
-                              onTap: _showKeyboard,
-                              onChanged: (_) {
-                                _keyboardRestores = 0;
-                                setState(() {});
-                              },
                             ),
                           ),
+                          onTapOutside: (_) {},
                         ),
+                      ),
+                    ),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
@@ -249,7 +237,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
                           style: const TextStyle(color: FregoColors.danger),
                         ),
                       ),
-                    if (_error != null && _cities.isEmpty)
+                    if (_error != null && _catalog == null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                         child: FregoPrimaryButton(
@@ -264,7 +252,20 @@ class _CidadeGatePageState extends State<CidadeGatePage>
                         ),
                       ),
                     const SizedBox(height: 8),
-                    Expanded(child: _body(waiting, cities)),
+                    Expanded(
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _query,
+                        builder: (context, raw, _) {
+                          final query = raw.trim();
+                          final waiting = foldCityLabel(query).length < 2;
+                          final catalog = _catalog;
+                          final matches = waiting || catalog == null
+                              ? const <CityChoice>[]
+                              : catalog.search(query, limit: 40);
+                          return _body(waiting, matches);
+                        },
+                      ),
+                    ),
                     if (!_loading)
                       Padding(
                         padding: EdgeInsets.fromLTRB(
@@ -294,8 +295,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
     if (_loading) return const Center(child: FregoProgress());
     final selected = _selected;
     final rows = <CityChoice>[
-      if (selected != null &&
-          !cities.any((city) => _sameCity(city, selected)))
+      if (selected != null && !cities.any((city) => _sameCity(city, selected)))
         selected,
       ...cities,
     ];

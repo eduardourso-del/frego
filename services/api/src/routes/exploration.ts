@@ -10,12 +10,12 @@ import { setCustomerFavorite } from '../lib/favorite.js';
 import {
   EXPLORATION_STATUSES,
   browsingCity,
+  buildExplorationFeed,
   campaignAppliesToCity,
   leadLine,
   listCatalogCities,
   locationInCity,
   orderLocationsForCity,
-  type ExplorationCampaign,
 } from '../lib/exploration.js';
 
 const cityBody = z.object({
@@ -91,17 +91,6 @@ async function loadListedBusinesses() {
   });
 }
 
-function asExplorationCampaigns(business: ListedBusiness): ExplorationCampaign[] {
-  return business.campaigns.map((campaign) => ({
-    id: campaign.id,
-    type: campaign.type,
-    cashbackPercent: campaign.cashbackPercent,
-    rewardTitle: campaign.rewardTitle,
-    createdAt: campaign.createdAt,
-    locationIds: campaign.locations.map((location) => location.locationId),
-  }));
-}
-
 function applicableCampaigns(business: ListedBusiness, city: CityRef) {
   const locations = business.locations;
   return business.campaigns.filter((campaign) =>
@@ -113,6 +102,20 @@ function applicableCampaigns(business: ListedBusiness, city: CityRef) {
       city,
     ),
   );
+}
+
+function loyaltyUnitsNeeded(campaign: {
+  type: string;
+  stampsNeeded: number | null;
+}): number | null {
+  if (
+    campaign.type === 'cashback' ||
+    campaign.type === 'birthday' ||
+    campaign.type === 'promo'
+  ) {
+    return null;
+  }
+  return campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
 }
 
 function publicCampaignEntry(
@@ -194,13 +197,16 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
       },
     });
     const browsing = browsingCity(customer);
+    const cidade =
+      customer.city && customer.state
+        ? { city: customer.city, state: customer.state }
+        : null;
     if (!browsing) {
       return {
-        cidade:
-          customer.city && customer.state
-            ? { city: customer.city, state: customer.state }
-            : null,
+        cidade,
         browsing: null,
+        redeemableCount: 0,
+        sections: [],
         places: [],
       };
     }
@@ -214,7 +220,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     const [memberships, favorites] = await Promise.all([
       prisma.membership.findMany({
         where: { customerId: auth.customerId, businessId: { in: ids } },
-        select: { businessId: true, isFavorite: true },
+        select: { id: true, businessId: true, isFavorite: true },
       }),
       prisma.favorite.findMany({
         where: { customerId: auth.customerId, businessId: { in: ids } },
@@ -226,17 +232,48 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     );
     const favoriteIds = new Set(favorites.map((favorite) => favorite.businessId));
 
+    const redeemable = new Set<string>();
+    const progress = new Map<
+      string,
+      { unitsNeeded: number; balance: number; cashbackBalanceCents: number | null }
+    >();
+    await Promise.all(
+      memberships.map(async (membership) => {
+        const business = inCity.find((item) => item.id === membership.businessId);
+        if (!business) return;
+        const applicable = new Set(
+          applicableCampaigns(business, browsing).map((campaign) => campaign.id),
+        );
+        const wallet = await deriveWallet(membership.id, membership.businessId);
+        const recognized = await resolveMembershipRecognition(
+          membership.id,
+          membership.businessId,
+          wallet,
+        );
+        for (const campaign of recognized.campaigns) {
+          if (!applicable.has(campaign.campaignId)) continue;
+          progress.set(campaign.campaignId, {
+            unitsNeeded: campaign.unitsNeeded,
+            balance: campaign.balance,
+            cashbackBalanceCents: campaign.cashbackBalanceCents ?? null,
+          });
+          if (campaign.canRedeem && campaign.type !== 'cashback') {
+            redeemable.add(campaign.campaignId);
+          }
+        }
+      }),
+    );
+
     const places = inCity.map((business) => {
       const membership = membershipByBusiness.get(business.id);
-      const applicable = asExplorationCampaigns(business).filter((campaign) =>
-        campaignAppliesToCity(campaign, business.locations, browsing),
-      );
+      const isFavorite =
+        favoriteIds.has(business.id) || membership?.isFavorite === true;
       return {
         businessId: business.id,
-        isFavorite:
-          favoriteIds.has(business.id) || membership?.isFavorite === true,
+        name: business.name,
+        type: business.type,
+        isFavorite,
         hasMembership: Boolean(membership),
-        leadLine: leadLine(applicable),
         business: {
           id: business.id,
           name: business.name,
@@ -250,18 +287,104 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    places.sort((a, b) => {
-      if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
-      return a.business.name.localeCompare(b.business.name, 'pt-BR');
+    const campaigns = inCity.flatMap((business) => {
+      const place = places.find((item) => item.businessId === business.id);
+      return applicableCampaigns(business, browsing).map((campaign) => ({
+        campaignId: campaign.id,
+        businessId: business.id,
+        businessName: business.name,
+        logoUrl: business.logoUrl,
+        name: campaign.name,
+        type: campaign.type,
+        rewardTitle: campaign.rewardTitle,
+        rewardDescription: campaign.rewardDescription,
+        rewardImageUrl: campaign.rewardImageUrl,
+        cashbackPercent: campaign.cashbackPercent,
+        canRedeem: redeemable.has(campaign.id) && campaign.type !== 'cashback',
+        unitsNeeded:
+          progress.get(campaign.id)?.unitsNeeded ?? loyaltyUnitsNeeded(campaign),
+        balance:
+          progress.get(campaign.id)?.balance ??
+          (loyaltyUnitsNeeded(campaign) == null ? null : 0),
+        cashbackBalanceCents:
+          progress.get(campaign.id)?.cashbackBalanceCents ?? null,
+        primaryColor: business.primaryColor,
+        primaryColorDark: business.primaryColorDark,
+        isFavorite: place?.isFavorite === true,
+        hasMembership: place?.hasMembership === true,
+      }));
     });
 
+    const sections = buildExplorationFeed(places, campaigns).map((section) => ({
+      type: section.type,
+      places: section.places.map((place) => ({
+        businessId: place.businessId,
+        isFavorite: place.isFavorite,
+        hasMembership: place.hasMembership,
+        business: place.business,
+      })),
+      campaigns: section.campaigns.map((campaign) => ({
+        campaignId: campaign.campaignId,
+        businessId: campaign.businessId,
+        businessName: campaign.businessName,
+        logoUrl: campaign.logoUrl,
+        name: campaign.name,
+        type: campaign.type,
+        rewardTitle: campaign.rewardTitle,
+        rewardDescription: campaign.rewardDescription,
+        rewardImageUrl: campaign.rewardImageUrl,
+        cashbackPercent: campaign.cashbackPercent,
+        canRedeem: campaign.canRedeem,
+        unitsNeeded: campaign.unitsNeeded,
+        balance: campaign.balance,
+        cashbackBalanceCents: campaign.cashbackBalanceCents,
+        primaryColor: campaign.primaryColor,
+        primaryColorDark: campaign.primaryColorDark,
+        isFavorite: campaign.isFavorite,
+        hasMembership: campaign.hasMembership,
+      })),
+    }));
+
+    const legacyPlaces = [...places]
+      .sort((a, b) => {
+        if (a.isFavorite !== b.isFavorite) return a.isFavorite ? -1 : 1;
+        return a.name.localeCompare(b.name, 'pt-BR');
+      })
+      .map((place) => {
+        const business = inCity.find((item) => item.id === place.businessId);
+        const applicable = business
+          ? applicableCampaigns(business, browsing)
+          : [];
+        return {
+          businessId: place.businessId,
+          isFavorite: place.isFavorite,
+          hasMembership: place.hasMembership,
+          leadLine: leadLine(
+            applicable.map((campaign) => ({
+              id: campaign.id,
+              type: campaign.type,
+              cashbackPercent: campaign.cashbackPercent,
+              rewardTitle: campaign.rewardTitle,
+              createdAt: campaign.createdAt,
+              locationIds: campaign.locations.map(
+                (location) => location.locationId,
+              ),
+            })),
+          ),
+          business: place.business,
+        };
+      });
+
     return {
-      cidade:
-        customer.city && customer.state
-          ? { city: customer.city, state: customer.state }
-          : null,
+      cidade,
       browsing,
-      places,
+      redeemableCount: sections.reduce(
+        (sum, section) =>
+          sum + section.campaigns.filter((campaign) => campaign.canRedeem).length,
+        0,
+      ),
+      sections,
+      places: legacyPlaces,
     };
   });
 
