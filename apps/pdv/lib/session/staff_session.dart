@@ -1,15 +1,15 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_error.dart';
 import '../api/pdv_api.dart';
 import '../config/app_config.dart';
+import 'staff_auth.dart';
 
 class StaffSession extends ChangeNotifier {
   StaffSession({required this.user});
 
-  final User user;
+  final StaffAccount user;
 
   List<StaffBusiness> businesses = [];
   String? businessId;
@@ -41,11 +41,10 @@ class StaffSession extends ChangeNotifier {
 
   /// Local API (`AUTH_BYPASS`) can run without a bearer. Production cannot.
   Future<String?> _idToken() async {
-    final current = FirebaseAuth.instance.currentUser ?? user;
     try {
-      final token = await current.getIdToken();
+      final token = await StaffAuth.instance.idToken();
       if (token != null && token.isNotEmpty) return token;
-    } on FirebaseAuthException catch (e) {
+    } on StaffAuthException catch (e) {
       if (AppConfig.isLocalDebugApi) {
         debugPrint(
           'PDV local: token Firebase indisponível (${e.code}). AUTH_BYPASS.',
@@ -122,6 +121,6 @@ class StaffSession extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    await FirebaseAuth.instance.signOut();
+    await StaffAuth.instance.signOut();
   }
 }

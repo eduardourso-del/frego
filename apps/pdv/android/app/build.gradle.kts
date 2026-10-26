@@ -4,7 +4,6 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
 }
 
 val keystoreProperties = Properties()
@@ -84,6 +83,19 @@ android {
                 }
         }
     }
+
+    // DX8000 and P3 fail to map uncompressed libflutter.so and stay on the splash.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+// reCAPTCHA (pulled by the Firebase Auth SDK) embeds android.webkit.WebView.
+// Getnet rejects the APK when Jadx finds it. The PDV signs in over REST instead.
+configurations.configureEach {
+    exclude(group = "com.google.android.recaptcha", module = "recaptcha")
 }
 
 kotlin {

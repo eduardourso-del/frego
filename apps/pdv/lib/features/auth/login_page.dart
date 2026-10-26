@@ -1,6 +1,6 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../session/staff_auth.dart';
 import '../../theme/frego_theme.dart';
 import '../support/support_page.dart';
 
@@ -30,11 +30,11 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+      await StaffAuth.instance.signIn(
         email: _email.text.trim(),
         password: _password.text,
       );
-    } on FirebaseAuthException catch (e) {
+    } on StaffAuthException catch (e) {
       setState(() => _error = _loginMessage(e));
     } catch (e) {
       setState(() => _error = e.toString());
@@ -43,7 +43,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  String _loginMessage(FirebaseAuthException e) {
+  String _loginMessage(StaffAuthException e) {
     switch (e.code) {
       case 'invalid-credential':
       case 'wrong-password':

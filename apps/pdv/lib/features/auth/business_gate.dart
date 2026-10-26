@@ -1,8 +1,8 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../api/api_error.dart';
 import '../../api/pdv_api.dart';
+import '../../session/staff_auth.dart';
 import '../../session/staff_session.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
@@ -13,7 +13,7 @@ import '../till/till_page.dart';
 class BusinessGate extends StatefulWidget {
   const BusinessGate({super.key, required this.user});
 
-  final User user;
+  final StaffAccount user;
 
   @override
   State<BusinessGate> createState() => _BusinessGateState();

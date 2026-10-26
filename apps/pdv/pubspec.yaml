@@ -1,7 +1,7 @@
 name: frego_pdv
 description: Frego PDV — balcão do estabelecimento na maquininha
 publish_to: "none"
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: ^3.12.2
@@ -13,8 +13,6 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   http: ^1.2.2
-  firebase_core: ^4.12.1
-  firebase_auth: ^6.7.0
   google_fonts: ^8.2.1
   flutter_svg: ^2.2.0
   frego_tokens:
