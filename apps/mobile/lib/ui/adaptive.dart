@@ -629,6 +629,7 @@ class FregoTextField extends StatelessWidget {
     this.readOnly = false,
     this.style,
     this.autofillHints,
+    this.suffix,
   });
 
   final TextEditingController controller;
@@ -652,6 +653,7 @@ class FregoTextField extends StatelessWidget {
   final bool readOnly;
   final TextStyle? style;
   final Iterable<String>? autofillHints;
+  final Widget? suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -692,6 +694,12 @@ class FregoTextField extends StatelessWidget {
             onChanged: onChanged,
             onSubmitted: onSubmitted,
             onTapOutside: onTapOutside,
+            suffix: suffix == null
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: suffix,
+                  ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             style:
                 style ?? const TextStyle(fontSize: 17, color: FregoColors.ink),
@@ -748,6 +756,7 @@ class FregoTextField extends StatelessWidget {
         hintText: placeholder,
         errorText: errorText,
         counterText: maxLength != null ? '' : null,
+        suffixIcon: suffix,
         filled: true,
         fillColor: enabled ? FregoColors.card : FregoColors.neutral100,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
