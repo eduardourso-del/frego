@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState, type ReactNode } from 'react';
-import { Coins, ExternalLink, Globe, ImageIcon, MapPin, Palette, Store, type LucideIcon } from 'lucide-react';
+import { Banknote, ExternalLink, Gift, Globe, ImageIcon, MapPin, Palette, Stamp, Store, type LucideIcon } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import {
   ImageCropDialog,
@@ -38,16 +38,20 @@ function Section({
   title,
   hint,
   children,
+  iconWrapClassName = 'bg-[var(--color-primary-50)] text-[var(--color-primary-600)]',
 }: {
   Icon: LucideIcon;
   title: string;
   hint?: string;
   children: ReactNode;
+  iconWrapClassName?: string;
 }) {
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 md:p-5">
       <div className="mb-4 flex items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--color-primary-50)] text-[var(--color-primary-600)]">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${iconWrapClassName}`}
+        >
           <Icon size={16} strokeWidth={2.25} aria-hidden />
         </span>
         <div className="min-w-0 pt-0.5">
@@ -68,6 +72,50 @@ function Section({
 
 const inputClass =
   'mt-1.5 min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[15px] font-normal normal-case tracking-normal text-[var(--color-ink)] outline-none focus:border-[var(--color-primary-500)]';
+
+function ExpireToggle({
+  checked,
+  onChecked,
+  days,
+  onDays,
+  className = 'mt-4',
+}: {
+  checked: boolean;
+  onChecked: (value: boolean) => void;
+  days: number;
+  onDays: (value: number) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChecked(e.target.checked)}
+          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+        />
+        O saldo expira
+      </label>
+      <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+        No resgate, o mais antigo sai primeiro.
+      </p>
+      {checked ? (
+        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+          Dias após o ganho
+          <input
+            type="number"
+            min={1}
+            max={3650}
+            value={days}
+            onChange={(e) => onDays(Math.max(1, Number(e.target.value) || 1))}
+            className={inputClass}
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
 
 function settingsSaveError(err: unknown) {
   const message = err instanceof Error ? err.message : '';
@@ -827,38 +875,12 @@ export default function SettingsPage() {
                 </Section>
 
                 <Section
-                  Icon={Coins}
-                  title="Benefícios"
-                  hint="Taxa de pontos, teto, compra mínima, múltiplo e validade do saldo."
+                  Icon={Banknote}
+                  title="Cashback"
+                  hint="A porcentagem fica em cada campanha. Aqui ficam o teto, a compra mínima, o múltiplo e a validade."
+                  iconWrapClassName="bg-[var(--color-cashback-bg)] text-[var(--color-cashback)]"
                 >
-                  <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
-                    R$ para 1 ponto
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={pointsPerReal}
-                      onChange={(e) =>
-                        setPointsPerReal(Math.max(1, Number(e.target.value) || 1))
-                      }
-                      className={inputClass}
-                    />
-                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
-                      Quanto o cliente precisa gastar no balcão para ganhar 1
-                      ponto. Ex.: 10 = R$ 10,00 → 1 ponto.
-                    </span>
-                  </label>
-
-                  <div className="mt-4 rounded-[14px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-cashback)]">
-                    A porcentagem de cashback fica em cada campanha, em{' '}
-                    <a href="/campaigns" className="font-semibold underline">
-                      Campanhas
-                    </a>
-                    . Aqui ficam só o teto, a compra mínima, o múltiplo e a
-                    validade do saldo.
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
                         <input
@@ -962,105 +984,57 @@ export default function SettingsPage() {
                     ) : null}
                   </div>
 
-                  <p className="mt-5 text-[13px] font-semibold text-[var(--color-ink)]">
-                    Validade do saldo
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
-                    Em quantos dias o saldo expira depois que o cliente ganha. No
-                    resgate, o mais antigo é usado primeiro.
-                  </p>
-                  <div className="mt-3 flex flex-col gap-4">
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
-                        <input
-                          type="checkbox"
-                          checked={stampsExpireEnabled}
-                          onChange={(e) =>
-                            setStampsExpireEnabled(e.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                        />
-                        Carimbos expiram
-                      </label>
-                      {stampsExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={stampsExpireDays}
-                            onChange={(e) =>
-                              setStampsExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
-                        <input
-                          type="checkbox"
-                          checked={pointsExpireEnabled}
-                          onChange={(e) =>
-                            setPointsExpireEnabled(e.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                        />
-                        Pontos expiram
-                      </label>
-                      {pointsExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={pointsExpireDays}
-                            onChange={(e) =>
-                              setPointsExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
-                        <input
-                          type="checkbox"
-                          checked={cashbackExpireEnabled}
-                          onChange={(e) =>
-                            setCashbackExpireEnabled(e.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                        />
-                        Cashback expira
-                      </label>
-                      {cashbackExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={cashbackExpireDays}
-                            onChange={(e) =>
-                              setCashbackExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                  </div>
+                  <ExpireToggle
+                    checked={cashbackExpireEnabled}
+                    onChecked={setCashbackExpireEnabled}
+                    days={cashbackExpireDays}
+                    onDays={setCashbackExpireDays}
+                  />
+                </Section>
+
+                <Section
+                  Icon={Stamp}
+                  title="Carimbos"
+                  hint="Em quantos dias o carimbo expira depois que o cliente ganha."
+                  iconWrapClassName="bg-[var(--color-stamps-bg)] text-[var(--color-stamps)]"
+                >
+                  <ExpireToggle
+                    className=""
+                    checked={stampsExpireEnabled}
+                    onChecked={setStampsExpireEnabled}
+                    days={stampsExpireDays}
+                    onDays={setStampsExpireDays}
+                  />
+                </Section>
+
+                <Section
+                  Icon={Gift}
+                  title="Pontos"
+                  hint="Quanto o cliente gasta para ganhar 1 ponto, e em quantos dias o ponto expira."
+                  iconWrapClassName="bg-[var(--color-points-bg)] text-[var(--color-points)]"
+                >
+                  <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
+                    R$ para 1 ponto
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={pointsPerReal}
+                      onChange={(e) =>
+                        setPointsPerReal(Math.max(1, Number(e.target.value) || 1))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      Ex.: 10 = R$ 10,00 → 1 ponto.
+                    </span>
+                  </label>
+                  <ExpireToggle
+                    checked={pointsExpireEnabled}
+                    onChecked={setPointsExpireEnabled}
+                    days={pointsExpireDays}
+                    onDays={setPointsExpireDays}
+                  />
                 </Section>
                 {error ? (
                   <p

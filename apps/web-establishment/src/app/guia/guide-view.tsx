@@ -392,7 +392,7 @@ export function GuideView() {
                     pontos ele junta para ganhar o prêmio. A taxa — quanto o
                     cliente gasta para ganhar 1 ponto — fica em{' '}
                     <TextLink href="/settings">Configurações</TextLink>, na
-                    seção Benefícios, e vale para o estabelecimento todo.
+                    seção Pontos, e vale para o estabelecimento todo.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -418,8 +418,9 @@ export function GuideView() {
                     Um percentual da compra volta em reais e o cliente usa no
                     caixa. A porcentagem fica na campanha. O teto por compra, a
                     compra mínima, o múltiplo e a validade do saldo ficam em
-                    Configurações. Com múltiplo 3, R$ 10 de cashback pedem uma
-                    compra de R$ 30. Numa compra menor, dá para usar até a
+                    Configurações, na seção Cashback. Com múltiplo 3, R$ 10 de
+                    cashback pedem uma compra de R$ 30. Numa compra menor, dá
+                    para usar até a
                     compra dividida por esse número.
                   </p>
                 </TypeCard>
@@ -682,8 +683,16 @@ export function GuideView() {
                   body="O link público do estabelecimento, no endereço /loja/…, com as campanhas ativas."
                 />
                 <Setting
-                  title="Benefícios"
-                  body="Reais para 1 ponto; teto, compra mínima e múltiplo do cashback; em quantos dias carimbos, pontos e cashback expiram depois do ganho. No resgate, o saldo mais antigo sai primeiro."
+                  title="Cashback"
+                  body="Teto por compra, compra mínima, múltiplo e em quantos dias o saldo expira. A porcentagem continua na campanha."
+                />
+                <Setting
+                  title="Carimbos"
+                  body="Em quantos dias o carimbo expira depois do ganho. No resgate, o saldo mais antigo sai primeiro."
+                />
+                <Setting
+                  title="Pontos"
+                  body="Reais para 1 ponto, e em quantos dias o ponto expira depois do ganho."
                 />
                 <Setting
                   title="WhatsApp"
