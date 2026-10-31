@@ -23,6 +23,11 @@ export function saleIdFromMeta(metadata: unknown): string | null {
   return metaString(metadata, 'saleId');
 }
 
+/** A compra credited from a closed Saipos sale. Hidden from the balcão Desfazer list. */
+export function isSaiposLedger(metadata: unknown): boolean {
+  return metaString(metadata, 'source') === 'saipos';
+}
+
 export function roleFromMeta(metadata: unknown): LedgerRole | null {
   const role = metaString(metadata, 'role');
   if (role === 'earn' || role === 'apply' || role === 'cashback') return role;

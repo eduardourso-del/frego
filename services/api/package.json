@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "build": "tsc -p tsconfig.json && mkdir -p dist/data && cp src/data/municipios.json dist/data/municipios.json",
     "start": "node --env-file=.env dist/index.js",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

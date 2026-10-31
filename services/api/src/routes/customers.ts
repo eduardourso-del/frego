@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { openClube } from '../lib/open-clube.js';
 import { normalizeLast4, phoneLast4, toE164 } from '../lib/phone.js';
 import { campaignSpendableUnits, deriveWallet } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
@@ -684,86 +685,20 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       stampCampaignId = resolved.campaignId;
     }
 
-    const phoneE164 = toE164(body.phone);
-    const last4 = phoneLast4(phoneE164);
-
-    let customer = await prisma.customer.upsert({
-      where: { phoneE164 },
-      create: {
-        phoneE164,
-        phoneLast4: last4,
-        displayName: body.displayName,
-        birthday: body.birthday ? new Date(body.birthday) : undefined,
-      },
-      update: {
-        phoneLast4: last4,
-      },
+    const opened = await openClube({
+      businessId: auth.businessId,
+      phone: body.phone,
+      displayName: body.displayName,
+      birthday: body.birthday ? new Date(body.birthday) : null,
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
-
-    const patch: { displayName?: string; birthday?: Date } = {};
-    if (!customer.displayName && body.displayName) {
-      patch.displayName = body.displayName;
-    }
-    if (!customer.birthday && body.birthday) {
-      patch.birthday = new Date(body.birthday);
-    }
-    if (Object.keys(patch).length > 0) {
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: patch,
-      });
-    }
-
-    const priorMembership = await prisma.membership.findUnique({
-      where: {
-        customerId_businessId: {
-          customerId: customer.id,
-          businessId: auth.businessId,
-        },
-      },
-      select: { id: true },
-    });
-    const isNewMembership = !priorMembership;
-
-    const existingFavorite = await prisma.favorite.findUnique({
-      where: {
-        customerId_businessId: {
-          customerId: customer.id,
-          businessId: auth.businessId,
-        },
-      },
-      select: { customerId: true },
-    });
-
-    const membership = await prisma.membership.upsert({
-      where: {
-        customerId_businessId: {
-          customerId: customer.id,
-          businessId: auth.businessId,
-        },
-      },
-      create: {
-        customerId: customer.id,
-        businessId: auth.businessId,
-        isFavorite: existingFavorite != null,
-      },
-      update: {},
-    });
+    const customer = opened.customer;
+    const membership = opened.membership;
 
     const business = await prisma.business.findUnique({
       where: { id: auth.businessId },
       select: { name: true },
     });
-
-    if (isNewMembership) {
-      queueWelcomeWhatsAppForBusiness({
-        businessId: auth.businessId,
-        businessName: business?.name ?? 'Frego',
-        toE164: customer.phoneE164,
-        customerName: customer.displayName,
-        log: (msg, extra) => request.log.info(extra ?? {}, msg),
-      });
-    }
 
     let stampTransaction = null;
     let wallet = await deriveWallet(membership.id, auth.businessId);

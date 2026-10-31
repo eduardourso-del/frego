@@ -15,6 +15,7 @@ const productLinks = [
   { href: '#resultado', label: 'Resultado' },
   { href: '#campanhas', label: 'Relacionamento' },
   { href: '#app', label: 'App do cliente' },
+  { href: '#integracoes', label: 'Integrações' },
   { href: '#simplicidade', label: 'Simplicidade' },
 ];
 

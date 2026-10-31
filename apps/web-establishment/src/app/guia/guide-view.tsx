@@ -686,6 +686,10 @@ export function GuideView() {
                   title="WhatsApp"
                   body="Conecta o WhatsApp do estabelecimento. As mensagens de visita, de boas-vindas e de campanha saem depois que o texto é aprovado."
                 />
+                <Setting
+                  title="Integrações"
+                  body="O estabelecimento liga só o que usa. Saipos credita pontos e cashback das vendas fechadas."
+                />
               </ul>
             </Screen>
         </div>

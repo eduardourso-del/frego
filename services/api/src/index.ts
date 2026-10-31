@@ -22,7 +22,9 @@ import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
 import { reminderRoutes } from './routes/reminders.js';
 import { earnNotifyRoutes } from './routes/earn-notifies.js';
+import { saiposRoutes } from './routes/saipos.js';
 import { startAccountReminderSchedule } from './lib/reminders/run.js';
+import { startSaiposSyncSchedule } from './lib/saipos/sync.js';
 import { startEarnNotifyFlushSchedule } from './lib/whatsapp/earn-notify-hold.js';
 import { allowEmptyJsonBody } from './lib/json-body.js';
 
@@ -68,10 +70,12 @@ async function main() {
   await app.register(whatsappRoutes);
   await app.register(reminderRoutes);
   await app.register(earnNotifyRoutes);
+  await app.register(saiposRoutes);
 
   await app.listen({ port, host });
   startAccountReminderSchedule(app.log);
   startEarnNotifyFlushSchedule(app.log);
+  startSaiposSyncSchedule(app.log);
   app.log.info(`Frego API listening on http://${host}:${port}`);
 }
 
