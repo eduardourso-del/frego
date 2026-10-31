@@ -246,6 +246,7 @@ class LookupResult {
     this.cashbackCents = 0,
     this.pointsPerReal,
     this.cashbackPercent,
+    this.cashbackUseMultiple,
     this.matches = const [],
     this.tags = const [],
     this.openVouchers = const [],
@@ -270,6 +271,7 @@ class LookupResult {
   final int cashbackCents;
   final int? pointsPerReal;
   final int? cashbackPercent;
+  final int? cashbackUseMultiple;
   final List<CustomerMatch> matches;
   final List<CustomerTag> tags;
   final List<OpenVoucher> openVouchers;
@@ -305,6 +307,7 @@ class LookupResult {
       cashbackCents: cashbackCents ?? this.cashbackCents,
       pointsPerReal: pointsPerReal,
       cashbackPercent: cashbackPercent,
+      cashbackUseMultiple: cashbackUseMultiple,
       matches: matches,
       tags: tags ?? this.tags,
       openVouchers: openVouchers ?? this.openVouchers,
@@ -346,6 +349,7 @@ class LookupResult {
       cashbackPercent:
           (json['cashbackPercent'] as num?)?.toInt() ??
           (cashback?['percent'] as num?)?.toInt(),
+      cashbackUseMultiple: (json['cashbackUseMultiple'] as num?)?.toInt(),
       matches: jsonMaps(json['matches']).map(CustomerMatch.fromJson).toList(),
       tags: parseTags(json['tags']),
       openVouchers: jsonMaps(json['openVouchers'])

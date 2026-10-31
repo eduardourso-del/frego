@@ -37,6 +37,8 @@ const updateBody = z.object({
     .max(10_000_000)
     .nullable()
     .optional(),
+  /** Múltiplo, from 2 up. Null clears it. */
+  cashbackUseMultiple: z.number().int().min(2).max(1_000_000).nullable().optional(),
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
@@ -72,6 +74,7 @@ function publicBusiness(b: {
   cashbackPercent: number;
   cashbackMaxCents: number | null;
   cashbackMinPurchaseCents: number | null;
+  cashbackUseMultiple: number | null;
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
@@ -93,6 +96,7 @@ function publicBusiness(b: {
     cashbackPercent: b.cashbackPercent,
     cashbackMaxCents: b.cashbackMaxCents,
     cashbackMinPurchaseCents: b.cashbackMinPurchaseCents,
+    cashbackUseMultiple: b.cashbackUseMultiple,
     stampsExpireDays: b.stampsExpireDays,
     pointsExpireDays: b.pointsExpireDays,
     cashbackExpireDays: b.cashbackExpireDays,
@@ -174,6 +178,10 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackMinPurchaseCents === undefined
             ? undefined
             : body.cashbackMinPurchaseCents,
+        cashbackUseMultiple:
+          body.cashbackUseMultiple === undefined
+            ? undefined
+            : body.cashbackUseMultiple,
         stampsExpireDays:
           body.stampsExpireDays === undefined
             ? undefined

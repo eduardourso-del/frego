@@ -19,6 +19,7 @@ const ease = [0.22, 1, 0.36, 1] as const;
 function campaignHint(
   c: PublicShopCampaign,
   reaisPerPoint = 1,
+  cashbackUseMultiple: number | null = null,
 ): string {
   if (c.type === 'birthday') {
     return birthdayWindowLabel(c.birthdayWindow, c.birthdayWindowDays);
@@ -28,8 +29,12 @@ function campaignHint(
   }
   if (c.type === 'cashback') {
     const pct = c.cashbackPercent ?? 0;
+    const use =
+      cashbackUseMultiple != null && cashbackUseMultiple >= 2
+        ? `o saldo vale em compras de ${cashbackUseMultiple}× o valor`
+        : 'use o saldo no caixa';
     return pct > 0
-      ? `${pct}% de cashback nas compras — use o saldo no caixa`
+      ? `${pct}% de cashback nas compras — ${use}`
       : 'Parte do valor da compra volta em R$ para a próxima visita';
   }
   if (c.type === 'spend') {
@@ -315,7 +320,11 @@ export function PublicShopPage({ data }: { data: PublicShopPayload }) {
                         </p>
                       )}
                       <p className="mt-2 text-[12px] text-[var(--color-neutral-400)]">
-                        {campaignHint(c, business.pointsPerReal ?? 1)}
+                        {campaignHint(
+                          c,
+                          business.pointsPerReal ?? 1,
+                          business.cashbackUseMultiple ?? null,
+                        )}
                       </p>
                     </div>
                   </div>

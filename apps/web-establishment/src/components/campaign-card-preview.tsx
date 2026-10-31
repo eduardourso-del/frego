@@ -22,6 +22,7 @@ type CampaignCardPreviewProps = {
   unitsNeeded: number;
   pointsPerReal?: number;
   cashbackPercent?: number;
+  cashbackUseMultiple?: number | null;
   rewardTitle: string;
   rewardDescription?: string;
   rewardImageUrl?: string | null;
@@ -42,6 +43,7 @@ export function CampaignCardPreview({
   unitsNeeded,
   pointsPerReal = 1,
   cashbackPercent = 0,
+  cashbackUseMultiple = null,
   rewardTitle,
   rewardDescription,
   rewardImageUrl,
@@ -193,6 +195,11 @@ export function CampaignCardPreview({
                   <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
                     {cashbackPercent}% de volta · use no caixa
                   </p>
+                  {cashbackUseMultiple != null && cashbackUseMultiple >= 2 ? (
+                    <p className="mt-1 text-[11px] font-medium text-[var(--color-neutral-500)]">
+                      Em compras de {cashbackUseMultiple}× o valor
+                    </p>
+                  ) : null}
                 </>
               ) : campaignType === 'stamps' ? (
                 <>

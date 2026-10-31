@@ -418,6 +418,8 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         pointsPerReal: business?['pointsPerReal'] as int?,
         cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
         cashbackBalanceCents: cashbackBalance,
+        cashbackUseMultiple:
+            (campaign['cashbackUseMultiple'] as num?)?.toInt(),
         busy: _redeeming,
         promoCalendar: PromoCalendar.fromCampaign(campaign),
         audienceUnlocked: audienceEligible && !audienceLocked,

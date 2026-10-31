@@ -5,6 +5,7 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/cashback_copy.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
@@ -354,6 +355,17 @@ class _WalletPageState extends State<WalletPage> {
                                             label: 'Cashback',
                                             value:
                                                 'R\$ ${(cashbackCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+                                            caption: () {
+                                              final multiple =
+                                                  cashbackUseMultipleOf(
+                                                campaigns,
+                                              );
+                                              return multiple == null
+                                                  ? null
+                                                  : cashbackMultipleOffer(
+                                                      multiple,
+                                                    );
+                                            }(),
                                           ),
                                         ),
                                     ],
@@ -470,6 +482,9 @@ class _WalletPageState extends State<WalletPage> {
                                               as num?)
                                           ?.toInt(),
                                       cashbackBalanceCents: cashbackBalance,
+                                      cashbackUseMultiple:
+                                          (c['cashbackUseMultiple'] as num?)
+                                              ?.toInt(),
                                       onRedeem: null,
                                       onOpen: () => _openCampaign(c),
                                     ),
@@ -757,10 +772,11 @@ class _WalletPageState extends State<WalletPage> {
 }
 
 class _PoolChip extends StatelessWidget {
-  const _PoolChip({required this.label, required this.value});
+  const _PoolChip({required this.label, required this.value, this.caption});
 
   final String label;
   final String value;
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -790,6 +806,18 @@ class _PoolChip extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (caption != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              caption!,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
+          ],
         ],
       ),
     );

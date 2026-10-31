@@ -49,6 +49,8 @@ export type CampaignWalletEntry = {
   cashbackPercent?: number | null;
   /** Saldo atual em centavos (só campanha cashback). */
   cashbackBalanceCents?: number;
+  /** Múltiplo do Estabelecimento. Null quando não há teto de uso. */
+  cashbackUseMultiple?: number | null;
   canRedeem: boolean;
   rewardTitle: string | null;
   rewardDescription: string | null;
@@ -84,6 +86,8 @@ export type WalletSnapshot = {
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
+  /** Múltiplo do Estabelecimento. Null = Usar pode ir até a compra. */
+  cashbackUseMultiple: number | null;
   /** Maior % entre campanhas de cashback ativas (0 = nenhuma). */
   cashbackPercent: number;
   /** Lotes restantes no saldo (FIFO), com data de ganho e validade. */
@@ -481,7 +485,12 @@ export async function deriveWallet(
     }),
     prisma.business.findUnique({
       where: { id: businessId },
-      select: { stampsExpireDays: true, pointsExpireDays: true, cashbackExpireDays: true },
+      select: {
+        stampsExpireDays: true,
+        pointsExpireDays: true,
+        cashbackExpireDays: true,
+        cashbackUseMultiple: true,
+      },
     }),
   ]);
 
@@ -489,6 +498,7 @@ export async function deriveWallet(
   const stampsExpireDays = business?.stampsExpireDays ?? null;
   const pointsExpireDays = business?.pointsExpireDays ?? null;
   const cashbackExpireDays = business?.cashbackExpireDays ?? null;
+  const cashbackUseMultiple = business?.cashbackUseMultiple ?? null;
   const cashbackPercent = Math.max(
     0,
     ...campaigns
@@ -758,6 +768,7 @@ export async function deriveWallet(
       pointsPerReal: null,
       cashbackPercent: campaign.cashbackPercent ?? 0,
       cashbackBalanceCents: pools.cashbackCents,
+      cashbackUseMultiple,
       canRedeem: false,
       rewardsAvailable: 0,
       rewardTitle: campaign.rewardTitle,
@@ -795,6 +806,7 @@ export async function deriveWallet(
     stampsExpireDays,
     pointsExpireDays,
     cashbackExpireDays,
+    cashbackUseMultiple,
     cashbackPercent,
     lots,
     campaigns: entries,

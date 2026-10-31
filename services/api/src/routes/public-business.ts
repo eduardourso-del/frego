@@ -31,6 +31,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           slogan: true,
           slug: true,
           cashbackPercent: true,
+          cashbackUseMultiple: true,
           pointsPerReal: true,
           locations: {
             orderBy: { createdAt: 'asc' },
@@ -92,6 +93,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           slogan: business.slogan,
           slug: business.slug,
           cashbackPercent: maxCashback,
+          cashbackUseMultiple: business.cashbackUseMultiple,
           pointsPerReal: business.pointsPerReal,
         },
         locations: business.locations,

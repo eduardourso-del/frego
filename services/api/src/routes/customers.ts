@@ -110,7 +110,7 @@ async function serializeCustomerLookup(
   const [business, activeEarnKinds] = await Promise.all([
     prisma.business.findUnique({
       where: { id: businessId },
-      select: { pointsPerReal: true },
+      select: { pointsPerReal: true, cashbackUseMultiple: true },
     }),
     activeEarnKindsForBusiness(businessId),
   ]);
@@ -210,6 +210,7 @@ async function serializeCustomerLookup(
       (await loadEarnStampDestinations(businessId)),
     pointsPerReal: business?.pointsPerReal ?? 1,
     cashbackPercent: cashbackEarn?.percent ?? 0,
+    cashbackUseMultiple: business?.cashbackUseMultiple ?? null,
     activeEarnKinds,
     cashback: {
       campaignId: cashbackEarn?.campaignId ?? null,

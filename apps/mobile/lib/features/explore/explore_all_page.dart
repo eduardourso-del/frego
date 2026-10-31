@@ -306,6 +306,7 @@ class _ExploreAllPageState extends State<ExploreAllPage> {
             buttonLabel: _buttonLabel(campaign),
             cashbackPercent: campaign.cashbackPercent,
             cashbackBalanceCents: campaign.cashbackBalanceCents ?? 0,
+            cashbackUseMultiple: campaign.cashbackUseMultiple,
             busy: _redeeming,
             statusHint: campaign.type == 'birthday' && campaign.canRedeem
                 ? 'Disponível agora'

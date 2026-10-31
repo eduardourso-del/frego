@@ -70,6 +70,7 @@ const updateBusinessBody = z.object({
     .max(10_000_000)
     .nullable()
     .optional(),
+  cashbackUseMultiple: z.number().int().min(2).max(1_000_000).nullable().optional(),
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
@@ -296,6 +297,7 @@ async function loadBusinessDetail(id: string) {
       cashbackPercent: business.cashbackPercent,
       cashbackMaxCents: business.cashbackMaxCents,
       cashbackMinPurchaseCents: business.cashbackMinPurchaseCents,
+      cashbackUseMultiple: business.cashbackUseMultiple,
       stampsExpireDays: business.stampsExpireDays,
       pointsExpireDays: business.pointsExpireDays,
       cashbackExpireDays: business.cashbackExpireDays,
@@ -891,6 +893,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackMinPurchaseCents === undefined
             ? undefined
             : body.cashbackMinPurchaseCents,
+        cashbackUseMultiple:
+          body.cashbackUseMultiple === undefined
+            ? undefined
+            : body.cashbackUseMultiple,
         stampsExpireDays:
           body.stampsExpireDays === undefined
             ? undefined

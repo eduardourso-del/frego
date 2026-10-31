@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
 import 'adaptive.dart';
+import 'cashback_copy.dart';
 import 'promo_copy.dart';
 
 /// Compact loyalty card — light surface, brand color as accent only.
@@ -28,6 +29,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.pointsPerReal,
     this.cashbackPercent,
     this.cashbackBalanceCents,
+    this.cashbackUseMultiple,
     this.busy = false,
     this.audienceUnlocked = false,
     this.audienceLabel,
@@ -54,6 +56,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
   final int? pointsPerReal;
   final int? cashbackPercent;
   final int? cashbackBalanceCents;
+  final int? cashbackUseMultiple;
   final bool busy;
   final VoidCallback? onRedeem;
   /// Exclusive audience unlock chip (matched segment promo).
@@ -228,6 +231,9 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 balanceCents: cashbackBalanceCents ?? 0,
                                 percent: cashbackPercent ?? 0,
                                 statusHint: statusHint,
+                                useMultiple: readCashbackUseMultiple(
+                                  cashbackUseMultiple,
+                                ),
                               )
                             else if (_isSpend)
                               _PointsBody(
@@ -559,11 +565,13 @@ class _CashbackBody extends StatelessWidget {
     required this.balanceCents,
     required this.percent,
     this.statusHint,
+    this.useMultiple,
   });
 
   final int balanceCents;
   final int percent;
   final String? statusHint;
+  final int? useMultiple;
 
   String get _balance {
     final v = balanceCents / 100;
@@ -613,6 +621,17 @@ class _CashbackBody extends StatelessWidget {
             color: FregoColors.neutral500,
           ),
         ),
+        if (useMultiple != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            cashbackMultipleOffer(useMultiple!),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: FregoColors.cashback,
+            ),
+          ),
+        ],
         if (statusHint != null && statusHint!.trim().isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(

@@ -1,5 +1,6 @@
 import { prisma, type Prisma } from '@frego/db';
 import { resolveCashbackEarn } from './cashback.js';
+import { maxCashbackUseCents } from './cashback-use.js';
 import { activeEarnKindsForBusiness } from './earn-kinds.js';
 import { openConviteForEarn } from './pesquisa-flow.js';
 import {
@@ -119,6 +120,7 @@ export async function recordSaleEarn(input: {
       pointsPerReal: true,
       cashbackMaxCents: true,
       cashbackMinPurchaseCents: true,
+      cashbackUseMultiple: true,
       name: true,
     },
   });
@@ -233,11 +235,12 @@ export async function recordSaleEarn(input: {
   }
 
   const walletBefore = await deriveWallet(membership.id, input.businessId);
-  const applied = Math.min(
-    applyRequested,
+  const ceiling = maxCashbackUseCents(
+    amountCents,
     walletBefore.pools.cashbackCents,
-    amountCents ?? 0,
+    business.cashbackUseMultiple,
   );
+  const applied = Math.min(applyRequested, ceiling);
 
   const wantCashback =
     mode.kind === 'cashback' ||

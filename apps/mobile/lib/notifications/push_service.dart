@@ -118,6 +118,9 @@ abstract final class PushService {
 
   static const _native = MethodChannel('frego/push');
   static const _deferredPref = 'frego_push_prompt_deferred';
+  /// Android reports [AuthorizationStatus.denied] before the customer is
+  /// asked. Set once [start] has presented the system dialog.
+  static const _osRequestedPref = 'frego_push_os_requested';
   static bool _nativeHandlerReady = false;
 
   static bool get isSupported => _supported;
@@ -135,12 +138,19 @@ abstract final class PushService {
   }
 
   /// True when we should explain notifications before the OS alert.
+  ///
+  /// On Android 13+, [authorizationStatus] is [AuthorizationStatus.denied]
+  /// until the customer allows alerts, including when she was never asked.
+  /// iOS uses [AuthorizationStatus.notDetermined] for that same moment.
   static Future<bool> shouldShowPrePrompt() async {
     if (!_supported) return false;
     final status = await authorizationStatus();
-    if (status != AuthorizationStatus.notDetermined) return false;
+    if (_isGranted(status)) return false;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_deferredPref) != true;
+    if (prefs.getBool(_deferredPref) == true) return false;
+    if (status == AuthorizationStatus.notDetermined) return true;
+    return defaultTargetPlatform == TargetPlatform.android &&
+        prefs.getBool(_osRequestedPref) != true;
   }
 
   static Future<void> deferPrePrompt() async {
@@ -184,6 +194,10 @@ abstract final class PushService {
         debugPrint(
           'PushService.requestPermission timed out; status=${settings.authorizationStatus}',
         );
+      }
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool(_osRequestedPref, true);
       }
       _permissionGranted = _isGranted(settings.authorizationStatus);
       debugPrint(

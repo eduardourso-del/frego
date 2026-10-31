@@ -25,6 +25,12 @@ import {
   phoneDigitsForApi,
 } from '@/lib/phone';
 import { formatBrl, formatCentsAsInput, maskMoneyInput, parseMoneyToCents } from '@/lib/money';
+import {
+  cashbackMultipleBinds,
+  cashbackUseAllLabel,
+  cashbackUseSlip,
+  maxCashbackUseCents,
+} from '@/lib/cashback-use';
 import { tagChipStyle, type CatalogTag, type CustomerTag } from '@/lib/tags';
 import {
   formatVoucherInput,
@@ -155,6 +161,7 @@ type LookupResult = {
   pools?: { stamps: number; points: number; cashbackCents?: number };
   pointsPerReal?: number;
   cashbackPercent?: number;
+  cashbackUseMultiple?: number | null;
   cashback?: {
     campaignId: string | null;
     percent: number;
@@ -339,10 +346,12 @@ export default function CounterPage() {
     earnMode === 'points' && amountCents != null
       ? Math.floor(amountCents / 100 / pointsPerReal)
       : 0;
-  const maxApplyCents =
-    cashbackBalance <= 0
-      ? 0
-      : Math.min(cashbackBalance, amountCents ?? cashbackBalance);
+  const cashbackUseMultiple = lookup?.cashbackUseMultiple ?? null;
+  const maxApplyCents = maxCashbackUseCents(
+    amountCents,
+    cashbackBalance,
+    cashbackUseMultiple,
+  );
   const typedApply = parseMoneyToCents(applyAmount);
   const applyCents =
     saleMode && maxApplyCents > 0 && typedApply != null && typedApply > 0
@@ -2019,6 +2028,9 @@ export default function CounterPage() {
                     paidCents={paidCents}
                     previewCashback={previewCashback}
                     compraTyped={amountCents != null}
+                    balanceCents={cashbackBalance}
+                    maxApplyCents={maxApplyCents}
+                    multiple={cashbackUseMultiple}
                     onFocus={() => setFocus('apply')}
                     onBlur={() => setFocus((f) => (f === 'apply' ? 'none' : f))}
                   />
@@ -2124,6 +2136,9 @@ export default function CounterPage() {
                     paidCents={paidCents}
                     previewCashback={previewCashback}
                     compraTyped={amountCents != null}
+                    balanceCents={cashbackBalance}
+                    maxApplyCents={maxApplyCents}
+                    multiple={cashbackUseMultiple}
                     onFocus={() => setFocus('apply')}
                     onBlur={() => setFocus((f) => (f === 'apply' ? 'none' : f))}
                   />
@@ -2722,21 +2737,6 @@ function withCashbackUse(
   return `${label} · usar ${money}`;
 }
 
-function cashbackSlip(
-  applyCents: number,
-  paidCents: number,
-  previewCashback: number,
-  compraTyped: boolean,
-): string {
-  if (applyCents <= 0) {
-    return 'Marque para usar o saldo todo, ou informe um valor.';
-  }
-  if (!compraTyped) return `− ${formatBrl(applyCents)} do saldo`;
-  const base = `− ${formatBrl(applyCents)} · a pagar ${formatBrl(paidCents)}`;
-  if (previewCashback <= 0) return base;
-  return `${base} · entra + ${formatBrl(previewCashback)}`;
-}
-
 function CashbackUseRow({
   amount,
   setAmount,
@@ -2749,6 +2749,9 @@ function CashbackUseRow({
   paidCents,
   previewCashback,
   compraTyped,
+  balanceCents,
+  maxApplyCents,
+  multiple,
   onFocus,
   onBlur,
 }: {
@@ -2763,9 +2766,27 @@ function CashbackUseRow({
   paidCents: number;
   previewCashback: number;
   compraTyped: boolean;
+  balanceCents: number;
+  maxApplyCents: number;
+  multiple: number | null;
   onFocus?: () => void;
   onBlur?: () => void;
 }) {
+  const binds = cashbackMultipleBinds(
+    compraTyped ? maxApplyCents : null,
+    balanceCents,
+    maxApplyCents,
+    multiple,
+  );
+  const slip = cashbackUseSlip({
+    applyCents,
+    paidCents,
+    previewCashback,
+    compraTyped,
+    maxApplyCents,
+    multiple,
+    binds,
+  });
   return (
     <div className="mt-3">
       <label className="flex min-h-11 cursor-pointer items-center gap-3 text-[15px] font-semibold text-[var(--color-ink)]">
@@ -2775,7 +2796,7 @@ function CashbackUseRow({
           onChange={(e) => onUseAllChange(e.target.checked)}
           className="h-5 w-5 rounded border-[var(--color-neutral-300)]"
         />
-        Usar todo o saldo
+        {cashbackUseAllLabel(maxApplyCents, binds)}
       </label>
       <label className="mt-2 block text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-cashback)]">
         Cashback
@@ -2813,7 +2834,7 @@ function CashbackUseRow({
             : 'text-[var(--color-neutral-500)]'
         }`}
       >
-        {cashbackSlip(applyCents, paidCents, previewCashback, compraTyped)}
+        {slip}
       </p>
     </div>
   );

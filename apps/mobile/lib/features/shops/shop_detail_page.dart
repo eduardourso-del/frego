@@ -7,6 +7,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/cashback_copy.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
@@ -445,6 +446,19 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 ),
             ],
           ),
+          if (cashbackUseMultipleOf(campaigns) != null &&
+              (earnKinds.contains('cashback') || cashbackCents > 0)) ...[
+            const SizedBox(height: 10),
+            Text(
+              cashbackMultipleOffer(cashbackUseMultipleOf(campaigns)!),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 12,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
           if (expiryLine != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -762,6 +776,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               pointsPerReal: business?['pointsPerReal'] as int?,
               cashbackPercent: (c['cashbackPercent'] as num?)?.toInt(),
               cashbackBalanceCents: cashbackBalance,
+              cashbackUseMultiple: (c['cashbackUseMultiple'] as num?)?.toInt(),
               busy: _redeeming,
               promoCalendar: PromoCalendar.fromCampaign(c),
               audienceUnlocked: audienceEligible && !audienceLocked,

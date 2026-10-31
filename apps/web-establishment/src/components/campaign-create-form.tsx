@@ -589,6 +589,7 @@ export function CampaignCreateForm({
     primaryColor?: string | null;
     primaryColorDark?: string | null;
     pointsPerReal?: number;
+    cashbackUseMultiple?: number | null;
   } | null;
   isEditing: boolean;
   busy: boolean;
@@ -1030,6 +1031,11 @@ export function CampaignCreateForm({
               pointsPerReal={business?.pointsPerReal ?? form.pointsPerReal}
               cashbackPercent={
                 form.type === 'cashback' ? form.cashbackPercent : 0
+              }
+              cashbackUseMultiple={
+                form.type === 'cashback'
+                  ? (business?.cashbackUseMultiple ?? null)
+                  : null
               }
               rewardTitle={form.rewardTitle}
               rewardDescription={form.rewardDescription}

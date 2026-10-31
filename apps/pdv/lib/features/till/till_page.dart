@@ -130,12 +130,17 @@ class _TillPageState extends State<TillPage> {
   int? get _fulfillAmountCents =>
       parseMoneyToCents(_voucherAmount.text) ?? _amountCents;
 
-  int get _maxApplyCents {
-    if (_cashbackBalance <= 0) return 0;
-    final sale = _amountCents;
-    if (sale == null) return _cashbackBalance;
-    return sale < _cashbackBalance ? sale : _cashbackBalance;
+  int? get _cashbackUseMultiple {
+    final multiple = _lookup?.cashbackUseMultiple;
+    if (multiple == null || multiple < 2) return null;
+    return multiple;
   }
+
+  int get _maxApplyCents => maxCashbackUseCents(
+        compraCents: _amountCents,
+        balanceCents: _cashbackBalance,
+        multiple: _cashbackUseMultiple,
+      );
 
   int get _applyCents {
     if (!_saleMode || _maxApplyCents <= 0) return 0;
@@ -2123,6 +2128,9 @@ class _CashbackUseRow extends StatelessWidget {
     required this.compraTyped,
     required this.useAll,
     required this.onUseAllChanged,
+    required this.balanceCents,
+    required this.maxApplyCents,
+    required this.multiple,
     required this.showSkipEarn,
     required this.skipEarn,
     required this.onSkipEarnChanged,
@@ -2137,17 +2145,29 @@ class _CashbackUseRow extends StatelessWidget {
   final bool compraTyped;
   final bool useAll;
   final ValueChanged<bool> onUseAllChanged;
+  final int balanceCents;
+  final int maxApplyCents;
+  final int? multiple;
   final bool showSkipEarn;
   final bool skipEarn;
   final ValueChanged<bool> onSkipEarnChanged;
 
-  String get _slip {
-    if (applyCents <= 0) return 'Marque para usar o saldo todo, ou informe um valor.';
-    if (!compraTyped) return '− ${formatBrl(applyCents)} do saldo';
-    final base = '− ${formatBrl(applyCents)} · a pagar ${formatBrl(paidCents)}';
-    if (previewCashback <= 0) return base;
-    return '$base · entra + ${formatBrl(previewCashback)}';
-  }
+  bool get _binds => cashbackMultipleBinds(
+        compraCents: compraTyped ? maxApplyCents : null,
+        balanceCents: balanceCents,
+        maxApplyCents: maxApplyCents,
+        multiple: multiple,
+      );
+
+  String get _slip => cashbackUseSlip(
+        applyCents: applyCents,
+        paidCents: paidCents,
+        previewCashback: previewCashback,
+        compraTyped: compraTyped,
+        maxApplyCents: maxApplyCents,
+        multiple: multiple,
+        binds: _binds,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -2161,9 +2181,9 @@ class _CashbackUseRow extends StatelessWidget {
             controlAffinity: ListTileControlAffinity.leading,
             value: useAll,
             onChanged: (value) => onUseAllChanged(value ?? false),
-            title: const Text(
-              'Usar todo o saldo',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            title: Text(
+              cashbackUseAllLabel(maxApplyCents: maxApplyCents, binds: _binds),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
             ),
           ),
           TextField(
@@ -2645,6 +2665,13 @@ class _CustomerCard extends StatelessWidget {
                 compraTyped: parseMoneyToCents(amount.text) != null,
                 useAll: useAllCashback,
                 onUseAllChanged: onUseAllChanged,
+                balanceCents: lookup.cashbackCents,
+                maxApplyCents: maxCashbackUseCents(
+                  compraCents: parseMoneyToCents(amount.text),
+                  balanceCents: lookup.cashbackCents,
+                  multiple: lookup.cashbackUseMultiple,
+                ),
+                multiple: lookup.cashbackUseMultiple,
                 showSkipEarn: showSkipCashbackEarn,
                 skipEarn: skipCashbackEarn,
                 onSkipEarnChanged: onSkipCashbackEarn,
@@ -2689,6 +2716,13 @@ class _CustomerCard extends StatelessWidget {
                 compraTyped: parseMoneyToCents(amount.text) != null,
                 useAll: useAllCashback,
                 onUseAllChanged: onUseAllChanged,
+                balanceCents: lookup.cashbackCents,
+                maxApplyCents: maxCashbackUseCents(
+                  compraCents: parseMoneyToCents(amount.text),
+                  balanceCents: lookup.cashbackCents,
+                  multiple: lookup.cashbackUseMultiple,
+                ),
+                multiple: lookup.cashbackUseMultiple,
                 showSkipEarn: showSkipCashbackEarn,
                 skipEarn: skipCashbackEarn,
                 onSkipEarnChanged: onSkipCashbackEarn,

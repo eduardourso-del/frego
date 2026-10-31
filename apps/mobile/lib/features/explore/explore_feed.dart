@@ -68,6 +68,7 @@ class ExploreCampaign {
     this.unitsNeeded,
     this.balance,
     this.cashbackBalanceCents,
+    this.cashbackUseMultiple,
     this.primaryColor,
     this.primaryColorDark,
   });
@@ -85,6 +86,7 @@ class ExploreCampaign {
   final int? unitsNeeded;
   final int? balance;
   final int? cashbackBalanceCents;
+  final int? cashbackUseMultiple;
   final String? primaryColor;
   final String? primaryColorDark;
   final bool canRedeem;
@@ -109,6 +111,7 @@ class ExploreCampaign {
       unitsNeeded: unitsNeeded,
       balance: balance,
       cashbackBalanceCents: cashbackBalanceCents,
+      cashbackUseMultiple: cashbackUseMultiple,
       primaryColor: primaryColor,
       primaryColorDark: primaryColorDark,
     );
@@ -387,6 +390,7 @@ ExploreCampaign _campaign(Map<String, dynamic> raw) {
     unitsNeeded: (raw['unitsNeeded'] as num?)?.toInt(),
     balance: (raw['balance'] as num?)?.toInt(),
     cashbackBalanceCents: (raw['cashbackBalanceCents'] as num?)?.toInt(),
+    cashbackUseMultiple: (raw['cashbackUseMultiple'] as num?)?.toInt(),
     primaryColor: raw['primaryColor'] as String?,
     primaryColorDark: raw['primaryColorDark'] as String?,
     canRedeem: raw['canRedeem'] == true && raw['type'] != 'cashback',

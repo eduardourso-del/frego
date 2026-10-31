@@ -157,6 +157,8 @@ model Business {
   cashbackMaxCents Int?  @map("cashback_max_cents")
   /// Compra mínima (centavos pagos) para creditar cashback.
   cashbackMinPurchaseCents Int? @map("cashback_min_purchase_cents")
+  /// Múltiplo: the compra must cover at least this many times the cashback Usado. Null = no extra cap.
+  cashbackUseMultiple Int? @map("cashback_use_multiple")
   /// Dias até carimbos expirarem após o ganho. null = não expiram.
   stampsExpireDays Int?  @map("stamps_expire_days")
   /// Dias até pontos expirarem após o ganho. null = não expiram.

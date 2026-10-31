@@ -2,10 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
+import '../../ui/cashback_copy.dart';
 import 'explore_feed.dart';
 
 const explorePlaceCardWidth = 232.0;
 const exploreCampaignCardWidth = 200.0;
+
+String _cashbackOffer(ExploreCampaign campaign) {
+  final multiple = readCashbackUseMultiple(campaign.cashbackUseMultiple);
+  final cents = campaign.cashbackBalanceCents ?? 0;
+  final rule = multiple == null ? null : cashbackMultipleOffer(multiple);
+  if (cents <= 0) return rule ?? '';
+  final saldo =
+      'Saldo R\$ ${(cents / 100).toStringAsFixed(2).replaceAll('.', ',')}';
+  if (rule == null) return saldo;
+  return '$saldo · ${rule[0].toLowerCase()}${rule.substring(1)}';
+}
 
 class ExplorePlaceCard extends StatelessWidget {
   const ExplorePlaceCard({
@@ -315,11 +327,15 @@ class ExploreCampaignCard extends StatelessWidget {
                         ),
                       ),
                     ] else if (campaign.type == 'cashback' &&
-                        (campaign.cashbackBalanceCents ?? 0) > 0) ...[
+                        ((campaign.cashbackBalanceCents ?? 0) > 0 ||
+                            readCashbackUseMultiple(
+                                  campaign.cashbackUseMultiple,
+                                ) !=
+                                null)) ...[
                       const SizedBox(height: 6),
                       Text(
-                        'Saldo R\$ ${(campaign.cashbackBalanceCents! / 100).toStringAsFixed(2).replaceAll('.', ',')}',
-                        maxLines: 1,
+                        _cashbackOffer(campaign),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 12,

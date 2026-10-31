@@ -417,7 +417,10 @@ export function GuideView() {
                   <p>
                     Um percentual da compra volta em reais e o cliente usa no
                     caixa. A porcentagem fica na campanha. O teto por compra, a
-                    compra mínima e a validade do saldo ficam em Configurações.
+                    compra mínima, o múltiplo e a validade do saldo ficam em
+                    Configurações. Com múltiplo 3, R$ 10 de cashback pedem uma
+                    compra de R$ 30. Numa compra menor, dá para usar até a
+                    compra dividida por esse número.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -680,7 +683,7 @@ export function GuideView() {
                 />
                 <Setting
                   title="Benefícios"
-                  body="Reais para 1 ponto; teto e compra mínima do cashback; em quantos dias carimbos, pontos e cashback expiram depois do ganho. No resgate, o saldo mais antigo sai primeiro."
+                  body="Reais para 1 ponto; teto, compra mínima e múltiplo do cashback; em quantos dias carimbos, pontos e cashback expiram depois do ganho. No resgate, o saldo mais antigo sai primeiro."
                 />
                 <Setting
                   title="WhatsApp"

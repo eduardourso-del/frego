@@ -33,6 +33,7 @@ export type PublicShopBusiness = {
   slogan: string | null;
   slug: string;
   cashbackPercent?: number;
+  cashbackUseMultiple?: number | null;
   pointsPerReal?: number;
 };
 

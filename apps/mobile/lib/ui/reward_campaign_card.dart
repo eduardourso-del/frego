@@ -117,6 +117,7 @@ class RewardCampaignCard extends StatelessWidget {
       pointsPerReal: (business['pointsPerReal'] as num?)?.toInt(),
       cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
       cashbackBalanceCents: _pool,
+      cashbackUseMultiple: (campaign['cashbackUseMultiple'] as num?)?.toInt(),
       busy: busy,
       promoCalendar: PromoCalendar.fromCampaign(campaign),
       audienceUnlocked: audienceEligible && !audienceLocked,

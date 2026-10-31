@@ -38,6 +38,7 @@ const listedBusinessSelect = {
   primaryColor: true,
   primaryColorDark: true,
   pointsPerReal: true,
+  cashbackUseMultiple: true,
   stampsExpireDays: true,
   pointsExpireDays: true,
   locations: {
@@ -120,6 +121,7 @@ function loyaltyUnitsNeeded(campaign: {
 
 function publicCampaignEntry(
   campaign: ListedBusiness['campaigns'][number],
+  cashbackUseMultiple: number | null,
 ) {
   const needed =
     campaign.stampsNeeded ?? (campaign.type === 'spend' ? 100 : 10);
@@ -132,6 +134,8 @@ function publicCampaignEntry(
     pointsPerReal: campaign.pointsPerReal,
     cashbackPercent: campaign.cashbackPercent,
     cashbackBalanceCents: 0,
+    cashbackUseMultiple:
+      campaign.type === 'cashback' ? cashbackUseMultiple : null,
     canRedeem: false,
     rewardsAvailable: 0,
     rewardTitle: campaign.rewardTitle,
@@ -300,6 +304,8 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
         rewardDescription: campaign.rewardDescription,
         rewardImageUrl: campaign.rewardImageUrl,
         cashbackPercent: campaign.cashbackPercent,
+        cashbackUseMultiple:
+          campaign.type === 'cashback' ? business.cashbackUseMultiple : null,
         canRedeem: redeemable.has(campaign.id) && campaign.type !== 'cashback',
         unitsNeeded:
           progress.get(campaign.id)?.unitsNeeded ?? loyaltyUnitsNeeded(campaign),
@@ -334,6 +340,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
         rewardDescription: campaign.rewardDescription,
         rewardImageUrl: campaign.rewardImageUrl,
         cashbackPercent: campaign.cashbackPercent,
+        cashbackUseMultiple: campaign.cashbackUseMultiple,
         canRedeem: campaign.canRedeem,
         unitsNeeded: campaign.unitsNeeded,
         balance: campaign.balance,
@@ -465,7 +472,9 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     const shown = publicBusiness(business, city);
 
     if (!membership) {
-      const campaigns = applicableCampaigns(business, city).map(publicCampaignEntry);
+      const campaigns = applicableCampaigns(business, city).map((campaign) =>
+        publicCampaignEntry(campaign, business.cashbackUseMultiple),
+      );
       const pools = { stamps: 0, points: 0, cashbackCents: 0 };
       return {
         business: shown,

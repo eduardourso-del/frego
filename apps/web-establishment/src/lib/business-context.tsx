@@ -30,6 +30,8 @@ export type BusinessBrand = {
   cashbackPercent?: number;
   cashbackMaxCents?: number | null;
   cashbackMinPurchaseCents?: number | null;
+  /** Múltiplo from 2 up. Null = Usar can take up to the compra. */
+  cashbackUseMultiple?: number | null;
   /** null = não expiram. */
   stampsExpireDays?: number | null;
   pointsExpireDays?: number | null;

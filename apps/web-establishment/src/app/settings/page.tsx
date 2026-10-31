@@ -99,6 +99,8 @@ export default function SettingsPage() {
   const [cashbackMaxReais, setCashbackMaxReais] = useState(10);
   const [cashbackMinEnabled, setCashbackMinEnabled] = useState(false);
   const [cashbackMinReais, setCashbackMinReais] = useState(20);
+  const [cashbackMultipleEnabled, setCashbackMultipleEnabled] = useState(false);
+  const [cashbackMultiple, setCashbackMultiple] = useState(3);
   const [stampsExpireEnabled, setStampsExpireEnabled] = useState(false);
   const [stampsExpireDays, setStampsExpireDays] = useState(90);
   const [pointsExpireEnabled, setPointsExpireEnabled] = useState(false);
@@ -154,6 +156,9 @@ export default function SettingsPage() {
     const minCents = business.cashbackMinPurchaseCents ?? null;
     setCashbackMinEnabled(minCents != null);
     setCashbackMinReais(minCents != null ? Math.round(minCents / 100) : 20);
+    const multiple = business.cashbackUseMultiple ?? null;
+    setCashbackMultipleEnabled(multiple != null && multiple >= 2);
+    setCashbackMultiple(multiple != null && multiple >= 2 ? multiple : 3);
     const stampsDays = business.stampsExpireDays ?? null;
     setStampsExpireEnabled(stampsDays != null);
     setStampsExpireDays(stampsDays ?? 90);
@@ -277,6 +282,9 @@ export default function SettingsPage() {
           : null,
         cashbackMinPurchaseCents: cashbackMinEnabled
           ? Math.max(100, Math.round(cashbackMinReais || 1) * 100)
+          : null,
+        cashbackUseMultiple: cashbackMultipleEnabled
+          ? Math.max(2, Math.round(cashbackMultiple || 2))
           : null,
         stampsExpireDays: stampsExpireEnabled
           ? Math.max(1, Math.min(3650, stampsExpireDays || 1))
@@ -821,7 +829,7 @@ export default function SettingsPage() {
                 <Section
                   Icon={Coins}
                   title="Benefícios"
-                  hint="Taxa de pontos, teto de cashback e validade do saldo."
+                  hint="Taxa de pontos, teto, compra mínima, múltiplo e validade do saldo."
                 >
                   <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
                     R$ para 1 ponto
@@ -846,8 +854,8 @@ export default function SettingsPage() {
                     <a href="/campaigns" className="font-semibold underline">
                       Campanhas
                     </a>
-                    . Aqui ficam só o teto, a compra mínima e a validade do
-                    saldo.
+                    . Aqui ficam só o teto, a compra mínima, o múltiplo e a
+                    validade do saldo.
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -911,6 +919,47 @@ export default function SettingsPage() {
                         </label>
                       ) : null}
                     </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                      <input
+                        type="checkbox"
+                        checked={cashbackMultipleEnabled}
+                        onChange={(e) =>
+                          setCashbackMultipleEnabled(e.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                      />
+                      Múltiplo
+                    </label>
+                    <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                      A compra precisa ser pelo menos este número de vezes o
+                      cashback usado. Com 3, R$ 10 exigem uma compra de R$ 30.
+                      Numa compra menor, o uso vai até a compra dividida por
+                      esse número.
+                    </p>
+                    {cashbackMultipleEnabled ? (
+                      <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+                        Vezes
+                        <input
+                          type="number"
+                          min={2}
+                          value={cashbackMultiple}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') return;
+                            const n = Math.round(Number(raw));
+                            if (!Number.isFinite(n)) return;
+                            setCashbackMultiple(n);
+                          }}
+                          onBlur={() =>
+                            setCashbackMultiple((n) => Math.max(2, n))
+                          }
+                          className={inputClass}
+                        />
+                      </label>
+                    ) : null}
                   </div>
 
                   <p className="mt-5 text-[13px] font-semibold text-[var(--color-ink)]">

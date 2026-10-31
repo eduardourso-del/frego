@@ -89,8 +89,12 @@ The staff action that marks a Voucher as delivered at the till.
 _Avoid_: fulfill, redeem (staff), use, Usar (UI label on the typed/scanned path)
 
 **Usar**:
-The staff action that takes cashback off a compra at the till. It belongs to that same compra: the new cashback is a percent of what remains, and the Estabelecimento's own caixa charges that remainder.
+The staff action that takes cashback off a compra at the till. When a Múltiplo is set, the compra must cover that many times the cashback taken; the new cashback is a percent of what remains, and the Estabelecimento's own caixa charges that remainder.
 _Avoid_: resgatar, confirmar, voucher
+
+**Múltiplo**:
+A whole number, from 2 up, on the Estabelecimento. The compra must be at least that many times the cashback Usado. With none set, Usar can take up to the compra.
+_Avoid_: compra mínima, teto, fator
 
 **Pesquisa**:
 The questions an Estabelecimento asks a Cliente: up to five polegar questions and one optional note.
