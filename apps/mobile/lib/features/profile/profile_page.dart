@@ -712,6 +712,7 @@ class _NotificationToggle extends StatelessWidget {
               : Switch(
                   value: value,
                   activeThumbColor: FregoColors.card,
+                  activeTrackColor: FregoColors.ink,
                   onChanged: enabled ? onChanged : null,
                 ),
         ],

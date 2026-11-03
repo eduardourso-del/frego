@@ -5,7 +5,7 @@ import {
   earnPushCopy,
   type EarnNotifyInput,
 } from '../whatsapp/earn-message.js';
-import { apnsWithData, sendAndPruneFcm } from './send.js';
+import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
 
 export function buildEarnPushMessage(input: {
   tokens: string[];
@@ -32,12 +32,7 @@ export function buildEarnPushMessage(input: {
       body: input.body,
     },
     data,
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'frego_campaigns',
-      },
-    },
+    android: androidPushConfig(),
     apns: apnsWithData(data, { title: input.title, body: input.body }),
   };
 }

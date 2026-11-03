@@ -4,6 +4,22 @@ import { getFirebaseMessaging } from '../firebase.js';
 
 export const FCM_BATCH_SIZE = 500;
 
+/** Monochrome status icon in the Android app (`res/drawable/ic_notification.xml`). */
+export const ANDROID_NOTIFICATION_ICON = 'ic_notification';
+export const ANDROID_NOTIFICATION_COLOR = '#0073C8';
+
+/** Shared Android tray config so every push uses the smiley, not the launcher square. */
+export function androidPushConfig(): NonNullable<MulticastMessage['android']> {
+  return {
+    priority: 'high',
+    notification: {
+      channelId: 'frego_campaigns',
+      icon: ANDROID_NOTIFICATION_ICON,
+      color: ANDROID_NOTIFICATION_COLOR,
+    },
+  };
+}
+
 /** iOS needs custom keys next to `aps` or a tap arrives with an empty data map. */
 export function apnsWithData(
   data: Record<string, string>,

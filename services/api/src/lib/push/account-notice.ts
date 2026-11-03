@@ -1,5 +1,5 @@
 import type { MulticastMessage } from 'firebase-admin/messaging';
-import { apnsWithData, sendAndPruneFcm } from './send.js';
+import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
 
 export type AccountNoticePushType = 'wallet_expiry' | 'campaign_ending';
 
@@ -23,12 +23,7 @@ export function buildAccountNoticePush(input: {
       body: input.body,
     },
     data,
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'frego_campaigns',
-      },
-    },
+    android: androidPushConfig(),
     apns: apnsWithData(data, { title: input.title, body: input.body }),
   };
 }
