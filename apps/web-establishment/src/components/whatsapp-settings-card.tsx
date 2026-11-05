@@ -41,12 +41,23 @@ type Connection = {
   templatePesquisaStatus?: string;
   templatePesquisaId?: string | null;
   templatePesquisaSyncedAt?: string | null;
+  templateNoticeName?: string;
+  templateNoticeLang?: string;
+  templateNoticeStatus?: string;
+  templateNoticeId?: string | null;
+  templateNoticeSyncedAt?: string | null;
   coexistence: boolean;
   smbSyncStartedAt: string | null;
   connectedAt: string;
   webhookSubscribedAt: string | null;
   lastError: string | null;
 };
+
+export function WhatsAppMark() {
+  return (
+    <WhatsAppGlyph className="h-7 w-7 shrink-0 text-[#25D366]" />
+  );
+}
 
 function WhatsAppGlyph({ className }: { className?: string }) {
   return (
@@ -93,6 +104,8 @@ const MESSAGE_BODIES = {
     'Olá. Atualização da conta na *{{1}}*.\n\nFoi registrado na sua conta: {{2}}.\n\nO saldo desta conta não mudou com esta mensagem.',
   pesquisa:
     'Olá. Registro da compra na *{{1}}*.\n\nCreditado nesta compra: *{{2}}*.\nSaldo da conta: *{{3}}*.\n\n{{4}}\n\nPesquisa sobre esta compra: {{5}}.\n\nA pesquisa refere-se somente a esta compra.',
+  notice:
+    'Olá. Atualização da conta na *{{1}}*.\n\n{{2}}\n\nO saldo desta conta não mudou com esta mensagem.',
 } as const;
 
 type MessageKey = keyof typeof MESSAGE_BODIES;
@@ -127,6 +140,13 @@ function messageSample(key: MessageKey, businessName: string) {
         'https://frego.app.br/p/exemplo',
       ]),
     },
+    notice: {
+      label: 'Lembrete',
+      body: fillTemplate(MESSAGE_BODIES.notice, [
+        shop,
+        '3 carimbos vencem em 2 dias.',
+      ]),
+    },
   };
   return samples[key];
 }
@@ -154,6 +174,7 @@ function noticeStatuses(connection: Connection): string[] {
     connection.templateWelcomeStatus ?? 'missing',
     connection.templateCampaignStatus ?? 'missing',
     connection.templatePesquisaStatus ?? 'missing',
+    connection.templateNoticeStatus ?? 'missing',
   ];
 }
 
@@ -163,6 +184,19 @@ function awaitingMetaReview(connection: Connection): boolean {
   return (
     statuses.some((status) => status === 'pending') &&
     statuses.every((status) => status === 'pending' || status === 'approved')
+  );
+}
+
+const WHATSAPP_STATUS_EVENT = 'frego-whatsapp-status';
+
+function publishWhatsAppStatus(connection: Connection | null) {
+  window.dispatchEvent(
+    new CustomEvent(WHATSAPP_STATUS_EVENT, {
+      detail: {
+        connected: connection != null,
+        status: connection?.status ?? null,
+      },
+    }),
   );
 }
 
@@ -226,7 +260,7 @@ export function WhatsAppAttentionBanner() {
         </p>
       </div>
       <Link
-        href="/settings#whatsapp"
+        href="/settings#integracoes/whatsapp"
         className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[13px] font-semibold text-white"
       >
         Reconectar WhatsApp
@@ -235,7 +269,75 @@ export function WhatsAppAttentionBanner() {
   );
 }
 
-export function WhatsAppSettingsCard() {
+export function WhatsAppStatus() {
+  const { businessId, authHeaders, loading: businessLoading } = useBusiness();
+  const [label, setLabel] = useState<string | null>(null);
+  const [broken, setBroken] = useState(false);
+
+  useEffect(() => {
+    const onStatus = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ connected: boolean; status: string | null }>
+      ).detail;
+      if (!detail?.connected) {
+        setLabel('Desligado');
+        setBroken(false);
+        return;
+      }
+      const lost = detail.status === 'error';
+      setBroken(lost);
+      setLabel(lost ? 'Reconectar' : 'Conectado');
+    };
+    window.addEventListener(WHATSAPP_STATUS_EVENT, onStatus);
+    return () => window.removeEventListener(WHATSAPP_STATUS_EVENT, onStatus);
+  }, []);
+
+  useEffect(() => {
+    if (businessLoading || !businessId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetch(`${API_URL}/whatsapp/connection`, { headers });
+        const data = (await res.json().catch(() => ({}))) as {
+          connected?: boolean;
+          connection?: { status: string } | null;
+        };
+        if (cancelled || !res.ok) return;
+        if (!data.connected || !data.connection) {
+          setLabel('Desligado');
+          setBroken(false);
+          return;
+        }
+        const lost = data.connection.status === 'error';
+        setBroken(lost);
+        setLabel(lost ? 'Reconectar' : 'Conectado');
+      } catch {
+        if (!cancelled) setLabel(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authHeaders, businessId, businessLoading]);
+
+  if (!label) return null;
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
+        broken
+          ? 'bg-[var(--color-danger)]/10 text-[var(--color-danger)]'
+          : label === 'Conectado'
+            ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
+            : 'bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]'
+      }`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function WhatsAppSettingsCard({ embedded = false }: { embedded?: boolean }) {
   const { getToken, user } = useAuth();
   const { business } = useBusiness();
   const [loading, setLoading] = useState(true);
@@ -275,7 +377,13 @@ export function WhatsAppSettingsCard() {
 
   useEffect(() => {
     if (loading) return;
-    if (window.location.hash !== '#whatsapp') return;
+    publishWhatsAppStatus(connection);
+  }, [connection, loading]);
+
+  useEffect(() => {
+    if (loading) return;
+    const hash = window.location.hash;
+    if (hash !== '#whatsapp' && hash !== '#integracoes/whatsapp') return;
     document.getElementById('whatsapp')?.scrollIntoView({ block: 'start' });
   }, [loading]);
 
@@ -406,17 +514,18 @@ export function WhatsAppSettingsCard() {
   const pesquisaTone = connection
     ? templateStatusLabel(connection.templatePesquisaStatus ?? 'missing')
     : null;
+  const noticeTone = connection
+    ? templateStatusLabel(connection.templateNoticeStatus ?? 'missing')
+    : null;
   const needsTemplate = Boolean(
     connection && noticeStatuses(connection).some((status) => status !== 'approved'),
   );
   const awaitingReview = Boolean(connection && awaitingMetaReview(connection));
   const grantLost = connection?.status === 'error';
 
-  return (
-    <section
-      id="whatsapp"
-      className="scroll-mt-6 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
-    >
+  const body = (
+    <>
+      {embedded ? null : (
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 gap-3">
           <span
@@ -448,6 +557,7 @@ export function WhatsAppSettingsCard() {
           </span>
         )}
       </div>
+      )}
 
       {loading ? (
         <p className="mt-4 text-[14px] text-[var(--color-neutral-500)]">
@@ -493,6 +603,7 @@ export function WhatsAppSettingsCard() {
                 ['welcome', 'Boas-vindas', welcomeTone],
                 ['campaign', 'Campanha', campaignTone],
                 ['pesquisa', 'Pesquisa', pesquisaTone],
+                ['notice', 'Lembrete', noticeTone],
               ] as const
             ).map(([key, label, tone]) =>
               tone ? (
@@ -653,6 +764,17 @@ export function WhatsAppSettingsCard() {
           onClose={() => setOpenMessage(null)}
         />
       ) : null}
+    </>
+  );
+
+  if (embedded) return <div id="whatsapp">{body}</div>;
+
+  return (
+    <section
+      id="whatsapp"
+      className="scroll-mt-6 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]"
+    >
+      {body}
     </section>
   );
 }

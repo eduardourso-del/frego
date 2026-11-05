@@ -13,6 +13,8 @@ export type PublicShopCampaign = {
   weekdays?: number[] | null;
   redeemMax?: number | null;
   redeemPeriod?: string | null;
+  birthdayWindow?: 'days' | 'month' | null;
+  birthdayWindowDays?: number | null;
 };
 
 export type PublicShopLocation = {
@@ -31,6 +33,7 @@ export type PublicShopBusiness = {
   slogan: string | null;
   slug: string;
   cashbackPercent?: number;
+  cashbackUseMultiple?: number | null;
   pointsPerReal?: number;
 };
 

@@ -1,11 +1,97 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { ProductFrame } from '@/components/landing/product-frame';
+import Image from 'next/image';
+import { motion, useReducedMotion } from 'framer-motion';
 import { FregoWordmark } from '@/components/brand';
 
 const ease = [0.22, 1, 0.36, 1] as const;
+
+const fan = [
+  {
+    src: '/landing/petshop.jpg',
+    alt: 'Cliente com o cachorro escolhendo ração na prateleira de um pet shop',
+    width: 1024,
+    height: 853,
+    rotate: -8,
+    shift: -18,
+    y: -28,
+    z: 1,
+    frame: 'w-[16rem] sm:w-[22rem] lg:w-[24rem]',
+  },
+  {
+    src: '/landing/loja-balcao.jpg',
+    alt: 'Dona da loja no balcão, consultando o painel da Frego no notebook',
+    width: 1024,
+    height: 576,
+    rotate: 4,
+    shift: 8,
+    y: 20,
+    z: 2,
+    frame: 'w-[18rem] sm:w-[26rem] lg:w-[30rem]',
+  },
+] as const;
+
+function HeroFan() {
+  const reduceMotion = useReducedMotion();
+  const [spread, setSpread] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const scale = spread ? 1.18 : 1;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setOpened(true), 900);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return (
+    <div
+      className="relative h-[420px] w-full sm:h-[480px]"
+      onMouseEnter={() => setSpread(true)}
+      onMouseLeave={() => setSpread(false)}
+    >
+      {fan.map((card, i) => (
+        <motion.figure
+          key={card.src}
+          className={`absolute top-1/2 left-1/2 origin-bottom overflow-hidden rounded-[20px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-raised)] ${card.frame}`}
+          style={{ zIndex: card.z }}
+          initial={
+            reduceMotion
+              ? false
+              : { opacity: 0, rotate: 0, x: '-50%', y: 'calc(-50% + 36px)' }
+          }
+          animate={{
+            opacity: 1,
+            rotate: card.rotate * scale,
+            x: `calc(-50% + ${card.shift * scale}%)`,
+            y: `calc(-50% + ${card.y}px)`,
+          }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : {
+                  type: 'spring',
+                  stiffness: 160,
+                  damping: 18,
+                  delay: opened ? 0 : 0.18 + i * 0.07,
+                }
+          }
+        >
+          <Image
+            src={card.src}
+            alt={card.alt}
+            width={card.width}
+            height={card.height}
+            priority={card.z === 2}
+            unoptimized
+            className="h-auto w-full"
+            sizes="(min-width: 1024px) 480px, 70vw"
+          />
+        </motion.figure>
+      ))}
+    </div>
+  );
+}
 
 const businesses = [
   'Restaurante',
@@ -44,7 +130,7 @@ export function LandingHero() {
         }}
       />
 
-      <div className="relative mx-auto grid max-w-6xl gap-12 px-5 pb-12 pt-10 sm:px-8 sm:pb-16 sm:pt-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-start lg:gap-10 lg:pb-16 lg:pt-14">
+      <div className="relative mx-auto grid max-w-6xl items-center gap-8 px-5 pb-8 pt-10 sm:px-8 sm:pb-12 sm:pt-12 lg:min-h-[680px] lg:grid-cols-[minmax(0,30rem)_1fr] lg:gap-10 lg:py-14">
         <div>
           <motion.div
             initial={{ opacity: 0, y: 16 }}
@@ -66,17 +152,8 @@ export function LandingHero() {
           <motion.p
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.14, ease }}
-            className="mt-4 max-w-lg text-[20px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)] sm:text-[22px]"
-          >
-            Quem chamar hoje para o cliente voltar.
-          </motion.p>
-
-          <motion.p
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2, ease }}
-            className="mt-4 max-w-lg text-[16px] leading-relaxed text-[var(--color-neutral-500)] sm:text-[17px]"
+            transition={{ duration: 0.6, delay: 0.16, ease }}
+            className="mt-5 max-w-lg text-[16px] leading-relaxed text-[var(--color-neutral-500)] sm:text-[17px]"
           >
             A Frego entende o comportamento dos seus clientes e mostra quem
             merece sua atenção — para você vender mais, trazer clientes de
@@ -127,21 +204,7 @@ export function LandingHero() {
           </motion.div>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 36, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.85, delay: 0.18, ease }}
-        >
-          <ProductFrame
-            src="/landing/painel.png"
-            alt="Painel Frego com clientes ativos, atividade no período e retenção por mês de cadastro"
-            label="frego.app.br/dashboard"
-            caption="Atividade, retorno e retenção — o que aconteceu com os clientes no período"
-            width={1024}
-            height={859}
-            priority
-          />
-        </motion.div>
+        <HeroFan />
       </div>
     </section>
   );

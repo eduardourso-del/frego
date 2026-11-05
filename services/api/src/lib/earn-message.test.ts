@@ -20,6 +20,7 @@ function wallet(partial?: Partial<WalletSnapshot['pools']>): WalletSnapshot {
     stampsExpireDays: null,
     pointsExpireDays: null,
     cashbackExpireDays: null,
+    cashbackUseMultiple: null,
     cashbackPercent: 0,
     stampDestinations: [],
   };

@@ -64,6 +64,36 @@ String? promoEndsLine(PromoCalendar calendar) {
   return 'Válida até $when';
 }
 
+/// Shop dates on any Campanha. Empty means it runs until the shop removes it.
+String? campaignValidityLine(PromoCalendar calendar) {
+  final start = _formatUnlockDate(calendar.startsOn);
+  final end = _formatUnlockDate(calendar.endsOn);
+  if (start != null && end != null) return 'Válida de $start a $end';
+  if (end != null) return 'Válida até $end';
+  if (start != null) return 'Válida a partir de $start';
+  return null;
+}
+
+String? outsideDatesLine({
+  required String? lockedReason,
+  String? unlocksAt,
+}) {
+  if (lockedReason != 'outside_dates') return null;
+  final when = _formatUnlockDate(unlocksAt);
+  return when != null
+      ? 'Fora do período · libera $when'
+      : 'Fora do período desta campanha';
+}
+
+String? joinHints(Iterable<String?> parts) {
+  final kept = parts
+      .whereType<String>()
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty);
+  if (kept.isEmpty) return null;
+  return kept.join(' · ');
+}
+
 String promoWeekdaysLine(PromoCalendar calendar) {
   if (!calendar.restrictsWeekdays) return 'Todos os dias';
   return calendar.weekdays.map((d) => kPromoWeekdayLabels[d]).join(', ');

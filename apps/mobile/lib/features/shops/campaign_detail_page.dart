@@ -19,10 +19,14 @@ class CampaignDetailPage extends StatefulWidget {
     super.key,
     required this.businessId,
     required this.campaignId,
+    this.explorationCity,
+    this.explorationState,
   });
 
   final String businessId;
   final String campaignId;
+  final String? explorationCity;
+  final String? explorationState;
 
   @override
   State<CampaignDetailPage> createState() => _CampaignDetailPageState();
@@ -48,7 +52,15 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
       }
     });
     try {
-      final data = await fetchMyWallet(businessId: widget.businessId);
+      final exploring = widget.explorationCity != null &&
+          widget.explorationState != null;
+      final data = exploring
+          ? await fetchExplorationPlace(
+              businessId: widget.businessId,
+              city: widget.explorationCity!,
+              state: widget.explorationState!,
+            )
+          : await fetchMyWallet(businessId: widget.businessId);
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -145,7 +157,11 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
   Future<void> _openShop() async {
     await FregoAdaptive.push(
       context,
-      ShopDetailPage(businessId: widget.businessId),
+      ShopDetailPage(
+        businessId: widget.businessId,
+        explorationCity: widget.explorationCity,
+        explorationState: widget.explorationState,
+      ),
     );
     if (mounted) _load();
   }
@@ -274,7 +290,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     final unlockMessage = campaign['audienceUnlockMessage'] as String?;
     final description = (campaign['rewardDescription'] as String?)?.trim();
 
-    late final String buttonLabel;
+    late String buttonLabel;
     String? statusHint;
     if (isBirthday) {
       statusHint = _birthdayStatusLine(
@@ -346,6 +362,17 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
                   : 'Continuar acumulando';
     }
 
+    if (!isPromo) {
+      final window = outsideDatesLine(
+        lockedReason: lockedReason,
+        unlocksAt: unlocksAt,
+      );
+      if (window != null) {
+        statusHint = window;
+        if (!isCashback) buttonLabel = 'Fora do período';
+      }
+    }
+
     return [
       ShopSummaryCard(
         business: business,
@@ -391,8 +418,10 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         pointsPerReal: business?['pointsPerReal'] as int?,
         cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
         cashbackBalanceCents: cashbackBalance,
+        cashbackUseMultiple:
+            (campaign['cashbackUseMultiple'] as num?)?.toInt(),
         busy: _redeeming,
-        promoCalendar: isPromo ? PromoCalendar.fromCampaign(campaign) : null,
+        promoCalendar: PromoCalendar.fromCampaign(campaign),
         audienceUnlocked: audienceEligible && !audienceLocked,
         audienceLabel: unlockMessage ??
             (audienceEligible ? 'Conquista liberada pra você' : null),
@@ -404,12 +433,14 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
             ? null
             : () => _redeem(campaign),
       ),
-      if (isPromo) ..._promoWhenSection(campaign),
+      if (isPromo ||
+          campaignValidityLine(PromoCalendar.fromCampaign(campaign)) != null)
+        ..._promoWhenSection(campaign),
       if (isCashback) ..._cashbackLotSections(),
       if (description != null && description.isNotEmpty) ...[
         const SizedBox(height: 20),
         const Text(
-          'Sobre o prêmio',
+          'Descrição',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
@@ -432,7 +463,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
 
   List<Widget> _promoWhenSection(Map<String, dynamic> campaign) {
     final calendar = PromoCalendar.fromCampaign(campaign);
-    final ends = promoEndsLine(calendar);
+    final ends = campaignValidityLine(calendar);
     final restricted = calendar.restrictsWeekdays;
     return [
       const SizedBox(height: 20),
@@ -447,14 +478,7 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
       ),
       if (ends != null) ...[
         const SizedBox(height: 8),
-        Text(
-          ends,
-          style: const TextStyle(
-            fontSize: 15,
-            height: 1.4,
-            color: FregoColors.ink,
-          ),
-        ),
+        CampaignValidityRow(line: ends),
       ],
       const SizedBox(height: 10),
       if (restricted)

@@ -9,6 +9,11 @@ import { API_URL } from '@/lib/api';
 import { BusinessCustomers } from '@/components/business-customers';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import {
+  CampaignEditor,
+  type AdminCampaign,
+} from '@/components/campaign-editor';
+import { DeleteBusinessDialog } from '@/components/delete-business-dialog';
+import {
   CAMPAIGN_STATUS_LABEL,
   CAMPAIGN_TYPE_LABEL,
   ROLE_LABEL,
@@ -31,6 +36,7 @@ type Detail = {
     name: string;
     type: string;
     status: string;
+    explorationVisible: boolean;
     logoUrl: string | null;
     heroImageUrl: string | null;
     primaryColor: string;
@@ -45,6 +51,8 @@ type Detail = {
     stampsExpireDays: number | null;
     pointsExpireDays: number | null;
     cashbackExpireDays: number | null;
+    expiryNoticeEnabled: boolean;
+    expiryNoticeDays: number;
     createdAt: string;
     updatedAt: string;
   };
@@ -77,17 +85,8 @@ type Detail = {
     lastError: string | null;
     connectedAt: string;
   } | null;
-  campaigns: Array<{
-    id: string;
-    name: string;
-    type: string;
-    status: string;
-    stampsNeeded: number | null;
-    rewardTitle: string | null;
-    cartela: boolean;
-    earns30d: number;
-    redeems30d: number;
-  }>;
+  audiences?: Array<{ id: string; name: string }>;
+  campaigns: AdminCampaign[];
   stats: {
     customers: number;
     campaigns: number;
@@ -99,8 +98,79 @@ type Detail = {
   };
 };
 
+type BusinessTab = 'config' | 'metrics' | 'campaigns';
+
+const BUSINESS_TABS: { id: BusinessTab; label: string }[] = [
+  { id: 'config', label: 'Configuração' },
+  { id: 'metrics', label: 'Métricas' },
+  { id: 'campaigns', label: 'Campanhas' },
+];
+
 const inputClass =
   'mt-2 min-h-11 w-full rounded-[8px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[16px] font-normal normal-case tracking-normal text-[var(--color-ink)]';
+
+const WEEKDAY_LABEL = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+const REDEEM_PERIOD_LABEL: Record<string, string> = {
+  day: 'por dia',
+  week: 'por semana',
+  month: 'por mês',
+  year: 'por ano',
+  campaign: 'na campanha',
+};
+
+function formatDay(ymd: string) {
+  const [year, month, day] = ymd.split('-');
+  if (!year || !month || !day) return ymd;
+  return `${day}/${month}/${year}`;
+}
+
+function campaignRules(campaign: Detail['campaigns'][number]) {
+  const parts: string[] = [];
+  if (campaign.cartela) parts.push('Cartela');
+  if (campaign.stampsNeeded) parts.push(`${campaign.stampsNeeded} para o prêmio`);
+  if (campaign.pointsPerReal) {
+    parts.push(
+      `R$ ${campaign.pointsPerReal.toLocaleString('pt-BR')} → 1 ponto`,
+    );
+  }
+  if (campaign.cashbackPercent != null) {
+    parts.push(`${campaign.cashbackPercent}% de cashback`);
+  }
+  if (campaign.startsOn || campaign.endsOn) {
+    const start = campaign.startsOn ? formatDay(campaign.startsOn) : '…';
+    const end = campaign.endsOn ? formatDay(campaign.endsOn) : '…';
+    parts.push(`${start} – ${end}`);
+  }
+  if (campaign.weekdays.length > 0 && campaign.weekdays.length < 7) {
+    parts.push(
+      campaign.weekdays
+        .filter((day) => day >= 0 && day <= 6)
+        .map((day) => WEEKDAY_LABEL[day])
+        .join(', '),
+    );
+  }
+  if (campaign.redeemMax != null) {
+    const period = campaign.redeemPeriod
+      ? REDEEM_PERIOD_LABEL[campaign.redeemPeriod] ?? campaign.redeemPeriod
+      : '';
+    parts.push(
+      `${campaign.redeemMax} resgate${campaign.redeemMax === 1 ? '' : 's'}${period ? ` ${period}` : ''}`,
+    );
+  }
+  if (campaign.type === 'birthday') {
+    const days = campaign.birthdayWindowDays ?? 7;
+    parts.push(
+      campaign.birthdayWindow === 'month'
+        ? 'No mês do aniversário'
+        : days === 1
+          ? 'No dia do aniversário'
+          : `${days} dias a partir do aniversário`,
+    );
+  }
+  if (campaign.audienceName) parts.push(campaign.audienceName);
+  return parts;
+}
 
 function apiErrorMessage(error: string | undefined) {
   if (error === 'SLUG_TAKEN') return 'Este slug já está em uso.';
@@ -118,12 +188,20 @@ export default function BusinessDetailPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [tab, setTab] = useState<BusinessTab>('config');
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(
+    null,
+  );
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
   const [type, setType] = useState('café');
   const [status, setStatus] = useState('pending');
+  const [explorationVisible, setExplorationVisible] = useState(false);
   const [slogan, setSlogan] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [slug, setSlug] = useState('');
@@ -138,6 +216,8 @@ export default function BusinessDetailPage() {
   const [pointsExpireDays, setPointsExpireDays] = useState(90);
   const [cashbackExpireEnabled, setCashbackExpireEnabled] = useState(false);
   const [cashbackExpireDays, setCashbackExpireDays] = useState(90);
+  const [expiryNoticeEnabled, setExpiryNoticeEnabled] = useState(true);
+  const [expiryNoticeDays, setExpiryNoticeDays] = useState(7);
   const [locations, setLocations] = useState<LocationDraft[]>([]);
 
   const applyDetail = useCallback((next: Detail) => {
@@ -146,6 +226,7 @@ export default function BusinessDetailPage() {
     setName(b.name);
     setType(b.type);
     setStatus(b.status);
+    setExplorationVisible(b.explorationVisible === true);
     setSlogan(b.slogan ?? '');
     setCnpj(formatCnpj(b.cnpj ?? ''));
     setSlug(b.slug ?? '');
@@ -160,6 +241,10 @@ export default function BusinessDetailPage() {
     setPointsExpireDays(b.pointsExpireDays ?? 90);
     setCashbackExpireEnabled(b.cashbackExpireDays != null);
     setCashbackExpireDays(b.cashbackExpireDays ?? 90);
+    setExpiryNoticeEnabled(b.expiryNoticeEnabled !== false);
+    setExpiryNoticeDays(
+      b.expiryNoticeDays >= 1 && b.expiryNoticeDays <= 30 ? b.expiryNoticeDays : 7,
+    );
     setLocations(
       next.locations.map((loc) => ({
         ...loc,
@@ -248,6 +333,8 @@ export default function BusinessDetailPage() {
           cashbackExpireDays: cashbackExpireEnabled
             ? Math.max(1, Math.min(3650, cashbackExpireDays || 1))
             : null,
+          expiryNoticeEnabled,
+          expiryNoticeDays: Math.min(30, Math.max(1, Math.round(expiryNoticeDays) || 7)),
         }),
       });
       const json = await res.json();
@@ -290,12 +377,8 @@ export default function BusinessDetailPage() {
 
   async function remove() {
     if (!id || !detail) return;
-    const ok = window.confirm(
-      `Excluir ${detail.business.name}?\n\nCampanhas, pesquisas, equipe e o histórico deste estabelecimento somem. A conta do cliente na Frego permanece.`,
-    );
-    if (!ok) return;
     setBusy(true);
-    setError(null);
+    setDeleteError(null);
     try {
       const token = await getToken();
       const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
@@ -306,7 +389,7 @@ export default function BusinessDetailPage() {
       if (!res.ok) throw new Error(apiErrorMessage(json.error));
       router.push('/businesses');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha ao excluir');
+      setDeleteError(err instanceof Error ? err.message : 'Falha ao excluir');
       setBusy(false);
     }
   }
@@ -362,7 +445,50 @@ export default function BusinessDetailPage() {
     }
   }
 
+  async function setVisible(next: boolean) {
+    if (!id || visibilitySaving) return;
+    const previous = explorationVisible;
+    setExplorationVisible(next);
+    setVisibilitySaving(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${API_URL}/admin/businesses/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ explorationVisible: next }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(apiErrorMessage(json.error));
+      if (json.business) {
+        setDetail((current) =>
+          current
+            ? {
+                ...current,
+                business: {
+                  ...current.business,
+                  explorationVisible: json.business.explorationVisible === true,
+                },
+              }
+            : current,
+        );
+      }
+      setToast(next ? 'Visível na exploração' : 'Fora da exploração');
+    } catch (err) {
+      setExplorationVisible(previous);
+      setError(err instanceof Error ? err.message : 'Erro');
+    } finally {
+      setVisibilitySaving(false);
+    }
+  }
+
   const letter = (name || 'V').trim().charAt(0).toUpperCase();
+  const editingCampaign =
+    detail?.campaigns.find((campaign) => campaign.id === editingCampaignId) ??
+    null;
 
   return (
     <AdminShell>
@@ -426,7 +552,10 @@ export default function BusinessDetailPage() {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void remove()}
+                onClick={() => {
+                  setDeleteError(null);
+                  setConfirmDelete(true);
+                }}
                 className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-4 text-[14px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
               >
                 Excluir
@@ -434,16 +563,74 @@ export default function BusinessDetailPage() {
             </div>
           </header>
 
+          {tab !== 'config' && (error || toast) && (
+            <div className="mb-4">
+              {error && (
+                <p className="text-[13px] text-[var(--color-danger)]" role="alert">
+                  {error}
+                </p>
+              )}
+              {toast && (
+                <p className="text-[13px] text-[var(--color-primary-600)]">
+                  {toast}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div
+            className="mb-6 flex gap-1 border-b border-[var(--color-hairline)]"
+            role="tablist"
+            aria-label="Seções do estabelecimento"
+          >
+            {BUSINESS_TABS.map((item) => {
+              const selected = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  id={`tab-${item.id}`}
+                  aria-selected={selected}
+                  aria-controls={`panel-${item.id}`}
+                  onClick={() => setTab(item.id)}
+                  className={`-mb-px min-h-11 border-b-2 px-4 text-[14px] font-semibold ${
+                    selected
+                      ? 'border-[var(--color-primary-500)] text-[var(--color-ink)]'
+                      : 'border-transparent text-[var(--color-neutral-500)]'
+                  }`}
+                >
+                  {item.label}
+                  {item.id === 'campaigns' && detail.stats.campaigns > 0 && (
+                    <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
+                      {detail.stats.campaigns}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {tab === 'metrics' && (
+          <div
+            id="panel-metrics"
+            role="tabpanel"
+            aria-labelledby="tab-metrics"
+          >
           <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {[
               {
                 label: 'Clientes',
                 value: String(detail.stats.customers),
-                href: '#clientes',
+                onClick: () =>
+                  document
+                    .getElementById('clientes')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
               },
               {
                 label: 'Campanhas ativas',
                 value: `${detail.stats.activeCampaigns} de ${detail.stats.campaigns}`,
+                onClick: () => setTab('campaigns'),
               },
               {
                 label: 'Acúmulos · 30 dias',
@@ -485,73 +672,167 @@ export default function BusinessDetailPage() {
                   </p>
                 </div>
               );
-              return 'href' in kpi && kpi.href ? (
-                <Link key={kpi.label} href={kpi.href} className="block">
+              return 'onClick' in kpi && kpi.onClick ? (
+                <button
+                  key={kpi.label}
+                  type="button"
+                  onClick={kpi.onClick}
+                  className="block w-full cursor-pointer border-0 bg-transparent p-0 text-left"
+                >
                   {card}
-                </Link>
+                </button>
               ) : (
                 <div key={kpi.label}>{card}</div>
               );
             })}
           </div>
 
-          <section className="mb-8 overflow-x-auto rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
-            <p className="px-5 pt-5 text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-              Campanhas
-            </p>
+          <BusinessCustomers key={id} businessId={id} />
+          </div>
+          )}
+
+          {tab === 'campaigns' && (
+          <div
+            id="panel-campaigns"
+            role="tabpanel"
+            aria-labelledby="tab-campaigns"
+          >
+          {editingCampaign && (
+              <CampaignEditor
+                key={editingCampaign.id}
+                businessId={id}
+                campaign={editingCampaign}
+                audiences={detail.audiences ?? []}
+                getToken={getToken}
+                onClose={() => setEditingCampaignId(null)}
+                onSaved={() => {
+                  setEditingCampaignId(null);
+                  setToast('Campanha salva');
+                  void load();
+                }}
+              />
+            )}
+          <section className="overflow-hidden rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] shadow-[var(--shadow-card)]">
+            <div className="flex flex-wrap items-end justify-between gap-2 px-5 pt-5">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                Campanhas
+              </p>
+              <p className="text-[13px] text-[var(--color-neutral-500)]">
+                {detail.stats.activeCampaigns} ativa
+                {detail.stats.activeCampaigns === 1 ? '' : 's'} de{' '}
+                {detail.stats.campaigns}
+              </p>
+            </div>
             {detail.campaigns.length === 0 ? (
               <p className="px-5 py-4 text-[14px] text-[var(--color-neutral-500)]">
                 Nenhuma campanha.
               </p>
             ) : (
-              <table className="mt-3 w-full min-w-[720px] border-collapse text-left text-[14px]">
-                <thead>
-                  <tr className="border-b border-[var(--color-hairline)] text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                    <th className="px-5 py-3 font-semibold">Campanha</th>
-                    <th className="px-5 py-3 font-semibold">Tipo</th>
-                    <th className="px-5 py-3 font-semibold">Status</th>
-                    <th className="px-5 py-3 font-semibold">30 dias</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detail.campaigns.map((campaign) => (
-                    <tr
+              <ul className="mt-3">
+                {detail.campaigns.map((campaign) => {
+                  const rules = campaignRules(campaign);
+                  return (
+                    <li
                       key={campaign.id}
-                      className="border-b border-[var(--color-hairline)] last:border-0"
+                      className="border-t border-[var(--color-hairline)] px-5 py-4"
                     >
-                      <td className="px-5 py-3">
-                        <p className="font-semibold">{campaign.name}</p>
-                        {campaign.rewardTitle && (
-                          <p className="text-[13px] text-[var(--color-neutral-500)]">
-                            {campaign.rewardTitle}
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[16px] font-semibold">
+                            {campaign.name}
                           </p>
-                        )}
-                      </td>
-                      <td className="px-5 py-3 text-[var(--color-neutral-700)]">
-                        {CAMPAIGN_TYPE_LABEL[campaign.type] ?? campaign.type}
-                        {campaign.cartela ? ' · cartela' : ''}
-                        {campaign.stampsNeeded
-                          ? ` · ${campaign.stampsNeeded}`
-                          : ''}
-                      </td>
-                      <td className="px-5 py-3">
-                        {CAMPAIGN_STATUS_LABEL[campaign.status] ??
-                          campaign.status}
-                      </td>
-                      <td className="px-5 py-3 tabular-nums text-[var(--color-neutral-700)]">
-                        {campaign.earns30d} acúmulos · {campaign.redeems30d}{' '}
-                        resgates
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                          <p className="mt-0.5 text-[13px] text-[var(--color-neutral-500)]">
+                            {CAMPAIGN_TYPE_LABEL[campaign.type] ?? campaign.type}
+                          </p>
+                        </div>
+                        <span className="rounded-[6px] bg-[var(--color-bg)] px-2 py-0.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-500)]">
+                          {CAMPAIGN_STATUS_LABEL[campaign.status] ??
+                            campaign.status}
+                        </span>
+                      </div>
+                      {(campaign.rewardTitle || campaign.rewardDescription) && (
+                        <p className="mt-2 text-[14px] text-[var(--color-neutral-700)]">
+                          {campaign.rewardTitle}
+                          {campaign.rewardTitle && campaign.rewardDescription
+                            ? ' — '
+                            : ''}
+                          {campaign.rewardDescription}
+                        </p>
+                      )}
+                      {rules.length > 0 && (
+                        <p className="mt-2 text-[13px] text-[var(--color-neutral-500)]">
+                          {rules.join(' · ')}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-[13px] tabular-nums text-[var(--color-neutral-700)]">
+                          {campaign.earns30d} acúmulos · {campaign.redeems30d}{' '}
+                          resgates · 30 dias
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCampaignId(campaign.id);
+                            setError(null);
+                            setToast(null);
+                          }}
+                          className="min-h-9 rounded-[8px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold"
+                        >
+                          {editingCampaignId === campaign.id
+                            ? 'Editando'
+                            : 'Ver e editar'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {detail.stats.campaigns > detail.campaigns.length && (
+              <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-[13px] text-[var(--color-neutral-500)]">
+                Mostrando {detail.campaigns.length} de {detail.stats.campaigns}.
+              </p>
             )}
           </section>
+          </div>
+          )}
 
-          <BusinessCustomers key={id} businessId={id} />
+          {tab === 'config' && (
+          <div
+            id="panel-config"
+            role="tabpanel"
+            aria-labelledby="tab-config"
+            className="flex max-w-2xl flex-col gap-5"
+          >
+          <section className="flex items-center justify-between gap-4 rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+            <div>
+              <p className="text-[16px] font-semibold">Visível na exploração</p>
+              <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                Aparece na aba Explorar do app. Começa desligado.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={explorationVisible}
+              aria-label="Visível na exploração"
+              disabled={visibilitySaving}
+              onClick={() => void setVisible(!explorationVisible)}
+              className={`relative h-8 w-14 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                explorationVisible
+                  ? 'bg-[var(--color-primary-500)]'
+                  : 'bg-[var(--color-neutral-200)]'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+                  explorationVisible ? 'translate-x-6' : ''
+                }`}
+              />
+            </button>
+          </section>
 
-          <form onSubmit={onSubmit} className="flex max-w-2xl flex-col gap-5">
+          <form onSubmit={onSubmit} className="flex flex-col gap-5">
             <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
               <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
                 Perfil
@@ -849,6 +1130,49 @@ export default function BusinessDetailPage() {
                     />
                   )}
                 </div>
+                <div>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={expiryNoticeEnabled}
+                      onChange={(e) => setExpiryNoticeEnabled(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Avisar antes do vencimento
+                  </label>
+                  <p className="mt-1 text-[12px] font-normal normal-case tracking-normal leading-relaxed text-[var(--color-neutral-500)]">
+                    O cliente é avisado no WhatsApp, se estiver configurado,
+                    e/ou por uma notificação no app, quando faltam esses dias
+                    para carimbos, pontos ou cashback vencerem. O aviso sai
+                    uma vez para cada vencimento e diz quantos dias ainda
+                    faltam, por exemplo “10 pontos vencem em 5 dias”. Com o
+                    aviso desligado, o saldo continua expirando e nenhum aviso
+                    sai.
+                  </p>
+                  <label className="mt-2 block text-[13px] font-semibold normal-case tracking-normal text-[var(--color-neutral-500)]">
+                    Dias antes
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={expiryNoticeDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const n = Math.round(Number(raw));
+                        if (!Number.isFinite(n)) return;
+                        setExpiryNoticeDays(n);
+                      }}
+                      onBlur={() =>
+                        setExpiryNoticeDays((n) => Math.min(30, Math.max(1, n || 7)))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-500)]">
+                      O mesmo número, de 1 a 30, vale para carimbos, pontos e cashback.
+                    </span>
+                  </label>
+                </div>
               </div>
             </section>
 
@@ -907,7 +1231,7 @@ export default function BusinessDetailPage() {
             </button>
           </form>
 
-          <section className="mt-10 max-w-2xl rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+          <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
             <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
               Equipe
             </p>
@@ -934,7 +1258,7 @@ export default function BusinessDetailPage() {
             )}
           </section>
 
-          <section className="mt-4 max-w-2xl rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+          <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
             <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
               Cobrança
             </p>
@@ -982,34 +1306,60 @@ export default function BusinessDetailPage() {
             )}
           </section>
 
-          <section className="mt-4 max-w-2xl rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
+          <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
             <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
               WhatsApp
             </p>
             {detail.whatsapp ? (
-              <p className="mt-3 text-[14px] text-[var(--color-neutral-700)]">
-                {WHATSAPP_STATUS_LABEL[detail.whatsapp.status] ??
-                  detail.whatsapp.status}
-                {detail.whatsapp.displayPhoneNumber
-                  ? ` · ${detail.whatsapp.displayPhoneNumber}`
-                  : ''}
-                {detail.whatsapp.verifiedName
-                  ? ` · ${detail.whatsapp.verifiedName}`
-                  : ''}
+              <div className="mt-3 text-[14px] text-[var(--color-neutral-700)]">
+                <p>
+                  {WHATSAPP_STATUS_LABEL[detail.whatsapp.status] ??
+                    detail.whatsapp.status}
+                  {detail.whatsapp.displayPhoneNumber
+                    ? ` · ${detail.whatsapp.displayPhoneNumber}`
+                    : ''}
+                  {detail.whatsapp.verifiedName
+                    ? ` · ${detail.whatsapp.verifiedName}`
+                    : ''}
+                </p>
+                <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
+                  {detail.whatsapp.qualityRating
+                    ? `Qualidade ${detail.whatsapp.qualityRating}`
+                    : 'Sem nota de qualidade'}
+                  {detail.whatsapp.coexistence ? ' · coexistência' : ''}
+                  {' · '}
+                  conectado em{' '}
+                  {new Date(detail.whatsapp.connectedAt).toLocaleString('pt-BR')}
+                </p>
                 {detail.whatsapp.lastError ? (
-                  <span className="mt-1 block text-[13px] text-[var(--color-danger)]">
+                  <p className="mt-1 text-[13px] text-[var(--color-danger)]">
                     {detail.whatsapp.lastError}
-                  </span>
+                  </p>
                 ) : null}
-              </p>
+              </div>
             ) : (
               <p className="mt-3 text-[14px] text-[var(--color-neutral-500)]">
                 Não conectado.
               </p>
             )}
           </section>
+          </div>
+          )}
 
         </>
+      )}
+      {confirmDelete && detail && (
+        <DeleteBusinessDialog
+          name={detail.business.name}
+          busy={busy}
+          error={deleteError}
+          onCancel={() => {
+            if (busy) return;
+            setConfirmDelete(false);
+            setDeleteError(null);
+          }}
+          onConfirm={() => void remove()}
+        />
       )}
     </AdminShell>
   );

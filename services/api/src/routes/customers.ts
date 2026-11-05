@@ -2,6 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import {
+  operatingLocationId,
+  pickStaffLocation,
+} from '../lib/operating-address.js';
+import { openClube } from '../lib/open-clube.js';
 import { normalizeLast4, phoneLast4, toE164 } from '../lib/phone.js';
 import { campaignSpendableUnits, deriveWallet } from '../lib/wallet.js';
 import { resolveCashbackEarn } from '../lib/cashback.js';
@@ -11,7 +16,7 @@ import {
   resolveStampEarnCampaignId,
 } from '../lib/stamp-destination.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
-import { queueEarnNotify } from '../lib/whatsapp/earn-notify.js';
+import { queueEarnNotify } from '../lib/whatsapp/earn-notify-hold.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isPesquisaCredit, shouldOmitFromLedger } from '../lib/ledger-meta.js';
@@ -109,7 +114,7 @@ async function serializeCustomerLookup(
   const [business, activeEarnKinds] = await Promise.all([
     prisma.business.findUnique({
       where: { id: businessId },
-      select: { pointsPerReal: true },
+      select: { pointsPerReal: true, cashbackUseMultiple: true },
     }),
     activeEarnKindsForBusiness(businessId),
   ]);
@@ -209,6 +214,7 @@ async function serializeCustomerLookup(
       (await loadEarnStampDestinations(businessId)),
     pointsPerReal: business?.pointsPerReal ?? 1,
     cashbackPercent: cashbackEarn?.percent ?? 0,
+    cashbackUseMultiple: business?.cashbackUseMultiple ?? null,
     activeEarnKinds,
     cashback: {
       campaignId: cashbackEarn?.campaignId ?? null,
@@ -226,9 +232,15 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
    * Query: `q` (nome / telefone / last4), `limit` (default 100, max 200),
    * `audienceId` ou regras (spendCentsMin, windowDays, inactiveDaysMin, …).
    */
-  app.get('/customers', async (request) => {
+  app.get('/customers', async (request, reply) => {
     const auth = requireAuth(request);
     const query = request.query as Record<string, string | undefined>;
+    if (
+      auth.role === 'employee' &&
+      (query.audienceId || queryRulesFromParams(query))
+    ) {
+      return reply.code(403).send({ error: 'FORBIDDEN' });
+    }
     const rawQ = (query.q ?? '').trim();
     const digits = rawQ.replace(/\D/g, '');
     const limit = Math.min(
@@ -677,82 +689,31 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           message: resolved.message,
         });
       }
-      stampLocationId = body.locationId ?? auth.locationId ?? null;
+      stampLocationId = pickStaffLocation({
+        requested: body.locationId,
+        memberLocationId: auth.locationId,
+        operatingLocationId: await operatingLocationId(auth.businessId),
+      });
       if (!stampLocationId) {
         return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
       }
       stampCampaignId = resolved.campaignId;
     }
 
-    const phoneE164 = toE164(body.phone);
-    const last4 = phoneLast4(phoneE164);
-
-    let customer = await prisma.customer.upsert({
-      where: { phoneE164 },
-      create: {
-        phoneE164,
-        phoneLast4: last4,
-        displayName: body.displayName,
-        birthday: body.birthday ? new Date(body.birthday) : undefined,
-      },
-      update: {
-        phoneLast4: last4,
-      },
+    const opened = await openClube({
+      businessId: auth.businessId,
+      phone: body.phone,
+      displayName: body.displayName,
+      birthday: body.birthday ? new Date(body.birthday) : null,
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
-
-    const patch: { displayName?: string; birthday?: Date } = {};
-    if (!customer.displayName && body.displayName) {
-      patch.displayName = body.displayName;
-    }
-    if (!customer.birthday && body.birthday) {
-      patch.birthday = new Date(body.birthday);
-    }
-    if (Object.keys(patch).length > 0) {
-      customer = await prisma.customer.update({
-        where: { id: customer.id },
-        data: patch,
-      });
-    }
-
-    const priorMembership = await prisma.membership.findUnique({
-      where: {
-        customerId_businessId: {
-          customerId: customer.id,
-          businessId: auth.businessId,
-        },
-      },
-      select: { id: true },
-    });
-    const isNewMembership = !priorMembership;
-
-    const membership = await prisma.membership.upsert({
-      where: {
-        customerId_businessId: {
-          customerId: customer.id,
-          businessId: auth.businessId,
-        },
-      },
-      create: {
-        customerId: customer.id,
-        businessId: auth.businessId,
-      },
-      update: {},
-    });
+    const customer = opened.customer;
+    const membership = opened.membership;
 
     const business = await prisma.business.findUnique({
       where: { id: auth.businessId },
       select: { name: true },
     });
-
-    if (isNewMembership) {
-      queueWelcomeWhatsAppForBusiness({
-        businessId: auth.businessId,
-        businessName: business?.name ?? 'Frego',
-        toE164: customer.phoneE164,
-        customerName: customer.displayName,
-        log: (msg, extra) => request.log.info(extra ?? {}, msg),
-      });
-    }
 
     let stampTransaction = null;
     let wallet = await deriveWallet(membership.id, auth.businessId);
@@ -769,6 +730,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         ? { cartela: chosen.cartela, label: chosen.label, balance: 0 }
         : null;
 
+      const saleId = newSaleId();
       stampTransaction = await prisma.transaction.create({
         data: {
           businessId: auth.businessId,
@@ -779,7 +741,7 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           type: 'stamp',
           quantity: 1,
           unitKind: 'stamps',
-          metadata: { saleId: newSaleId(), role: 'earn' },
+          metadata: { saleId, role: 'earn' },
         },
       });
       wallet = await deriveWallet(membership.id, auth.businessId);
@@ -794,13 +756,14 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         };
       }
 
-      queueEarnNotify({
+      await queueEarnNotify({
         businessId: auth.businessId,
         businessName: business?.name ?? 'Frego',
         customerId: customer.id,
         toE164: customer.phoneE164,
         unitKind: 'stamps',
         quantity: 1,
+        saleId,
         transactionId: stampTransaction.id,
         wallet,
         stampEarn,
@@ -961,6 +924,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     const auth = requireAuth(request);
     const { id } = request.params as { id: string };
     const body = patchBody.parse(request.body);
+    if (auth.role === 'employee' && body.isVip !== undefined) {
+      return reply.code(403).send({ error: 'FORBIDDEN' });
+    }
 
     const membership = await prisma.membership.findFirst({
       where: { customerId: id, businessId: auth.businessId },

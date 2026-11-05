@@ -69,7 +69,7 @@ const types: Array<{
   {
     title: 'Aniversário',
     kicker: 'Data',
-    body: 'No dia do aniversário do cliente — e nos seis dias seguintes — a loja oferece um presente. Não é uma promoção eterna: é um gesto com data, que reforça “você faz parte daqui”.',
+    body: 'A loja escolhe a janela: o mês do aniversário, ou alguns dias a partir da data. Não é uma promoção eterna: é um gesto com data, que reforça “você faz parte daqui”.',
     example:
       'Um croissant, um café ou um desconto só naquele período. Relacionamento com data no calendário.',
     Icon: Cake,

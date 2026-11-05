@@ -5,7 +5,7 @@ import {
   earnPushCopy,
   type EarnNotifyInput,
 } from '../whatsapp/earn-message.js';
-import { apnsWithData, sendAndPruneFcm } from './send.js';
+import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
 
 export function buildEarnPushMessage(input: {
   tokens: string[];
@@ -32,13 +32,8 @@ export function buildEarnPushMessage(input: {
       body: input.body,
     },
     data,
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'frego_campaigns',
-      },
-    },
-    apns: apnsWithData(data),
+    android: androidPushConfig(),
+    apns: apnsWithData(data, { title: input.title, body: input.body }),
   };
 }
 
@@ -73,6 +68,7 @@ export async function notifyEarnPush(
         cashbackCents: input.cashbackCents,
         wallet: input.wallet,
         stampEarn: input.stampEarn,
+        summaryLine: input.summaryLine,
       }),
     );
     const result = await sendAndPruneFcm(
@@ -159,8 +155,8 @@ export function queuePesquisaPush(input: {
   sentence: string;
   conviteId: string;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
-}): void {
-  void notifyPesquisaPush(input).then((result) => {
+}): Promise<void> {
+  return notifyPesquisaPush(input).then((result) => {
     if (result.sent) {
       input.log?.('pesquisa_push_sent', {
         businessId: input.businessId,
@@ -185,8 +181,8 @@ export function queuePesquisaPush(input: {
   });
 }
 
-export function queueEarnPush(input: EarnNotifyInput): void {
-  void notifyEarnPush(input).then((result) => {
+export function queueEarnPush(input: EarnNotifyInput): Promise<void> {
+  return notifyEarnPush(input).then((result) => {
     if (result.sent) {
       input.log?.('earn_push_sent', {
         businessId: input.businessId,

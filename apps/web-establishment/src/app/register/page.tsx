@@ -1,15 +1,19 @@
 'use client';
 
 import { FormEvent, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   isFirebaseConfigured,
   registerStaff,
   getIdToken,
   getFirebaseAuth,
+  sendStaffEmailVerification,
+  signOutStaff,
+  firebaseErrorCode,
 } from '@/lib/firebase';
+import { registrationFinishMessage } from '@/lib/register-account';
 import { API_URL } from '@/lib/api';
+import { useBusiness } from '@/lib/business-context';
 import {
   Alert,
   Button,
@@ -23,8 +27,28 @@ import { FregoWordmark } from '@/components/brand';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import { CONTACT_EMAIL, CONTACT_MAILTO } from '@/lib/contact';
 import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
+import {
+  emptyOperatingAddress,
+  operatingAddressErrors,
+  type OperatingAddress,
+} from '@/lib/br-ufs';
+import { OperatingAddressFields } from '@/components/operating-address-fields';
 
 const REQUIRED = 'Campo obrigatório.';
+
+function registerError(err: unknown) {
+  const code = firebaseErrorCode(err);
+  if (code === 'auth/email-already-in-use') {
+    return 'Este e-mail já tem conta. Entre para continuar o cadastro.';
+  }
+  if (code === 'auth/invalid-email') return 'E-mail inválido.';
+  if (code === 'auth/weak-password') return 'Use pelo menos 6 caracteres.';
+  if (code === 'auth/too-many-requests') {
+    return 'Muitas tentativas. Espere um pouco e tente de novo.';
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return 'Não foi possível concluir o cadastro.';
+}
 
 type RegisterForm = {
   ownerName: string;
@@ -36,7 +60,7 @@ type RegisterForm = {
   type: string;
   slogan: string;
   locationName: string;
-  locationAddress: string;
+  address: OperatingAddress;
   primaryColor: string;
 };
 
@@ -48,10 +72,24 @@ const FIELD_ORDER = [
   'businessName',
   'cnpj',
   'locationName',
-  'locationAddress',
+  'address-postalCode',
+  'address-street',
+  'address-streetNumber',
+  'address-neighborhood',
+  'address-city',
+  'address-state',
 ] as const;
 
 type FieldKey = (typeof FIELD_ORDER)[number];
+
+const ADDRESS_FIELDS = [
+  'postalCode',
+  'street',
+  'streetNumber',
+  'neighborhood',
+  'city',
+  'state',
+] as const;
 
 function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
   const errors: Partial<Record<FieldKey, string>> = {};
@@ -89,9 +127,10 @@ function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
     errors.locationName = 'Use pelo menos 2 caracteres.';
   }
 
-  if (!form.locationAddress.trim()) errors.locationAddress = REQUIRED;
-  else if (form.locationAddress.trim().length < 5) {
-    errors.locationAddress = 'Use pelo menos 5 caracteres.';
+  const addressErrors = operatingAddressErrors(form.address);
+  for (const key of ADDRESS_FIELDS) {
+    const message = addressErrors[key];
+    if (message) errors[`address-${key}`] = message;
   }
 
   return errors;
@@ -99,6 +138,7 @@ function fieldErrors(form: RegisterForm): Partial<Record<FieldKey, string>> {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { refresh } = useBusiness();
   const configured = isFirebaseConfigured();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -113,7 +153,7 @@ export default function RegisterPage() {
     type: 'café',
     slogan: '',
     locationName: '',
-    locationAddress: '',
+    address: emptyOperatingAddress(),
     primaryColor: '#070707',
   });
 
@@ -149,7 +189,18 @@ export default function RegisterPage() {
     setBusy(true);
     setError(null);
     try {
-      await registerStaff(form.email, form.password);
+      const email = form.email.trim();
+      const auth = getFirebaseAuth();
+      const current = auth.currentUser;
+      if (current && current.email?.toLowerCase() !== email.toLowerCase()) {
+        await signOutStaff();
+      }
+      if (
+        !auth.currentUser ||
+        auth.currentUser.email?.toLowerCase() !== email.toLowerCase()
+      ) {
+        await registerStaff(email, form.password);
+      }
       const token = await getIdToken(true);
       if (!token) throw new Error('Não foi possível autenticar. Tente novamente.');
 
@@ -168,25 +219,25 @@ export default function RegisterPage() {
           primaryColor: form.primaryColor,
           primaryColorDark: form.primaryColor,
           locationName: form.locationName,
-          locationAddress: form.locationAddress,
+          address: form.address,
         }),
       });
       const json = await res.json();
+      if (res.status === 202) {
+        const account = getFirebaseAuth().currentUser;
+        if (account) {
+          try {
+            await sendStaffEmailVerification(account);
+          } catch {
+            // A tela de confirmação reenvia o link.
+          }
+        }
+        router.replace('/confirmar-email');
+        return;
+      }
       if (!res.ok) {
         const code = json.error as string | undefined;
-        if (code === 'ALREADY_HAS_BUSINESS') {
-          throw new Error('Este e-mail já está vinculado a uma loja.');
-        }
-        if (code === 'INVALID_TAX_ID' || code === 'INVALID_CNPJ') {
-          throw new Error('CPF ou CNPJ inválido.');
-        }
-        if (code === 'TAX_ID_REQUIRED') {
-          throw new Error('Informe o CPF ou CNPJ.');
-        }
-        if (code === 'TAX_ID_TAKEN' || code === 'CNPJ_TAKEN') {
-          throw new Error('Este CPF ou CNPJ já está cadastrado.');
-        }
-        throw new Error(code ?? `Erro HTTP ${res.status}`);
+        throw new Error(registrationFinishMessage(code ?? '') || `Erro HTTP ${res.status}`);
       }
 
       if (typeof window !== 'undefined' && json.business?.id) {
@@ -197,9 +248,12 @@ export default function RegisterPage() {
         window.localStorage.setItem(key, json.business.id);
       }
 
+      // O login do Firebase dispara um carregamento antes desta loja existir.
+      // Recarrega agora para o painel abrir já em "Aguardando aprovação".
+      await refresh();
       router.replace('/dashboard');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Não foi possível concluir o cadastro.');
+      setError(registerError(err));
     } finally {
       setBusy(false);
     }
@@ -237,8 +291,8 @@ export default function RegisterPage() {
           Cadastrar loja
         </h1>
         <p className="mt-2 text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-          Uma conta por loja. Depois do envio, a equipe Frego analisa e libera o
-          acesso.
+          Uma conta por estabelecimento. Confirmamos o e-mail antes de enviar o
+          cadastro para a equipe Frego.
         </p>
 
         <form
@@ -270,6 +324,9 @@ export default function RegisterPage() {
                 error={visibleError('email')}
                 required
               />
+              <p className="-mt-1 text-[12px] leading-snug text-[var(--color-neutral-500)]">
+                Enviaremos um link para confirmar este e-mail.
+              </p>
               <PasswordField
                 id="password"
                 label="Senha"
@@ -341,8 +398,11 @@ export default function RegisterPage() {
           </Card>
 
           <Card padding="md">
-            <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+            <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
               Unidade
+            </p>
+            <p className="mb-4 text-[13px] leading-snug text-[var(--color-neutral-500)]">
+              O dia do painel segue o estado onde vocês operam.
             </p>
             <div className="flex flex-col gap-3.5">
               <TextField
@@ -355,14 +415,17 @@ export default function RegisterPage() {
                 required
                 minLength={2}
               />
-              <TextField
-                id="locationAddress"
-                label="Endereço"
-                value={form.locationAddress}
-                onChange={(e) => setField('locationAddress', e.target.value)}
-                error={visibleError('locationAddress')}
-                required
-                minLength={5}
+              <OperatingAddressFields
+                idPrefix="address"
+                value={form.address}
+                onChange={(patch) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    address: { ...prev.address, ...patch },
+                  }))
+                }
+                errors={operatingAddressErrors(form.address)}
+                showErrors={showErrors}
               />
             </div>
           </Card>
@@ -380,7 +443,7 @@ export default function RegisterPage() {
             disabled={busy}
             className="w-full min-h-12 text-[15px]"
           >
-            {busy ? 'Enviando…' : 'Enviar para aprovação'}
+            {busy ? 'Criando conta…' : 'Criar conta'}
           </Button>
         </form>
 

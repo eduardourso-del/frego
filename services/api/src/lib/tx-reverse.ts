@@ -3,6 +3,7 @@ import { voucherFromMetadata } from './voucher.js';
 import {
   isReversalMarker,
   isReversedTx,
+  isSaiposLedger,
   roleFromMeta,
   saleIdFromMeta,
   type LedgerRole,
@@ -44,6 +45,7 @@ export function newSaleId(): string {
 }
 
 export function isStaffCounterTx(tx: StaffTx): boolean {
+  if (isSaiposLedger(tx.metadata)) return false;
   if (!tx.actorTeamMemberId) return false;
   if (isReversalMarker(tx.metadata) || isReversedTx(tx.metadata)) return false;
   if (voucherFromMetadata(tx.metadata, { createdAt: tx.createdAt })) return false;

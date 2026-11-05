@@ -1,8 +1,14 @@
 import { z } from 'zod';
+import { DEFAULT_FUSO } from './br-fuso.js';
+import {
+  addCivilDays,
+  civilDaysInclusive,
+  ymdInTimeZone,
+  zonedMidnight,
+} from './zoned-day.js';
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_DAYS = 366;
-const MS_DAY = 86_400_000;
 
 export const periodQuerySchema = z.object({
   range: z.string().optional(),
@@ -38,12 +44,8 @@ export type PeriodWindow = {
   days: number;
 };
 
-function calendarDaysInclusive(from: Date, last: Date) {
-  return Math.round((last.getTime() - from.getTime()) / MS_DAY) + 1;
-}
-
 /**
- * Preset `today` = calendar today until now.
+ * Preset `today` = civil today in `timeZone` until now.
  * Numeric presets = last N days including today, until now.
  * `from`+`to` (YYYY-MM-DD) = custom inclusive range, capped at 366 days.
  */
@@ -52,8 +54,10 @@ export function resolvePeriod(
   presets: Record<string, number | 'today'>,
   defaultRange: string,
   now = new Date(),
+  timeZone = DEFAULT_FUSO,
 ): PeriodWindow {
-  const todayStart = startOfDay(now);
+  const todayYmd = ymdInTimeZone(now, timeZone);
+  const todayStart = zonedMidnight(todayYmd, timeZone);
 
   if (
     query.from &&
@@ -61,28 +65,23 @@ export function resolvePeriod(
     ISO_DAY.test(query.from) &&
     ISO_DAY.test(query.to)
   ) {
-    let from = parseLocalDay(query.from);
-    let last = parseLocalDay(query.to);
-    if (Number.isNaN(from.getTime()) || Number.isNaN(last.getTime())) {
-      return resolvePeriod(
-        { range: defaultRange },
-        presets,
-        defaultRange,
-        now,
-      );
-    }
-    if (last < from) [from, last] = [last, from];
-    const earliest = addDays(todayStart, -(MAX_DAYS - 1));
-    if (from < earliest) from = earliest;
-    if (last > todayStart) last = todayStart;
-    const days = calendarDaysInclusive(from, last);
+    let fromYmd = query.from;
+    let lastYmd = query.to;
+    if (lastYmd < fromYmd) [fromYmd, lastYmd] = [lastYmd, fromYmd];
+    const earliest = addCivilDays(todayYmd, -(MAX_DAYS - 1));
+    if (fromYmd < earliest) fromYmd = earliest;
+    if (lastYmd > todayYmd) lastYmd = todayYmd;
+    const days = civilDaysInclusive(fromYmd, lastYmd);
+    const from = zonedMidnight(fromYmd, timeZone);
     const toExclusive =
-      last.getTime() === todayStart.getTime() ? now : addDays(last, 1);
+      lastYmd === todayYmd
+        ? now
+        : zonedMidnight(addCivilDays(lastYmd, 1), timeZone);
     return {
       key: 'custom',
       from,
       toExclusive,
-      prevFrom: addDays(from, -days),
+      prevFrom: zonedMidnight(addCivilDays(fromYmd, -days), timeZone),
       prevTo: from,
       days,
     };
@@ -96,18 +95,19 @@ export function resolvePeriod(
       key: range,
       from: todayStart,
       toExclusive: now,
-      prevFrom: addDays(todayStart, -1),
+      prevFrom: zonedMidnight(addCivilDays(todayYmd, -1), timeZone),
       prevTo: todayStart,
       days: 1,
     };
   }
   const days = spec;
-  const from = addDays(todayStart, -(days - 1));
+  const fromYmd = addCivilDays(todayYmd, -(days - 1));
+  const from = zonedMidnight(fromYmd, timeZone);
   return {
     key: range,
     from,
     toExclusive: now,
-    prevFrom: addDays(from, -days),
+    prevFrom: zonedMidnight(addCivilDays(fromYmd, -days), timeZone),
     prevTo: from,
     days,
   };

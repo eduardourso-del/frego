@@ -11,6 +11,7 @@ import { LandingOutcomes } from '@/components/landing/outcomes';
 import { LandingCampaigns } from '@/components/landing/campaigns';
 import { LandingCustomerApp } from '@/components/landing/customer-app';
 import { LandingNetwork } from '@/components/landing/network';
+import { LandingIntegrations } from '@/components/landing/integrations';
 import { LandingComparison } from '@/components/landing/comparison';
 import { LandingPricingCta } from '@/components/landing/pricing-cta';
 import { LandingFooter } from '@/components/landing/footer';
@@ -30,6 +31,7 @@ export function LandingPage() {
         <LandingCampaigns />
         <LandingCustomerApp />
         <LandingNetwork />
+        <LandingIntegrations />
         <LandingComparison />
         <LandingPricingCta />
       </main>

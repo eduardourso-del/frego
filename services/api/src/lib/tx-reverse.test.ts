@@ -63,6 +63,19 @@ describe('counter sales', () => {
     ]);
     assert.equal(sales.length, 1);
     assert.equal(sales[0]?.saleId, 's1');
+    const hidden = groupCounterSales([
+      {
+        id: 'saipos',
+        type: 'stamp',
+        quantity: 10,
+        unitKind: 'points',
+        amountCents: 5000,
+        createdAt,
+        actorTeamMemberId: 'staff',
+        metadata: { saleId: 'ext', role: 'earn', source: 'saipos' },
+      },
+    ]);
+    assert.equal(hidden.length, 0);
     assert.equal(sales[0]?.items.length, 3);
     assert.match(sales[0]?.summary ?? '', /cashback/);
     assert.match(sales[0]?.summary ?? '', /pts/);

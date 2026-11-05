@@ -5,6 +5,7 @@ import { Banknote, Cake, CalendarRange, Coins, Gift, ImageIcon, Percent, Stamp }
 import { RemoteImg } from '@/components/remote-img';
 import {
   WEEKDAY_LABELS,
+  campaignValidityLine,
   promoEndsLine,
   promoRestrictsWeekdays,
   promoWeekdays,
@@ -21,10 +22,12 @@ type CampaignCardPreviewProps = {
   unitsNeeded: number;
   pointsPerReal?: number;
   cashbackPercent?: number;
+  cashbackUseMultiple?: number | null;
   rewardTitle: string;
   rewardDescription?: string;
   rewardImageUrl?: string | null;
   promoHint?: string;
+  birthdayHint?: string;
   startsOn?: string | null;
   endsOn?: string | null;
   weekdays?: number[];
@@ -40,22 +43,30 @@ export function CampaignCardPreview({
   unitsNeeded,
   pointsPerReal = 1,
   cashbackPercent = 0,
+  cashbackUseMultiple = null,
   rewardTitle,
   rewardDescription,
   rewardImageUrl,
   promoHint,
+  birthdayHint,
+  startsOn,
   endsOn,
   weekdays,
 }: CampaignCardPreviewProps) {
-  const needed = Math.max(1, Math.min(unitsNeeded || 10, 24));
+  const goal = Math.max(1, unitsNeeded || 1);
+  // Stamp dots stay capped so a long cartela does not blow up the card.
+  const stampSlots = Math.min(goal, 24);
+  const needed = campaignType === 'stamps' ? stampSlots : goal;
   const sampleProgress =
     campaignType === 'stamps'
-      ? Math.min(3, Math.max(0, needed - 1))
-      : Math.min(Math.round(needed * 0.35), Math.max(0, needed - 1));
+      ? Math.min(3, Math.max(0, stampSlots - 1))
+      : Math.min(Math.round(goal * 0.35), Math.max(0, goal - 1));
   const remaining = Math.max(0, needed - sampleProgress);
   const letter = businessName.trim().charAt(0).toUpperCase() || 'V';
   const reward = rewardTitle.trim() || 'Recompensa';
   const hasImage = Boolean(rewardImageUrl?.trim());
+  const validity =
+    campaignType === 'promo' ? null : campaignValidityLine({ startsOn, endsOn });
 
   return (
     <div>
@@ -154,12 +165,17 @@ export function CampaignCardPreview({
               <p className="truncate text-[15px] font-semibold tracking-[-0.02em]">
                 {campaignName.trim() || 'Sua campanha'}
               </p>
+              {rewardDescription?.trim() ? (
+                <p className="mt-1 line-clamp-2 text-[12px] font-medium leading-snug text-[var(--color-neutral-500)]">
+                  {rewardDescription.trim()}
+                </p>
+              ) : null}
 
               {campaignType === 'birthday' ? (
                 <div className="mt-2 flex items-center gap-2 rounded-[10px] bg-[#FDF2F8] px-2.5 py-2">
                   <span className="text-[14px]">🎂</span>
                   <p className="text-[11px] font-medium text-[#9D174D]">
-                    {reward} · 1× ao ano
+                    {reward} · {birthdayHint ?? '1× ao ano'}
                   </p>
                 </div>
               ) : campaignType === 'promo' ? (
@@ -179,6 +195,11 @@ export function CampaignCardPreview({
                   <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
                     {cashbackPercent}% de volta · use no caixa
                   </p>
+                  {cashbackUseMultiple != null && cashbackUseMultiple >= 2 ? (
+                    <p className="mt-1 text-[11px] font-medium text-[var(--color-neutral-500)]">
+                      Em compras de {cashbackUseMultiple}× o valor
+                    </p>
+                  ) : null}
                 </>
               ) : campaignType === 'stamps' ? (
                 <>
@@ -248,11 +269,14 @@ export function CampaignCardPreview({
           {!hasImage && campaignType !== 'birthday' && campaignType !== 'cashback' && campaignType !== 'promo' && (
             <p className="mt-2 truncate text-[12px] font-medium text-[var(--color-neutral-500)]">
               {reward}
-              {rewardDescription?.trim()
-                ? ` · ${rewardDescription.trim()}`
-                : ''}
             </p>
           )}
+
+          {validity ? (
+            <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
+              {validity}
+            </p>
+          ) : null}
 
           <button
             type="button"

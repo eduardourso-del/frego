@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
 import 'adaptive.dart';
+import 'cashback_copy.dart';
 import 'promo_copy.dart';
 
 /// Compact loyalty card — light surface, brand color as accent only.
@@ -28,6 +29,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.pointsPerReal,
     this.cashbackPercent,
     this.cashbackBalanceCents,
+    this.cashbackUseMultiple,
     this.busy = false,
     this.audienceUnlocked = false,
     this.audienceLabel,
@@ -54,6 +56,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
   final int? pointsPerReal;
   final int? cashbackPercent;
   final int? cashbackBalanceCents;
+  final int? cashbackUseMultiple;
   final bool busy;
   final VoidCallback? onRedeem;
   /// Exclusive audience unlock chip (matched segment promo).
@@ -90,6 +93,9 @@ class LoyaltyCampaignCard extends StatelessWidget {
     final accent = Color(primary);
     final hasImage =
         rewardImageUrl != null && rewardImageUrl!.trim().isNotEmpty;
+    final validity = promoCalendar == null
+        ? null
+        : campaignValidityLine(promoCalendar!);
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,6 +180,21 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 color: FregoColors.ink,
                               ),
                             ),
+                            if (rewardDescription != null &&
+                                rewardDescription!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                rewardDescription!.trim(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w500,
+                                  color: FregoColors.neutral500,
+                                ),
+                              ),
+                            ],
                             if (scopeLabel != null &&
                                 scopeLabel!.trim().isNotEmpty) ...[
                               const SizedBox(height: 4),
@@ -209,6 +230,10 @@ class LoyaltyCampaignCard extends StatelessWidget {
                               _CashbackBody(
                                 balanceCents: cashbackBalanceCents ?? 0,
                                 percent: cashbackPercent ?? 0,
+                                statusHint: statusHint,
+                                useMultiple: readCashbackUseMultiple(
+                                  cashbackUseMultiple,
+                                ),
                               )
                             else if (_isSpend)
                               _PointsBody(
@@ -220,6 +245,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 canRedeem: canRedeem,
                                 showRewardInline: !hasImage,
                                 accent: accent,
+                                statusHint: statusHint,
                               )
                             else
                               _StampsBody(
@@ -239,6 +265,10 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (!_isPromo && validity != null) ...[
+                    const SizedBox(height: 8),
+                    CampaignValidityRow(line: validity),
+                  ],
                   if (!_isBirthday && !_isPromo && !_isCashback && !hasImage) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -534,10 +564,14 @@ class _CashbackBody extends StatelessWidget {
   const _CashbackBody({
     required this.balanceCents,
     required this.percent,
+    this.statusHint,
+    this.useMultiple,
   });
 
   final int balanceCents;
   final int percent;
+  final String? statusHint;
+  final int? useMultiple;
 
   String get _balance {
     final v = balanceCents / 100;
@@ -587,6 +621,30 @@ class _CashbackBody extends StatelessWidget {
             color: FregoColors.neutral500,
           ),
         ),
+        if (useMultiple != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            cashbackMultipleOffer(useMultiple!),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: FregoColors.cashback,
+            ),
+          ),
+        ],
+        if (statusHint != null && statusHint!.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            statusHint!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: FregoColors.neutral500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -711,6 +769,7 @@ class _PointsBody extends StatelessWidget {
     required this.showRewardInline,
     required this.accent,
     this.pointsPerReal,
+    this.statusHint,
   });
 
   final int current;
@@ -721,6 +780,7 @@ class _PointsBody extends StatelessWidget {
   final bool showRewardInline;
   final Color accent;
   final int? pointsPerReal;
+  final String? statusHint;
 
   @override
   Widget build(BuildContext context) {
@@ -787,6 +847,19 @@ class _PointsBody extends StatelessWidget {
             color: canRedeem ? accent : FregoColors.neutral500,
           ),
         ),
+        if (statusHint != null && statusHint!.trim().isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            statusHint!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: FregoColors.neutral500,
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -852,7 +925,7 @@ class _PromoBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ends = calendar != null ? promoEndsLine(calendar!) : null;
+    final ends = calendar != null ? campaignValidityLine(calendar!) : null;
     final days = calendar?.weekdays ?? const <int>[];
     final restricted = calendar?.restrictsWeekdays == true;
     final weekdaysText =
@@ -889,28 +962,7 @@ class _PromoBody extends StatelessWidget {
           ),
           if (ends != null) ...[
             const SizedBox(height: 6),
-            Row(
-              children: [
-                const Icon(
-                  FregoIcons.calendar,
-                  size: 12,
-                  color: FregoColors.promo,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    ends,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: FregoColors.promo,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            CampaignValidityRow(line: ends, onPromoSurface: true),
           ],
           const SizedBox(height: 6),
           if (restricted)
@@ -951,6 +1003,55 @@ class _PromoBody extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+class CampaignValidityRow extends StatelessWidget {
+  const CampaignValidityRow({
+    super.key,
+    required this.line,
+    this.onPromoSurface = false,
+  });
+
+  final String line;
+
+  /// The promoção body is already on the promo background, so the row
+  /// sits directly on it. Other cards get the same pale chip.
+  final bool onPromoSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final row = Row(
+      children: [
+        const Icon(
+          FregoIcons.calendar,
+          size: 12,
+          color: FregoColors.promo,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            line,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: FregoColors.promo,
+            ),
+          ),
+        ),
+      ],
+    );
+    if (onPromoSurface) return row;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: FregoColors.promoBg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: row,
     );
   }
 }

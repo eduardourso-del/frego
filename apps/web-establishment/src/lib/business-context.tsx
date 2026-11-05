@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -30,15 +31,36 @@ export type BusinessBrand = {
   cashbackPercent?: number;
   cashbackMaxCents?: number | null;
   cashbackMinPurchaseCents?: number | null;
+  /** Múltiplo from 2 up. Null = Usar can take up to the compra. */
+  cashbackUseMultiple?: number | null;
   /** null = não expiram. */
   stampsExpireDays?: number | null;
   pointsExpireDays?: number | null;
   cashbackExpireDays?: number | null;
+  /** Antecedência. Off sends no wallet Lembrete. The count stays. */
+  expiryNoticeEnabled?: boolean;
+  expiryNoticeDays?: number;
+  /** IANA zone from the operating UF. Null until Configurações saves it. */
+  timeZone?: string | null;
   role?: string;
+  /** Nome informado no cadastro (dono) ou no convite da equipe. */
+  displayName?: string | null;
   /** Campanhas ativas que o caixa pode registrar: carimbos, pontos, cashback. */
   activeEarnKinds?: Array<'stamps' | 'points' | 'cashback'>;
   billing?: BillingView | null;
 };
+
+/** Nome da pessoa logada nesta loja. Vazio quando o cadastro não guardou um. */
+export function memberDisplayName(
+  businesses: BusinessBrand[],
+  businessId: string | null | undefined,
+): string | null {
+  if (!businessId) return null;
+  const name = businesses
+    .find((b) => b.id === businessId)
+    ?.displayName?.trim();
+  return name || null;
+}
 
 type BusinessContextValue = {
   business: BusinessBrand | null;
@@ -77,15 +99,49 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const [businessId, setBusinessIdState] = useState<string | null>(null);
   const [business, setBusiness] = useState<BusinessBrand | null>(null);
   const [loading, setLoading] = useState(true);
+  // Cadastro autentica o Firebase antes de existir a loja. O refresh desse
+  // login pode voltar vazio e não pode apagar o carregamento feito depois.
+  const userRef = useRef(user);
+  userRef.current = user;
+  const refreshGen = useRef(0);
+
+  const businessesRef = useRef<BusinessBrand[]>([]);
+  businessesRef.current = businesses;
+  const switchGen = useRef(0);
+  const activeIdRef = useRef<string | null>(null);
 
   const setBusinessId = useCallback(
     (id: string) => {
+      const gen = ++switchGen.current;
+      activeIdRef.current = id;
       setBusinessIdState(id);
       if (typeof window !== 'undefined' && user?.uid) {
         localStorage.setItem(storageKeyFor(user.uid), id);
       }
+      const fromList = businessesRef.current.find((b) => b.id === id);
+      if (fromList) setBusiness(fromList);
+      void (async () => {
+        const token = await getToken();
+        if (!token || gen !== switchGen.current) return;
+        const res = await fetch(`${API_URL}/business`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Business-Id': id,
+          },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || gen !== switchGen.current) return;
+        const next = json.business as BusinessBrand;
+        const listed = businessesRef.current.find((b) => b.id === id) ?? fromList;
+        setBusiness({
+          ...listed,
+          ...next,
+          role: next.role ?? listed?.role,
+          displayName: next.displayName ?? listed?.displayName,
+        });
+      })();
     },
-    [user?.uid],
+    [getToken, user?.uid],
   );
 
   const authHeaders = useCallback(async () => {
@@ -108,7 +164,12 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!user) {
+    const gen = ++refreshGen.current;
+    const current = () => gen === refreshGen.current;
+    const currentUser = userRef.current;
+
+    if (!currentUser) {
+      if (!current()) return;
       resetBusinessState();
       setLoading(false);
       return;
@@ -117,6 +178,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const token = await getToken();
+      if (!current()) return;
       if (!token) {
         resetBusinessState();
         return;
@@ -124,7 +186,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
       const stored =
         typeof window !== 'undefined'
-          ? localStorage.getItem(storageKeyFor(user.uid))
+          ? localStorage.getItem(storageKeyFor(currentUser.uid))
           : null;
       // Preferência só se ainda for válida depois da listagem
       const preferId = businessId ?? stored ?? null;
@@ -139,12 +201,14 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         headers: listHeaders,
       });
       const listJson = await listRes.json();
+      if (!current()) return;
       if (!listRes.ok) {
         throw new Error(listJson.error ?? 'Não foi possível listar as lojas.');
       }
 
       const list = (listJson.businesses ?? []) as BusinessBrand[];
       setBusinesses(list);
+      businessesRef.current = list;
 
       const activeId =
         list.find((b) => b.id === preferId)?.id ?? list[0]?.id ?? null;
@@ -153,14 +217,14 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
         resetBusinessState();
         clearLegacyStorage();
         if (typeof window !== 'undefined') {
-          localStorage.removeItem(storageKeyFor(user.uid));
+          localStorage.removeItem(storageKeyFor(currentUser.uid));
         }
         return;
       }
 
       setBusinessIdState(activeId);
       if (typeof window !== 'undefined') {
-        localStorage.setItem(storageKeyFor(user.uid), activeId);
+        localStorage.setItem(storageKeyFor(currentUser.uid), activeId);
         clearLegacyStorage();
       }
 
@@ -170,21 +234,27 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       };
       const res = await fetch(`${API_URL}/business`, { headers });
       const json = await res.json();
+      if (!current()) return;
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar a loja.');
-      const detail = json.business as BusinessBrand;
-      const listed = list.find((item) => item.id === activeId);
+      if (activeIdRef.current && activeIdRef.current !== activeId) return;
+      const next = json.business as BusinessBrand;
+      const fromList = list.find((b) => b.id === activeId);
+      activeIdRef.current = activeId;
       setBusiness({
-        ...listed,
-        ...detail,
-        role: detail.role ?? listed?.role,
-        billing: detail.billing ?? listed?.billing ?? null,
+        ...fromList,
+        ...next,
+        role: next.role ?? fromList?.role,
+        displayName: next.displayName ?? fromList?.displayName,
+        billing: next.billing ?? fromList?.billing ?? null,
       });
     } catch {
+      if (!current()) return;
+      if (activeIdRef.current && activeIdRef.current !== (businessId ?? null)) return;
       resetBusinessState();
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
-  }, [getToken, businessId, user, resetBusinessState]);
+  }, [getToken, businessId, resetBusinessState]);
 
   const updateBusiness = useCallback(
     async (patch: Partial<BusinessBrand>) => {
@@ -200,12 +270,17 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
       const next = json.business as BusinessBrand;
-      setBusiness((prev) => ({
-        ...prev,
-        ...next,
-        role: next.role ?? prev?.role,
-        billing: next.billing ?? prev?.billing ?? null,
-      }));
+      setBusiness((current) =>
+        current
+          ? {
+              ...current,
+              ...next,
+              role: next.role ?? current.role,
+              displayName: next.displayName ?? current.displayName,
+              billing: next.billing ?? current.billing ?? null,
+            }
+          : next,
+      );
       setBusinesses((prev) =>
         prev.map((b) =>
           b.id === next.id
@@ -213,6 +288,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
                 ...b,
                 ...next,
                 role: next.role ?? b.role,
+                displayName: next.displayName ?? b.displayName,
                 billing: next.billing ?? b.billing ?? null,
               }
             : b,

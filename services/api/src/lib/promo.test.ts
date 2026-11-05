@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  campaignDateStatus,
   evaluatePromoEntitlement,
   evaluateRedeemQuota,
   redemptionInPeriod,
@@ -25,6 +26,32 @@ describe('America/Sao_Paulo calendar', () => {
     assert.equal(startOfWeekMonday('2026-12-20'), '2026-12-14'); // Sunday
     assert.equal(startOfWeekMonday('2026-12-21'), '2026-12-21'); // Monday
     assert.equal(startOfWeekMonday('2026-12-24'), '2026-12-21'); // Thursday
+  });
+});
+
+describe('campaignDateStatus', () => {
+  it('stays open when the shop did not set dates', () => {
+    const got = campaignDateStatus(
+      { startsOn: null, endsOn: null },
+      spNoon('2026-12-15'),
+    );
+    assert.equal(got.open, true);
+    assert.equal(got.lockedReason, null);
+  });
+
+  it('locks before the start and after the end, including the end day', () => {
+    const campaign = { startsOn: '2026-12-01', endsOn: '2026-12-31' };
+    assert.equal(
+      campaignDateStatus(campaign, spNoon('2026-11-30')).open,
+      false,
+    );
+    assert.equal(
+      campaignDateStatus(campaign, spNoon('2026-11-30')).unlocksAt,
+      '2026-12-01',
+    );
+    assert.equal(campaignDateStatus(campaign, spNoon('2026-12-01')).open, true);
+    assert.equal(campaignDateStatus(campaign, spNoon('2026-12-31')).open, true);
+    assert.equal(campaignDateStatus(campaign, spNoon('2027-01-01')).open, false);
   });
 });
 

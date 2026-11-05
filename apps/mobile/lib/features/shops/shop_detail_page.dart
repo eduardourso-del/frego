@@ -7,6 +7,7 @@ import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/cashback_copy.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
@@ -21,9 +22,15 @@ class ShopDetailPage extends StatefulWidget {
   const ShopDetailPage({
     super.key,
     required this.businessId,
+    this.explorationCity,
+    this.explorationState,
   });
 
   final String businessId;
+
+  /// Set when opened from Exploração. Filters Campanhas and orders unidades.
+  final String? explorationCity;
+  final String? explorationState;
 
   @override
   State<ShopDetailPage> createState() => _ShopDetailPageState();
@@ -53,7 +60,15 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       }
     });
     try {
-      final data = await fetchMyWallet(businessId: widget.businessId);
+      final exploring = widget.explorationCity != null &&
+          widget.explorationState != null;
+      final data = exploring
+          ? await fetchExplorationPlace(
+              businessId: widget.businessId,
+              city: widget.explorationCity!,
+              state: widget.explorationState!,
+            )
+          : await fetchMyWallet(businessId: widget.businessId);
       Map<String, dynamic>? convite;
       try {
         convite = await fetchMyConvite(widget.businessId);
@@ -92,7 +107,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
       _isFavorite = next;
     });
     try {
-      await setMembershipFavorite(
+      await setFavorite(
         businessId: widget.businessId,
         isFavorite: next,
       );
@@ -389,7 +404,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 Expanded(
                   child: Text(
                     addressLine,
-                    maxLines: 2,
+                    maxLines: 8,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
@@ -431,6 +446,19 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 ),
             ],
           ),
+          if (cashbackUseMultipleOf(campaigns) != null &&
+              (earnKinds.contains('cashback') || cashbackCents > 0)) ...[
+            const SizedBox(height: 10),
+            Text(
+              cashbackMultipleOffer(cashbackUseMultipleOf(campaigns)!),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.78),
+                fontSize: 12,
+                height: 1.3,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
           if (expiryLine != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -646,7 +674,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
           final unlocksAt = c['unlocksAt'] as String?;
           final campaignId = c['campaignId'] as String? ?? '';
 
-          late final String buttonLabel;
+          late String buttonLabel;
           String? statusHint;
           final audienceEligible = c['audienceEligible'] == true;
           final audienceLocked = c['lockedReason'] == 'audience';
@@ -717,6 +745,17 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                         : 'Continuar acumulando';
           }
 
+          if (!isPromo) {
+            final window = outsideDatesLine(
+              lockedReason: lockedReason,
+              unlocksAt: unlocksAt,
+            );
+            if (window != null) {
+              statusHint = window;
+              if (!isCashback) buttonLabel = 'Fora do período';
+            }
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: LoyaltyCampaignCard(
@@ -737,9 +776,9 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               pointsPerReal: business?['pointsPerReal'] as int?,
               cashbackPercent: (c['cashbackPercent'] as num?)?.toInt(),
               cashbackBalanceCents: cashbackBalance,
+              cashbackUseMultiple: (c['cashbackUseMultiple'] as num?)?.toInt(),
               busy: _redeeming,
-              promoCalendar:
-                  isPromo ? PromoCalendar.fromCampaign(c) : null,
+              promoCalendar: PromoCalendar.fromCampaign(c),
               audienceUnlocked: audienceEligible && !audienceLocked,
               audienceLabel: unlockMessage ??
                   (audienceEligible ? 'Conquista liberada pra você' : null),
@@ -757,6 +796,8 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                         context,
                         CampaignDetailPage(
                           businessId: widget.businessId,
+                          explorationCity: widget.explorationCity,
+                          explorationState: widget.explorationState,
                           campaignId: campaignId,
                         ),
                       );
@@ -795,6 +836,7 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
   }
 
   String? _primaryAddressLine(List<Map<String, dynamic>> locations) {
+    final lines = <String>[];
     for (final loc in locations) {
       final address = (loc['address'] as String?)?.trim() ?? '';
       if (address.isEmpty) continue;
@@ -805,9 +847,10 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               locations.length > 1
           ? '$locName · $address'
           : address;
-      return closed ? '$base · fechado' : base;
+      lines.add(closed ? '$base · fechado' : base);
     }
-    return null;
+    if (lines.isEmpty) return null;
+    return lines.join('\n');
   }
 
   String? _balanceExpiryLine({

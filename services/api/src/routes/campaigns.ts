@@ -46,9 +46,16 @@ const campaignFields = z.object({
     .default('stamps'),
   status: z.nativeEnum(CampaignStatus).optional(),
   stampsNeeded: z.number().int().positive().max(10_000).optional(),
-  pointsPerReal: z.number().int().positive().max(100).optional(),
+  pointsPerReal: z.number().int().positive().max(1000).optional(),
   rewardTitle: z.string().max(80).optional(),
-  rewardDescription: z.string().max(200).optional(),
+  rewardDescription: z
+    .union([z.string().max(200), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v == null) return v;
+      const trimmed = v.trim();
+      return trimmed.length ? trimmed : null;
+    }),
   rewardImageUrl: z
     .union([z.string().url().max(2000), z.literal(''), z.null()])
     .optional()
@@ -78,6 +85,8 @@ const campaignFields = z.object({
     ])
     .optional(),
   cartela: z.boolean().optional(),
+  birthdayWindow: z.enum(['days', 'month']).optional(),
+  birthdayWindowDays: z.number().int().min(1).max(90).optional(),
 });
 
 function parseDateOnly(value: string | null | undefined): Date | null | undefined {
@@ -90,6 +99,31 @@ function noMetaType(type: string) {
   return type === 'birthday' || type === 'cashback' || type === 'promo';
 }
 
+function birthdayWindowWrite(
+  body: {
+    type?: string;
+    birthdayWindow?: 'days' | 'month';
+    birthdayWindowDays?: number;
+  },
+  existing?: {
+    type: string;
+    birthdayWindow: 'days' | 'month';
+    birthdayWindowDays: number;
+  } | null,
+): { birthdayWindow: 'days' | 'month'; birthdayWindowDays: number } | null {
+  const type = body.type ?? existing?.type;
+  if (type !== 'birthday') return null;
+  const treatAsCreate = !existing || existing.type !== 'birthday';
+  return {
+    birthdayWindow:
+      body.birthdayWindow ??
+      (treatAsCreate ? 'days' : existing.birthdayWindow),
+    birthdayWindowDays:
+      body.birthdayWindowDays ??
+      (treatAsCreate ? 7 : existing.birthdayWindowDays),
+  };
+}
+
 function promoError(
   body: {
     type: string;
@@ -100,15 +134,13 @@ function promoError(
     rewardTitle?: string;
   },
 ): string | null {
-  if (body.type !== 'promo' && body.type !== 'stamps') return null;
   if (body.type === 'promo' && !(body.rewardTitle?.trim())) {
     return 'REWARD_TITLE_REQUIRED';
   }
-  if (body.type === 'promo') {
-    const start = body.startsOn ?? null;
-    const end = body.endsOn ?? null;
-    if (start && end && start > end) return 'INVALID_PROMO_DATES';
-  }
+  const start = body.startsOn ?? null;
+  const end = body.endsOn ?? null;
+  if (start && end && start > end) return 'INVALID_PROMO_DATES';
+  if (body.type !== 'promo' && body.type !== 'stamps') return null;
   if (body.redeemMax != null && !body.redeemPeriod) {
     return 'REDEEM_PERIOD_REQUIRED';
   }
@@ -165,6 +197,22 @@ function stampQuotaWrite(
   return { redeemMax, redeemPeriod };
 }
 
+function scheduleDates(
+  body: { startsOn?: string | null; endsOn?: string | null },
+  existing?: { startsOn: Date | null; endsOn: Date | null },
+) {
+  return {
+    startsOn:
+      body.startsOn !== undefined
+        ? (parseDateOnly(body.startsOn) ?? null)
+        : (existing?.startsOn ?? null),
+    endsOn:
+      body.endsOn !== undefined
+        ? (parseDateOnly(body.endsOn) ?? null)
+        : (existing?.endsOn ?? null),
+  };
+}
+
 function promoWriteData(
   body: {
     type?: string;
@@ -184,11 +232,11 @@ function promoWriteData(
   },
 ) {
   const type = body.type ?? existing?.type ?? 'stamps';
+  const dates = scheduleDates(body, existing);
   if (type === 'stamps') {
     const quota = stampQuotaWrite(body, existing);
     return {
-      startsOn: null as Date | null,
-      endsOn: null as Date | null,
+      ...dates,
       weekdays: [] as number[],
       redeemMax: quota.redeemMax,
       redeemPeriod: quota.redeemPeriod,
@@ -196,8 +244,7 @@ function promoWriteData(
   }
   if (type !== 'promo') {
     return {
-      startsOn: null as Date | null,
-      endsOn: null as Date | null,
+      ...dates,
       weekdays: [] as number[],
       redeemMax: null as number | null,
       redeemPeriod: null as null,
@@ -205,18 +252,6 @@ function promoWriteData(
   }
 
   const treatAsCreate = !existing || existing.type !== 'promo';
-  const startsOn =
-    body.startsOn !== undefined
-      ? parseDateOnly(body.startsOn) ?? null
-      : treatAsCreate
-        ? null
-        : existing.startsOn;
-  const endsOn =
-    body.endsOn !== undefined
-      ? parseDateOnly(body.endsOn) ?? null
-      : treatAsCreate
-        ? null
-        : existing.endsOn;
   const weekdays =
     body.weekdays !== undefined
       ? normalizeWeekdays(body.weekdays)
@@ -248,7 +283,7 @@ function promoWriteData(
               | 'campaign'
               | null);
 
-  return { startsOn, endsOn, weekdays, redeemMax, redeemPeriod };
+  return { ...dates, weekdays, redeemMax, redeemPeriod };
 }
 
 async function assertAudienceBelongs(
@@ -296,6 +331,214 @@ async function assertSingleActiveBirthday(
     'birthday',
     excludeId,
   );
+}
+
+export async function patchBusinessCampaign(input: {
+  businessId: string;
+  campaignId: string;
+  body: unknown;
+  log?: (msg: string, extra?: Record<string, unknown>) => void;
+}) {
+  const body = campaignFields.partial().parse(input.body);
+  const existing = await prisma.campaign.findFirst({
+    where: { id: input.campaignId, businessId: input.businessId },
+  });
+  if (!existing) {
+    return { ok: false as const, status: 404, body: { error: 'NOT_FOUND' } };
+  }
+
+  const nextType = body.type ?? existing.type;
+  const nextStatus = body.status ?? existing.status;
+
+  if (
+    nextType === 'spend' &&
+    nextStatus === 'active' &&
+    body.pointsPerReal == null &&
+    existing.pointsPerReal == null
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'POINTS_PER_REAL_REQUIRED' },
+    };
+  }
+
+  const nextCashbackPercent =
+    body.cashbackPercent !== undefined
+      ? body.cashbackPercent
+      : existing.cashbackPercent;
+  if (
+    nextType === 'cashback' &&
+    nextStatus === 'active' &&
+    !(nextCashbackPercent && nextCashbackPercent > 0)
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'CASHBACK_PERCENT_REQUIRED' },
+    };
+  }
+
+  const nextReward =
+    body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
+  if (
+    (nextType === 'birthday' || nextType === 'promo') &&
+    !(nextReward?.trim())
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'REWARD_TITLE_REQUIRED' },
+    };
+  }
+  const promoErr = promoError({
+    type: nextType,
+    startsOn:
+      body.startsOn !== undefined ? body.startsOn : civilYmd(existing.startsOn),
+    endsOn:
+      body.endsOn !== undefined ? body.endsOn : civilYmd(existing.endsOn),
+    redeemMax:
+      body.redeemMax !== undefined ? body.redeemMax : existing.redeemMax,
+    redeemPeriod:
+      body.redeemPeriod !== undefined
+        ? body.redeemPeriod
+        : existing.redeemPeriod,
+    rewardTitle: nextReward ?? undefined,
+  });
+  if (promoErr) {
+    return { ok: false as const, status: 400, body: { error: promoErr } };
+  }
+
+  if (
+    body.audienceSegmentId &&
+    !(await assertAudienceBelongs(input.businessId, body.audienceSegmentId))
+  ) {
+    return {
+      ok: false as const,
+      status: 400,
+      body: { error: 'INVALID_AUDIENCE' },
+    };
+  }
+
+  const dupBirthday = await assertSingleActiveBirthday(
+    input.businessId,
+    nextStatus,
+    nextType,
+    input.campaignId,
+  );
+  if (dupBirthday) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        error: 'BIRTHDAY_CAMPAIGN_EXISTS',
+        existingId: dupBirthday.id,
+        existingName: dupBirthday.name,
+      },
+    };
+  }
+
+  const {
+    locationIds,
+    audienceSegmentId,
+    startsOn: _startsOn,
+    endsOn: _endsOn,
+    weekdays: _weekdays,
+    redeemMax: _redeemMax,
+    redeemPeriod: _redeemPeriod,
+    cartela: requestedCartela,
+    birthdayWindow: _birthdayWindow,
+    birthdayWindowDays: _birthdayWindowDays,
+    ...data
+  } = body;
+  const cartelaWrite = resolveCartelaWrite({
+    nextType,
+    requested: requestedCartela,
+    existing: {
+      type: existing.type,
+      cartela: existing.cartela,
+      activatedAt: existing.activatedAt,
+    },
+  });
+  if (!cartelaWrite.ok) {
+    return {
+      ok: false as const,
+      status: cartelaWrite.error === 'CARTELA_LOCKED' ? 409 : 400,
+      body: { error: cartelaWrite.error, message: cartelaWrite.message },
+    };
+  }
+  const promo = promoWriteData({ ...body, type: nextType }, existing);
+  const birthday = birthdayWindowWrite({ ...body, type: nextType }, existing);
+  const campaign = await prisma.$transaction(async (tx) => {
+    if (locationIds) {
+      await tx.campaignLocation.deleteMany({
+        where: { campaignId: input.campaignId },
+      });
+      if (locationIds.length) {
+        await tx.campaignLocation.createMany({
+          data: locationIds.map((locationId: string) => ({
+            campaignId: input.campaignId,
+            locationId,
+          })),
+        });
+      }
+    }
+    return tx.campaign.update({
+      where: { id: input.campaignId },
+      data: {
+        ...data,
+        type: data.type as CampaignType | undefined,
+        stampsNeeded: noMetaType(nextType)
+          ? 1
+          : (data.stampsNeeded ?? existing.stampsNeeded),
+        pointsPerReal:
+          nextType === 'stamps' ||
+          nextType === 'birthday' ||
+          nextType === 'cashback' ||
+          nextType === 'promo'
+            ? null
+            : (data.pointsPerReal ?? existing.pointsPerReal ?? 1),
+        cashbackPercent:
+          nextType === 'cashback'
+            ? (data.cashbackPercent ?? existing.cashbackPercent ?? 0)
+            : null,
+        startsOn: promo.startsOn,
+        endsOn: promo.endsOn,
+        weekdays: promo.weekdays,
+        redeemMax: promo.redeemMax,
+        redeemPeriod: promo.redeemPeriod,
+        ...(birthday ?? {}),
+        ...(audienceSegmentId !== undefined ? { audienceSegmentId } : {}),
+        cartela: cartelaWrite.cartela,
+        activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
+      },
+      include: {
+        locations: true,
+        audienceSegment: { select: { id: true, name: true } },
+      },
+    });
+  });
+
+  const nextAudienceId =
+    audienceSegmentId !== undefined
+      ? audienceSegmentId
+      : existing.audienceSegmentId;
+  if (
+    shouldQueueCampaignAudiencePush({
+      previousStatus: existing.status,
+      nextStatus: campaign.status,
+      audienceSegmentId: nextAudienceId,
+      alreadySent: Boolean(existing.audiencePushSentAt),
+    })
+  ) {
+    queueCampaignAudiencePush({
+      campaignId: campaign.id,
+      businessId: input.businessId,
+      log: input.log ?? (() => {}),
+    });
+  }
+
+  return { ok: true as const, campaign };
 }
 
 export const campaignRoutes: FastifyPluginAsync = async (app) => {
@@ -413,6 +656,7 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       ? 1
       : (body.stampsNeeded ?? (body.type === 'spend' ? 100 : 10));
     const promo = promoWriteData(body);
+    const birthday = birthdayWindowWrite(body);
     const cartelaWrite = resolveCartelaWrite({
       nextType: body.type,
       requested: body.cartela,
@@ -448,6 +692,7 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
         weekdays: promo.weekdays,
         redeemMax: promo.redeemMax,
         redeemPeriod: promo.redeemPeriod,
+        ...(birthday ?? {}),
         locations: body.locationIds?.length
           ? {
               create: body.locationIds.map((locationId) => ({ locationId })),
@@ -483,190 +728,23 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ error: 'FORBIDDEN' });
     }
     const { id } = request.params as { id: string };
-    const body = campaignFields.partial().parse(request.body);
-
-    const existing = await prisma.campaign.findFirst({
-      where: { id, businessId: auth.businessId },
-    });
-    if (!existing) {
-      return reply.code(404).send({ error: 'NOT_FOUND' });
-    }
-
-    const nextType = body.type ?? existing.type;
-    const nextStatus = body.status ?? existing.status;
-
-    if (
-      nextType === 'spend' &&
-      nextStatus === 'active' &&
-      body.pointsPerReal == null &&
-      existing.pointsPerReal == null
-    ) {
-      return reply.code(400).send({ error: 'POINTS_PER_REAL_REQUIRED' });
-    }
-
-    const nextCashbackPercent =
-      body.cashbackPercent !== undefined
-        ? body.cashbackPercent
-        : existing.cashbackPercent;
-    if (
-      nextType === 'cashback' &&
-      nextStatus === 'active' &&
-      !(nextCashbackPercent && nextCashbackPercent > 0)
-    ) {
-      return reply.code(400).send({ error: 'CASHBACK_PERCENT_REQUIRED' });
-    }
-
-    const nextReward =
-      body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
-    if (
-      (nextType === 'birthday' || nextType === 'promo') &&
-      !(nextReward?.trim())
-    ) {
-      return reply.code(400).send({ error: 'REWARD_TITLE_REQUIRED' });
-    }
-    const promoErr = promoError({
-      type: nextType,
-      startsOn:
-        body.startsOn !== undefined
-          ? body.startsOn
-          : civilYmd(existing.startsOn),
-      endsOn:
-        body.endsOn !== undefined ? body.endsOn : civilYmd(existing.endsOn),
-      redeemMax:
-        body.redeemMax !== undefined ? body.redeemMax : existing.redeemMax,
-      redeemPeriod:
-        body.redeemPeriod !== undefined
-          ? body.redeemPeriod
-          : existing.redeemPeriod,
-      rewardTitle: nextReward ?? undefined,
-    });
-    if (promoErr) {
-      return reply.code(400).send({ error: promoErr });
-    }
-
-    if (
-      body.audienceSegmentId &&
-      !(await assertAudienceBelongs(auth.businessId, body.audienceSegmentId))
-    ) {
-      return reply.code(400).send({ error: 'INVALID_AUDIENCE' });
-    }
-    if (body.audienceSegmentId) {
+    const audienceId = (
+      request.body as { audienceSegmentId?: string | null } | null
+    )?.audienceSegmentId;
+    if (audienceId) {
       const billing = await loadBilling(auth.businessId);
       if (billing && !billing.access.features.audiences) {
         return reply.code(403).send({ error: 'PLAN_REQUIRED', feature: 'audiences' });
       }
     }
-
-    const dupBirthday = await assertSingleActiveBirthday(
-      auth.businessId,
-      nextStatus,
-      nextType,
-      id,
-    );
-    if (dupBirthday) {
-      return reply.code(409).send({
-        error: 'BIRTHDAY_CAMPAIGN_EXISTS',
-        existingId: dupBirthday.id,
-        existingName: dupBirthday.name,
-      });
-    }
-
-    const {
-      locationIds,
-      audienceSegmentId,
-      startsOn: _startsOn,
-      endsOn: _endsOn,
-      weekdays: _weekdays,
-      redeemMax: _redeemMax,
-      redeemPeriod: _redeemPeriod,
-      cartela: requestedCartela,
-      ...data
-    } = body;
-    const cartelaWrite = resolveCartelaWrite({
-      nextType,
-      requested: requestedCartela,
-      existing: {
-        type: existing.type,
-        cartela: existing.cartela,
-        activatedAt: existing.activatedAt,
-      },
+    const result = await patchBusinessCampaign({
+      businessId: auth.businessId,
+      campaignId: id,
+      body: request.body,
+      log: (msg, extra) => request.log.info(extra ?? {}, msg),
     });
-    if (!cartelaWrite.ok) {
-      return reply.code(cartelaWrite.error === 'CARTELA_LOCKED' ? 409 : 400).send({
-        error: cartelaWrite.error,
-        message: cartelaWrite.message,
-      });
-    }
-    const promo = promoWriteData({ ...body, type: nextType }, existing);
-    const campaign = await prisma.$transaction(async (tx) => {
-      if (locationIds) {
-        await tx.campaignLocation.deleteMany({ where: { campaignId: id } });
-        if (locationIds.length) {
-          await tx.campaignLocation.createMany({
-            data: locationIds.map((locationId: string) => ({
-              campaignId: id,
-              locationId,
-            })),
-          });
-        }
-      }
-      return tx.campaign.update({
-        where: { id },
-        data: {
-          ...data,
-          type: data.type as CampaignType | undefined,
-          stampsNeeded: noMetaType(nextType)
-            ? 1
-            : (data.stampsNeeded ?? existing.stampsNeeded),
-          pointsPerReal:
-            nextType === 'stamps' ||
-            nextType === 'birthday' ||
-            nextType === 'cashback' ||
-            nextType === 'promo'
-              ? null
-              : (data.pointsPerReal ?? existing.pointsPerReal ?? 1),
-          cashbackPercent:
-            nextType === 'cashback'
-              ? (data.cashbackPercent ?? existing.cashbackPercent ?? 0)
-              : null,
-          startsOn: promo.startsOn,
-          endsOn: promo.endsOn,
-          weekdays: promo.weekdays,
-          redeemMax: promo.redeemMax,
-          redeemPeriod: promo.redeemPeriod,
-          ...(audienceSegmentId !== undefined
-            ? { audienceSegmentId }
-            : {}),
-          cartela: cartelaWrite.cartela,
-          activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
-        },
-        include: {
-          locations: true,
-          audienceSegment: { select: { id: true, name: true } },
-        },
-      });
-    });
-
-    const nextAudienceId =
-      audienceSegmentId !== undefined
-        ? audienceSegmentId
-        : existing.audienceSegmentId;
-    if (
-      shouldQueueCampaignAudiencePush({
-        previousStatus: existing.status,
-        nextStatus: campaign.status,
-        audienceSegmentId: nextAudienceId,
-        alreadySent: Boolean(existing.audiencePushSentAt),
-      })
-    ) {
-      queueCampaignAudiencePush({
-        campaignId: campaign.id,
-        businessId: auth.businessId,
-        log: (msg, extra) => request.log.info(extra ?? {}, msg),
-      });
-    }
-
-    return { campaign };
+    if (!result.ok) return reply.code(result.status).send(result.body);
+    return { campaign: result.campaign };
   });
 
   app.delete('/campaigns/:id', async (request, reply) => {

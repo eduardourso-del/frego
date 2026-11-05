@@ -49,6 +49,29 @@ void main() {
       expect(previewPoints(amountCents: 10000, pointsPerReal: 10), 10);
       expect(previewPoints(amountCents: 999, pointsPerReal: 10), 0);
     });
+
+    test('Múltiplo caps Usar at the compra divided by N', () {
+      expect(
+        maxCashbackUseCents(compraCents: null, balanceCents: 1000, multiple: 3),
+        1000,
+      );
+      expect(
+        maxCashbackUseCents(compraCents: 3000, balanceCents: 1000, multiple: 3),
+        1000,
+      );
+      expect(
+        maxCashbackUseCents(compraCents: 2400, balanceCents: 1000, multiple: 3),
+        800,
+      );
+      expect(
+        maxCashbackUseCents(compraCents: 1000, balanceCents: 1000, multiple: 3),
+        333,
+      );
+      expect(
+        maxCashbackUseCents(compraCents: 2400, balanceCents: 1000, multiple: null),
+        1000,
+      );
+    });
   });
 
   group('voucher', () {

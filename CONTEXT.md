@@ -8,6 +8,22 @@ The Clube, at the till and in the Cliente's pocket. The phone number is the Clie
 The business a Cliente visits.
 _Avoid_: shop, store, loja, business, casa
 
+**Cadastro**:
+The owner's request to open an Estabelecimento. It is not reviewed until the owner confirms the e-mail. An operator then approves or refuses it.
+_Avoid_: signup, registro, lead, conta
+
+**Tipo**:
+The kind of an Estabelecimento: Padaria, Café, Restaurante, Pizzaria, Hamburgueria, Lanchonete, Açaí, Bar, Sorveteria, Doceria, Salão, Barbearia, Varejo, Farmácia, Pet, Academia, or Outros.
+_Avoid_: categoria, grupo, Alimentação, Beleza, Comércio, Serviços
+
+**Unidade**:
+An address where an Estabelecimento operates. Its city and UF decide which Exploração lists that Estabelecimento.
+_Avoid_: loja, filial, location
+
+**Fuso**:
+The civil timezone of an Estabelecimento, taken from the UF of the address where it operates. The Painel's day follows that Fuso.
+_Avoid_: browser timezone, UTC, fuso do usuário
+
 **Plano**:
 The monthly subscription an Estabelecimento holds. The three Planos are Starter, Growth, and Enterprise. The days before the first charge are not a Plano.
 _Avoid_: tier, package, assinatura (the brand mark is already called that)
@@ -16,13 +32,45 @@ _Avoid_: tier, package, assinatura (the brand mark is already called that)
 A Plano a Frego operator sets on an Estabelecimento with no charge. It does not expire on its own.
 _Avoid_: grant, comp, free plan, trial
 
+**Membro**:
+A person identified by e-mail on the Equipe of an Estabelecimento. Not a Cliente.
+_Avoid_: conta, account, user, funcionário
+
+**Equipe**:
+The Membros of one Estabelecimento.
+_Avoid_: team, staff, contas, users
+
+**Dono**:
+The one Membro the Cadastro creates. That place is not granted again.
+_Avoid_: owner, admin, gerente
+
+**Balcão**:
+A Membro the Dono adds. The till page on the Painel has the same name.
+_Avoid_: employee, caixa, operador, gerente
+
+**Aguardando**:
+The condition of a Membro who has not set a password. They cannot sign in.
+_Avoid_: pending, convite, invite
+
+**Desativado**:
+The condition of a Membro the Dono has turned off at this Estabelecimento. They cannot sign in here. The till's record of them remains.
+_Avoid_: disabled, inactive, bloqueado, excluído
+
+**Painel**:
+The Estabelecimento's web pages for the Equipe. The day there follows the Fuso.
+_Avoid_: dashboard, admin, backoffice
+
+**PDV**:
+The till app for a Membro.
+_Avoid_: Painel, caixa
+
 **Cliente**:
-The person identified by a phone number. That number is the account. Staff may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
+The person identified by a phone number. That number is the account. A Membro may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
 _Avoid_: client, user, consumer, customer
 
 **Clube**:
 The program a Cliente belongs to at one Estabelecimento.
-_Avoid_: fidelidade, loyalty, programa de fidelidade
+_Avoid_: fidelidade, loyalty, programa de fidelidade, Membro
 
 **Benefício**:
 What the Clube puts in the Cliente's wallet: carimbos, pontos, cashback, or a Prêmio.
@@ -43,6 +91,10 @@ _Avoid_: card, cartão, punch card, pool
 **Promoção**:
 A Campanha whose Prêmio is entitled by Audiência, the Estabelecimento calendar, and a Resgatar frequency cap — not by stamps or points.
 _Avoid_: offer, gift, brinde, perk
+
+**Janela**:
+The span in which a birthday Campanha may be Resgatada, taken from the Cliente's birthday. Either that birthday's calendar month, or a number of days that begin on the birthday.
+_Avoid_: promo calendar, shop calendar, validade
 
 **Audiência**:
 A saved set of Clientes. A Campanha or a Pesquisa can be limited to one. With none set, every Cliente qualifies.
@@ -68,6 +120,30 @@ _Avoid_: generate, issue, claim, unlock
 The staff action that marks a Voucher as delivered at the till.
 _Avoid_: fulfill, redeem (staff), use, Usar (UI label on the typed/scanned path)
 
+**Usar**:
+The staff action that takes cashback off a compra at the till. When a Múltiplo is set, the compra must cover that many times the cashback taken; the new cashback is a percent of what remains, and the Estabelecimento's own caixa charges that remainder.
+_Avoid_: resgatar, confirmar, voucher
+
+**Múltiplo**:
+A whole number, from 2 up, on the Estabelecimento. The compra must be at least that many times the cashback Usado. With none set, Usar can take up to the compra.
+_Avoid_: compra mínima, teto, fator
+
+**Validade**:
+The days after an earn that carimbos, pontos, or cashback last at one Estabelecimento. Each of the three has its own. With none set, that wallet does not expire.
+_Avoid_: antecedência, janela, ttl
+
+**Vencimento**:
+The last day carimbos, pontos, or cashback from one earn can still be used.
+_Avoid_: validade, expiração
+
+**Lembrete**:
+A notice a Cliente receives. One kind says remaining carimbos, pontos, or cashback are near vencimento. Another says a Promoção is near its end. WhatsApp and push carry the same Lembrete.
+_Avoid_: notificação, aviso, alerta, convite
+
+**Antecedência**:
+How far ahead of vencimento an Estabelecimento sends the Lembrete for carimbos, pontos, and cashback. One day count on the Estabelecimento, and a switch. Turned off, that Lembrete does not go out.
+_Avoid_: validade, janela
+
 **Pesquisa**:
 The questions an Estabelecimento asks a Cliente: up to five polegar questions and one optional note.
 _Avoid_: survey, research, campanha, NPS
@@ -87,3 +163,25 @@ _Avoid_: reply, submission, response
 **Bônus**:
 The wallet credit an Estabelecimento sets on a Pesquisa. One wallet: a fixed number of carimbos on the shared pile or one Cartela, a fixed number of pontos, a fixed cashback amount, or a double of the pontos or cashback on that earn. It is offered only on an earn that credited that same wallet. With none set, any qualifying earn can open a Convite.
 _Avoid_: prêmio, reward, voucher
+
+**Favorito**:
+A Cliente's mark on an Estabelecimento so she can find it again. It is not a Clube, and only she can see it. The same mark shows on the Clube list and in Exploração.
+_Avoid_: seguir, membership, clube
+
+## Exploração
+
+**Cidade**:
+The city and UF where the Cliente lives, kept on her profile. Only she sets it. It does not have to be a city with a Visível Estabelecimento.
+_Avoid_: endereço, GPS, localização
+
+**Exploração**:
+The city and UF a Cliente is browsing, the Visível Estabelecimentos there (including ones where she already has a Clube), and the Campanhas that apply there. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
+_Avoid_: lojas, descoberta, catálogo
+
+**Visível**:
+An Estabelecimento an operator has chosen to include in Exploração. It stays out until that choice is made. The public page is not Exploração.
+_Avoid_: ativo, publicado, suspenso, status
+
+**Relevância**:
+The order of Tipos, Estabelecimentos, and Campanhas in one Cliente's Exploração. Her Resgatar and her Favoritos change it, and she is not shown a number.
+_Avoid_: score, ranking, algoritmo, nota

@@ -47,37 +47,6 @@ const points = [
   },
 ];
 
-function PhoneShot({
-  src,
-  alt,
-  title,
-  caption,
-}: (typeof shots)[number]) {
-  return (
-    <figure className="flex h-full flex-col rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4 shadow-[var(--shadow-card)] sm:p-5">
-      <div className="mx-auto w-full max-w-[240px] overflow-hidden rounded-[24px] border-[6px] border-[var(--color-ink)] bg-[var(--color-ink)]">
-        <Image
-          src={src}
-          alt={alt}
-          width={470}
-          height={1024}
-          unoptimized
-          className="h-auto w-full"
-          sizes="240px"
-        />
-      </div>
-      <figcaption className="mt-5">
-        <p className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
-          {title}
-        </p>
-        <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
-          {caption}
-        </p>
-      </figcaption>
-    </figure>
-  );
-}
-
 export function LandingCustomerApp() {
   return (
     <section
@@ -86,27 +55,62 @@ export function LandingCustomerApp() {
       aria-labelledby="app-heading"
     >
       <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
-        <Reveal>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
-            No bolso do cliente
-          </p>
-          <h2
-            id="app-heading"
-            className="mt-4 max-w-3xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
-          >
-            O vínculo com a sua loja, no bolso do cliente.
-          </h2>
-          <p className="mt-4 max-w-2xl text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
-            O app sustenta o relacionamento. Uma rede de benefícios locais —
-            não um mural de descontos.
-          </p>
-          <StoreBadges className="mt-6" />
-        </Reveal>
+        <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_32rem] lg:gap-14">
+          <Reveal>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[var(--color-primary-500)]">
+              No bolso do cliente
+            </p>
+            <h2
+              id="app-heading"
+              className="mt-4 max-w-xl text-[28px] font-extrabold leading-[1.22] tracking-[-0.03em] text-[var(--color-ink)] sm:text-[36px]"
+            >
+              O vínculo com a sua loja, no bolso do cliente.
+            </h2>
+            <p className="mt-4 max-w-lg text-[16px] leading-relaxed text-[var(--color-neutral-500)]">
+              O app sustenta o relacionamento. Uma rede de benefícios locais —
+              não um mural de descontos.
+            </p>
+            <StoreBadges className="mt-6" />
+          </Reveal>
+          <Reveal delay={0.08}>
+            <div className="mx-auto w-full max-w-[32rem] overflow-hidden rounded-[20px] border border-[var(--color-hairline)] shadow-[var(--shadow-raised)] lg:mx-0">
+              <Image
+                src="/landing/cliente-celular.jpg"
+                alt="Cliente na calçada, em frente à loja, olhando o app no celular"
+                width={1024}
+                height={576}
+                unoptimized
+                className="h-auto w-full"
+                sizes="(min-width: 1024px) 512px, 100vw"
+              />
+            </div>
+          </Reveal>
+        </div>
 
-        <RevealGroup className="mt-10 grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <RevealGroup className="mt-12 grid items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {shots.map((shot) => (
             <RevealItem key={shot.src} className="h-full">
-              <PhoneShot {...shot} />
+              <figure className="flex h-full flex-col rounded-[18px] border border-[var(--color-hairline)] bg-[var(--color-bg)] p-4 shadow-[var(--shadow-card)] sm:p-5">
+                <div className="mx-auto w-full max-w-[220px] overflow-hidden rounded-[24px] border-[6px] border-[var(--color-ink)] bg-[var(--color-ink)]">
+                  <Image
+                    src={shot.src}
+                    alt={shot.alt}
+                    width={470}
+                    height={1024}
+                    unoptimized
+                    className="h-auto w-full"
+                    sizes="220px"
+                  />
+                </div>
+                <figcaption className="mt-5">
+                  <p className="text-[16px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
+                    {shot.title}
+                  </p>
+                  <p className="mt-1.5 text-[14px] leading-relaxed text-[var(--color-neutral-500)]">
+                    {shot.caption}
+                  </p>
+                </figcaption>
+              </figure>
             </RevealItem>
           ))}
         </RevealGroup>

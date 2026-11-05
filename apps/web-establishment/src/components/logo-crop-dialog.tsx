@@ -15,12 +15,19 @@ type ImageCropDialogProps = {
   fileNamePrefix?: string;
   /** Output width in px. Height derived from aspect. */
   outputWidth?: number;
+  /** JPEG quality, 0–1. Default 0.9. */
+  quality?: number;
 };
 
 async function cropToFile(
   imageSrc: string,
   area: Area,
-  opts: { outputWidth: number; aspect: number; fileNamePrefix: string },
+  opts: {
+    outputWidth: number;
+    aspect: number;
+    fileNamePrefix: string;
+    quality: number;
+  },
 ): Promise<File> {
   const image = await loadImage(imageSrc);
   const outputWidth = opts.outputWidth;
@@ -56,7 +63,7 @@ async function cropToFile(
     canvas.toBlob(
       (b) => (b ? resolve(b) : reject(new Error('Não foi possível gerar a imagem.'))),
       'image/jpeg',
-      0.9,
+      opts.quality,
     );
   });
 
@@ -90,7 +97,8 @@ export function ImageCropDialog({
   title = 'Ajustar imagem',
   description = 'Arraste e use o zoom para enquadrar.',
   fileNamePrefix = 'image',
-  outputWidth = aspect === 1 ? 512 : 1600,
+  outputWidth = aspect === 1 ? 384 : 1280,
+  quality = 0.9,
 }: ImageCropDialogProps) {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -111,6 +119,7 @@ export function ImageCropDialog({
         outputWidth,
         aspect,
         fileNamePrefix,
+        quality,
       });
       await onConfirm(file);
     } catch (err) {

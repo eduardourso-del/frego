@@ -18,10 +18,19 @@ import { whatsappRoutes } from './routes/whatsapp.js';
 import { pesquisaRoutes } from './routes/pesquisas.js';
 import { metaWebhookRoutes } from './routes/meta-webhook.js';
 import { publicBusinessRoutes } from './routes/public-business.js';
+import { explorationRoutes } from './routes/exploration.js';
 import { voucherRoutes } from './routes/vouchers.js';
 import { tagRoutes } from './routes/tags.js';
 import { billingRoutes } from './routes/billing.js';
 import { asaasWebhookRoutes } from './routes/asaas-webhook.js';
+import { reminderRoutes } from './routes/reminders.js';
+import { earnNotifyRoutes } from './routes/earn-notifies.js';
+import { saiposRoutes } from './routes/saipos.js';
+import { equipeRoutes } from './routes/equipe.js';
+import { startAccountReminderSchedule } from './lib/reminders/run.js';
+import { startSaiposSyncSchedule } from './lib/saipos/sync.js';
+import { startEarnNotifyFlushSchedule } from './lib/whatsapp/earn-notify-hold.js';
+import { allowEmptyJsonBody } from './lib/json-body.js';
 
 const port = Number(process.env.PORT ?? 8080);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -37,6 +46,8 @@ async function main() {
     },
   });
 
+  allowEmptyJsonBody(app);
+
   await app.register(cors, {
     origin: true,
     credentials: true,
@@ -51,7 +62,9 @@ async function main() {
   await app.register(registerRoutes);
   await app.register(adminRoutes);
   await app.register(meRoutes);
+  await app.register(explorationRoutes);
   await app.register(businessRoutes);
+  await app.register(equipeRoutes);
   await app.register(dashboardRoutes);
   await app.register(reportsRoutes);
   await app.register(customerRoutes);
@@ -63,8 +76,14 @@ async function main() {
   await app.register(audienceRoutes);
   await app.register(whatsappRoutes);
   await app.register(billingRoutes);
+  await app.register(reminderRoutes);
+  await app.register(earnNotifyRoutes);
+  await app.register(saiposRoutes);
 
   await app.listen({ port, host });
+  startAccountReminderSchedule(app.log);
+  startEarnNotifyFlushSchedule(app.log);
+  startSaiposSyncSchedule(app.log);
   app.log.info(`Frego API listening on http://${host}:${port}`);
 }
 

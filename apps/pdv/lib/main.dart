@@ -1,4 +1,5 @@
-import 'package:firebase_core/firebase_core.dart';
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +8,6 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 
 import 'config/app_config.dart';
 import 'features/auth/auth_gate.dart';
-import 'firebase_options.dart';
 import 'theme/frego_theme.dart';
 
 Future<void> main() async {
@@ -15,8 +15,16 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
   AppConfig.assertShipBuildUsesProductionApi();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Nothing before runApp may wait on the network or Play services. On the
+  // DX8000 and P3 that wait never finishes and the native splash stays up.
+  widgetsBinding.addPostFrameCallback((_) => FlutterNativeSplash.remove());
   runApp(const FregoPdvApp());
+  unawaited(
+    Future<void>.delayed(
+      const Duration(seconds: 2),
+      FlutterNativeSplash.remove,
+    ),
+  );
 }
 
 class FregoPdvApp extends StatelessWidget {

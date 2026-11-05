@@ -1,6 +1,7 @@
 import { prisma } from '@frego/db';
 import { shouldOmitFromLedger } from './ledger-meta.js';
 import {
+  campaignDateStatus,
   civilYmd,
   evaluatePromoEntitlement,
   evaluateRedeemQuota,
@@ -48,6 +49,8 @@ export type CampaignWalletEntry = {
   cashbackPercent?: number | null;
   /** Saldo atual em centavos (só campanha cashback). */
   cashbackBalanceCents?: number;
+  /** Múltiplo do Estabelecimento. Null quando não há teto de uso. */
+  cashbackUseMultiple?: number | null;
   canRedeem: boolean;
   rewardTitle: string | null;
   rewardDescription: string | null;
@@ -83,6 +86,8 @@ export type WalletSnapshot = {
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
+  /** Múltiplo do Estabelecimento. Null = Usar pode ir até a compra. */
+  cashbackUseMultiple: number | null;
   /** Maior % entre campanhas de cashback ativas (0 = nenhuma). */
   cashbackPercent: number;
   /** Lotes restantes no saldo (FIFO), com data de ganho e validade. */
@@ -116,6 +121,26 @@ const WALLET_CAMPAIGN_TYPES = [
 
 /** Janela de resgate: dia do aniversário + 6 dias seguintes. */
 export const BIRTHDAY_WINDOW_DAYS = 7;
+
+export type BirthdayWindowKind = 'days' | 'month';
+
+export type BirthdayWindowSpec = {
+  kind: BirthdayWindowKind;
+  /** Inclusive day count starting on the birthday. Ignored when kind is month. */
+  days: number;
+};
+
+export function birthdayWindowSpec(
+  kind: string | null | undefined,
+  days: number | null | undefined,
+): BirthdayWindowSpec {
+  const safeDays =
+    days != null && Number.isFinite(days) && days >= 1
+      ? Math.floor(days)
+      : BIRTHDAY_WINDOW_DAYS;
+  if (kind === 'month') return { kind: 'month', days: safeDays };
+  return { kind: 'days', days: safeDays };
+}
 
 function campaignUnitKind(type: string): UnitKind | null {
   if (type === 'spend') return 'points';
@@ -171,11 +196,29 @@ function addUtcDays(d: Date, days: number): Date {
   return new Date(d.getTime() + days * 86_400_000);
 }
 
+function windowBounds(
+  year: number,
+  month: number,
+  day: number,
+  spec: BirthdayWindowSpec,
+): { start: Date; end: Date } {
+  if (spec.kind === 'month') {
+    return {
+      start: new Date(Date.UTC(year, month, 1)),
+      end: new Date(Date.UTC(year, month + 1, 0)),
+    };
+  }
+  const start = new Date(Date.UTC(year, month, day));
+  return { start, end: addUtcDays(start, spec.days - 1) };
+}
+
 /**
- * Status da janela de aniversário (UTC, alinhado ao campo Date do Prisma).
+ * Status da Janela de aniversário (UTC, alinhado ao campo Date do Prisma).
+ * `days` começa no aniversário. `month` é o mês civil dessa data.
  */
 export function birthdayWindowStatus(
   birthday: Date | null | undefined,
+  spec: BirthdayWindowSpec = birthdayWindowSpec('days', BIRTHDAY_WINDOW_DAYS),
   now = new Date(),
 ): {
   inWindow: boolean;
@@ -183,6 +226,8 @@ export function birthdayWindowStatus(
   unlocksAt: Date | null;
   daysUntil: number | null;
   windowYear: number | null;
+  windowStart: Date | null;
+  windowEnd: Date | null;
 } {
   if (!birthday) {
     return {
@@ -191,63 +236,70 @@ export function birthdayWindowStatus(
       unlocksAt: null,
       daysUntil: null,
       windowYear: null,
+      windowStart: null,
+      windowEnd: null,
     };
   }
 
-  const bMonth = birthday.getUTCMonth();
-  const bDay = birthday.getUTCDate();
+  const month = birthday.getUTCMonth();
+  const day = birthday.getUTCDate();
   const today = utcDateOnly(now);
   const year = today.getUTCFullYear();
 
-  const candidates = [
-    new Date(Date.UTC(year - 1, bMonth, bDay)),
-    new Date(Date.UTC(year, bMonth, bDay)),
-    new Date(Date.UTC(year + 1, bMonth, bDay)),
-  ];
-
-  for (const start of candidates) {
-    const end = addUtcDays(start, BIRTHDAY_WINDOW_DAYS - 1);
-    if (today >= start && today <= end) {
+  for (const y of [year - 1, year, year + 1]) {
+    const bounds = windowBounds(y, month, day, spec);
+    if (today >= bounds.start && today <= bounds.end) {
       return {
         inWindow: true,
         lockedReason: null,
-        unlocksAt: start,
+        unlocksAt: bounds.start,
         daysUntil: 0,
-        windowYear: start.getUTCFullYear(),
+        windowYear: bounds.start.getUTCFullYear(),
+        windowStart: bounds.start,
+        windowEnd: bounds.end,
       };
     }
   }
 
-  let next = new Date(Date.UTC(year, bMonth, bDay));
-  if (next < today) {
-    next = new Date(Date.UTC(year + 1, bMonth, bDay));
+  let next: { start: Date; end: Date } | null = null;
+  for (const y of [year - 1, year, year + 1, year + 2]) {
+    const bounds = windowBounds(y, month, day, spec);
+    if (bounds.start >= today && (next == null || bounds.start < next.start)) {
+      next = bounds;
+    }
   }
+  if (!next) next = windowBounds(year + 1, month, day, spec);
+
   const daysUntil = Math.round(
-    (next.getTime() - today.getTime()) / 86_400_000,
+    (next.start.getTime() - today.getTime()) / 86_400_000,
   );
 
   return {
     inWindow: false,
     lockedReason: 'outside_window',
-    unlocksAt: next,
+    unlocksAt: next.start,
     daysUntil,
-    windowYear: next.getUTCFullYear(),
+    windowYear: next.start.getUTCFullYear(),
+    windowStart: next.start,
+    windowEnd: next.end,
   };
 }
 
-function redeemedInYear(
+function redeemedInWindow(
   transactions: Array<{
     type: string;
     campaignId: string | null;
     createdAt?: Date;
   }>,
   campaignId: string,
-  year: number,
+  start: Date,
+  end: Date,
 ): boolean {
   return transactions.some((tx) => {
     if (tx.type !== 'redeem' || tx.campaignId !== campaignId) return false;
     if (!tx.createdAt) return true;
-    return tx.createdAt.getUTCFullYear() === year;
+    const day = utcDateOnly(tx.createdAt);
+    return day >= start && day <= end;
   });
 }
 
@@ -407,6 +459,8 @@ export async function deriveWallet(
         weekdays: true,
         redeemMax: true,
         redeemPeriod: true,
+        birthdayWindow: true,
+        birthdayWindowDays: true,
       },
     }),
     prisma.transaction.findMany({
@@ -431,7 +485,12 @@ export async function deriveWallet(
     }),
     prisma.business.findUnique({
       where: { id: businessId },
-      select: { stampsExpireDays: true, pointsExpireDays: true, cashbackExpireDays: true },
+      select: {
+        stampsExpireDays: true,
+        pointsExpireDays: true,
+        cashbackExpireDays: true,
+        cashbackUseMultiple: true,
+      },
     }),
   ]);
 
@@ -439,10 +498,11 @@ export async function deriveWallet(
   const stampsExpireDays = business?.stampsExpireDays ?? null;
   const pointsExpireDays = business?.pointsExpireDays ?? null;
   const cashbackExpireDays = business?.cashbackExpireDays ?? null;
+  const cashbackUseMultiple = business?.cashbackUseMultiple ?? null;
   const cashbackPercent = Math.max(
     0,
     ...campaigns
-      .filter((c) => c.type === 'cashback')
+      .filter((c) => c.type === 'cashback' && campaignDateStatus(c).open)
       .map((c) => c.cashbackPercent ?? 0),
   );
 
@@ -567,6 +627,8 @@ export async function deriveWallet(
         ? Math.min(poolRewards, quota.remaining ?? 0)
         : poolRewards;
     const quotaBlocked = quota?.exhausted === true && poolRewards >= 1;
+    const dates = campaignDateStatus(campaign);
+    const dateBlocked = !dates.open;
     return {
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -574,13 +636,23 @@ export async function deriveWallet(
       unitsNeeded: needed,
       stampsNeeded: needed,
       pointsPerReal: campaign.pointsPerReal,
-      canRedeem: rewardsAvailable >= 1 && !quotaBlocked,
-      rewardsAvailable: quotaBlocked ? 0 : rewardsAvailable,
+      canRedeem: !dateBlocked && rewardsAvailable >= 1 && !quotaBlocked,
+      rewardsAvailable: dateBlocked || quotaBlocked ? 0 : rewardsAvailable,
       rewardTitle: campaign.rewardTitle,
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
-      lockedReason: quotaBlocked ? 'quota_exhausted' : null,
-      unlocksAt: quotaBlocked ? quota?.unlocksAt ?? null : null,
+      lockedReason: dateBlocked
+        ? 'outside_dates'
+        : quotaBlocked
+          ? 'quota_exhausted'
+          : null,
+      unlocksAt: dateBlocked
+        ? dates.unlocksAt
+        : quotaBlocked
+          ? (quota?.unlocksAt ?? null)
+          : null,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       redeemMax: campaign.type === 'stamps' ? campaign.redeemMax : undefined,
       redeemPeriod: campaign.type === 'stamps' ? campaign.redeemPeriod : undefined,
       audienceSegmentId: campaign.audienceSegmentId,
@@ -592,17 +664,28 @@ export async function deriveWallet(
     };
   });
 
-  const window = birthdayWindowStatus(birthday);
-
   for (const campaign of birthdayCampaigns) {
-    let lockedReason = window.lockedReason;
-    let canRedeem = window.inWindow;
+    const dates = campaignDateStatus(campaign);
+    const window = birthdayWindowStatus(
+      birthday,
+      birthdayWindowSpec(campaign.birthdayWindow, campaign.birthdayWindowDays),
+    );
+    let lockedReason: CampaignLockedReason | null = dates.open
+      ? window.lockedReason
+      : 'outside_dates';
+    let canRedeem = dates.open && window.inWindow;
     let rewardsAvailable = canRedeem ? 1 : 0;
 
     if (
       canRedeem &&
-      window.windowYear != null &&
-      redeemedInYear(transactions, campaign.id, window.windowYear)
+      window.windowStart &&
+      window.windowEnd &&
+      redeemedInWindow(
+        transactions,
+        campaign.id,
+        window.windowStart,
+        window.windowEnd,
+      )
     ) {
       lockedReason = 'already_redeemed';
       canRedeem = false;
@@ -622,9 +705,13 @@ export async function deriveWallet(
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
       lockedReason,
-      unlocksAt: window.unlocksAt
-        ? window.unlocksAt.toISOString().slice(0, 10)
-        : null,
+      unlocksAt: dates.open
+        ? window.unlocksAt
+          ? window.unlocksAt.toISOString().slice(0, 10)
+          : null
+        : dates.unlocksAt,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       daysUntilBirthday: window.daysUntil,
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: null,
@@ -671,6 +758,7 @@ export async function deriveWallet(
   }
 
   for (const campaign of cashbackCampaigns) {
+    const dates = campaignDateStatus(campaign);
     entries.push({
       campaignId: campaign.id,
       campaignName: campaign.name,
@@ -680,11 +768,16 @@ export async function deriveWallet(
       pointsPerReal: null,
       cashbackPercent: campaign.cashbackPercent ?? 0,
       cashbackBalanceCents: pools.cashbackCents,
+      cashbackUseMultiple,
       canRedeem: false,
       rewardsAvailable: 0,
       rewardTitle: campaign.rewardTitle,
       rewardDescription: campaign.rewardDescription,
       rewardImageUrl: campaign.rewardImageUrl,
+      lockedReason: dates.open ? null : 'outside_dates',
+      unlocksAt: dates.unlocksAt,
+      startsOn: civilYmd(campaign.startsOn),
+      endsOn: civilYmd(campaign.endsOn),
       audienceSegmentId: campaign.audienceSegmentId,
       audienceEligible: null,
       audienceName: null,
@@ -695,10 +788,13 @@ export async function deriveWallet(
   }
 
   const activeShared = campaigns
-    .filter((c) => c.type === 'stamps' && !c.cartela)
+    .filter(
+      (c) =>
+        c.type === 'stamps' && !c.cartela && campaignDateStatus(c).open,
+    )
     .map((c) => ({ id: c.id, name: c.name }));
   const activeCartelas = campaigns
-    .filter((c) => isCartelaCampaign(c))
+    .filter((c) => isCartelaCampaign(c) && campaignDateStatus(c).open)
     .map((c) => ({
       id: c.id,
       name: c.name,
@@ -710,6 +806,7 @@ export async function deriveWallet(
     stampsExpireDays,
     pointsExpireDays,
     cashbackExpireDays,
+    cashbackUseMultiple,
     cashbackPercent,
     lots,
     campaigns: entries,
@@ -727,7 +824,12 @@ export function presentCustomerCampaigns(
 ): CampaignWalletEntry[] {
   const eligibleCashback = campaigns
     .filter((c) => c.type === 'cashback' && c.lockedReason !== 'audience')
-    .sort((a, b) => (b.cashbackPercent ?? 0) - (a.cashbackPercent ?? 0));
+    .sort((a, b) => {
+      const aOpen = a.lockedReason === 'outside_dates' ? 0 : 1;
+      const bOpen = b.lockedReason === 'outside_dates' ? 0 : 1;
+      if (aOpen !== bOpen) return bOpen - aOpen;
+      return (b.cashbackPercent ?? 0) - (a.cashbackPercent ?? 0);
+    });
   const winnerId = eligibleCashback[0]?.campaignId ?? null;
 
   const next = campaigns

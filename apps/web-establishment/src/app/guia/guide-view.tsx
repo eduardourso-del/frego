@@ -392,7 +392,7 @@ export function GuideView() {
                     pontos ele junta para ganhar o prêmio. A taxa — quanto o
                     cliente gasta para ganhar 1 ponto — fica em{' '}
                     <TextLink href="/settings">Configurações</TextLink>, na
-                    seção Benefícios, e vale para o estabelecimento todo.
+                    seção Pontos, e vale para o estabelecimento todo.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -403,8 +403,9 @@ export function GuideView() {
                   onFill="var(--color-grafite)"
                 >
                   <p>
-                    Um presente por ano, na data de aniversário que o cliente
-                    informou no app. O prêmio é obrigatório.
+                    Um presente por ano, na janela do aniversário que o
+                    estabelecimento define: o mês da data, ou alguns dias a
+                    partir dela. O prêmio é obrigatório.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -416,7 +417,11 @@ export function GuideView() {
                   <p>
                     Um percentual da compra volta em reais e o cliente usa no
                     caixa. A porcentagem fica na campanha. O teto por compra, a
-                    compra mínima e a validade do saldo ficam em Configurações.
+                    compra mínima, o múltiplo e a validade do saldo ficam em
+                    Configurações, na seção Cashback. Com múltiplo 3, R$ 10 de
+                    cashback pedem uma compra de R$ 30. Numa compra menor, dá
+                    para usar até a
+                    compra dividida por esse número.
                   </p>
                 </TypeCard>
                 <TypeCard
@@ -678,12 +683,20 @@ export function GuideView() {
                   body="O link público do estabelecimento, no endereço /loja/…, com as campanhas ativas."
                 />
                 <Setting
-                  title="Benefícios"
-                  body="Reais para 1 ponto; teto e compra mínima do cashback; em quantos dias carimbos, pontos e cashback expiram depois do ganho. No resgate, o saldo mais antigo sai primeiro."
+                  title="Cashback"
+                  body="Teto por compra, compra mínima, múltiplo e em quantos dias o saldo expira. O aviso antes do vencimento vale para carimbos, pontos e cashback, e pode ficar desligado. A porcentagem continua na campanha."
                 />
                 <Setting
-                  title="WhatsApp"
-                  body="Conecta o WhatsApp do estabelecimento. As mensagens de visita, de boas-vindas e de campanha saem depois que o texto é aprovado."
+                  title="Carimbos"
+                  body="Em quantos dias o carimbo expira depois do ganho. No resgate, o saldo mais antigo sai primeiro. O aviso antes do vencimento é o mesmo dos pontos e do cashback, e pode ficar desligado."
+                />
+                <Setting
+                  title="Pontos"
+                  body="Reais para 1 ponto, e em quantos dias o ponto expira depois do ganho. O aviso antes do vencimento é o mesmo dos carimbos e do cashback, e pode ficar desligado."
+                />
+                <Setting
+                  title="Integrações"
+                  body="O estabelecimento liga só o que usa. WhatsApp envia cadastro, acúmulo, campanha, pesquisa e o lembrete. Saipos credita pontos e cashback das vendas fechadas."
                 />
               </ul>
             </Screen>

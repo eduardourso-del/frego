@@ -1,29 +1,37 @@
 'use client';
 
 import { FormEvent, useEffect, useState, type ReactNode } from 'react';
-import { Coins, ExternalLink, Globe, ImageIcon, MapPin, Palette, Store, type LucideIcon } from 'lucide-react';
+import { Banknote, Bell, ExternalLink, Gift, Globe, ImageIcon, MapPin, Palette, Stamp, Store, type LucideIcon } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import {
   ImageCropDialog,
   LogoCropDialog,
 } from '@/components/logo-crop-dialog';
 import { ShopAppPreview } from '@/components/shop-app-preview';
-import { WhatsAppSettingsCard } from '@/components/whatsapp-settings-card';
+import { IntegrationsTab } from '@/components/integrations/integrations-tab';
+import { EquipePanel } from '@/components/equipe-panel';
 import { TagManager } from '@/components/tag-manager';
 import { BillingSettings } from '@/components/billing-settings';
-import { FeatureLocked } from '@/components/plan-lock';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
 import { BusinessTypePicker } from '@/components/business-type-picker';
 import { cnpjFieldError, formatCnpj, taxIdLabel } from '@/lib/cnpj';
+import {
+  emptyOperatingAddress,
+  formatCep,
+  operatingAddressErrors,
+  type OperatingAddress,
+} from '@/lib/br-ufs';
+import { OperatingAddressFields } from '@/components/operating-address-fields';
 
 const HERO_ASPECT = 16 / 9;
 
 type LocationDraft = {
   id: string;
   name: string;
-  address: string;
+  address: OperatingAddress;
+  legacyAddress: string;
 };
 
 function Section({
@@ -31,16 +39,20 @@ function Section({
   title,
   hint,
   children,
+  iconWrapClassName = 'bg-[var(--color-primary-50)] text-[var(--color-primary-600)]',
 }: {
   Icon: LucideIcon;
   title: string;
   hint?: string;
   children: ReactNode;
+  iconWrapClassName?: string;
 }) {
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 md:p-5">
       <div className="mb-4 flex items-start gap-2.5">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-[var(--color-primary-50)] text-[var(--color-primary-600)]">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${iconWrapClassName}`}
+        >
           <Icon size={16} strokeWidth={2.25} aria-hidden />
         </span>
         <div className="min-w-0 pt-0.5">
@@ -62,6 +74,50 @@ function Section({
 const inputClass =
   'mt-1.5 min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[15px] font-normal normal-case tracking-normal text-[var(--color-ink)] outline-none focus:border-[var(--color-primary-500)]';
 
+function ExpireToggle({
+  checked,
+  onChecked,
+  days,
+  onDays,
+  className = 'mt-4',
+}: {
+  checked: boolean;
+  onChecked: (value: boolean) => void;
+  days: number;
+  onDays: (value: number) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChecked(e.target.checked)}
+          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+        />
+        O saldo expira
+      </label>
+      <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+        No resgate, o mais antigo sai primeiro.
+      </p>
+      {checked ? (
+        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+          Dias após o ganho
+          <input
+            type="number"
+            min={1}
+            max={3650}
+            value={days}
+            onChange={(e) => onDays(Math.max(1, Number(e.target.value) || 1))}
+            className={inputClass}
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
 function settingsSaveError(err: unknown) {
   const message = err instanceof Error ? err.message : '';
   if (message === 'INVALID_CNPJ' || message === 'INVALID_TAX_ID') return 'CPF ou CNPJ inválido.';
@@ -71,11 +127,15 @@ function settingsSaveError(err: unknown) {
   if (message === 'CNPJ_ALREADY_SET') {
     return 'O CPF ou CNPJ já foi informado e não pode ser alterado aqui.';
   }
+  if (message === 'INVALID_CEP') return 'CEP inválido.';
+  if (message === 'INVALID_STATE') {
+    return 'Escolha o estado onde a unidade opera.';
+  }
   return message || 'Não foi possível salvar.';
 }
 
 export default function SettingsPage() {
-  const { business, loading, updateBusiness, authHeaders } = useBusiness();
+  const { business, loading, updateBusiness, authHeaders, refresh } = useBusiness();
   const [name, setName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [type, setType] = useState('café');
@@ -90,12 +150,16 @@ export default function SettingsPage() {
   const [cashbackMaxReais, setCashbackMaxReais] = useState(10);
   const [cashbackMinEnabled, setCashbackMinEnabled] = useState(false);
   const [cashbackMinReais, setCashbackMinReais] = useState(20);
+  const [cashbackMultipleEnabled, setCashbackMultipleEnabled] = useState(false);
+  const [cashbackMultiple, setCashbackMultiple] = useState(3);
   const [stampsExpireEnabled, setStampsExpireEnabled] = useState(false);
   const [stampsExpireDays, setStampsExpireDays] = useState(90);
   const [pointsExpireEnabled, setPointsExpireEnabled] = useState(false);
   const [pointsExpireDays, setPointsExpireDays] = useState(90);
   const [cashbackExpireEnabled, setCashbackExpireEnabled] = useState(false);
   const [cashbackExpireDays, setCashbackExpireDays] = useState(90);
+  const [expiryNoticeEnabled, setExpiryNoticeEnabled] = useState(true);
+  const [expiryNoticeDays, setExpiryNoticeDays] = useState(7);
   const [locations, setLocations] = useState<LocationDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -103,23 +167,50 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropKind, setCropKind] = useState<'logo' | 'hero' | null>(null);
-  const [panel, setPanel] = useState<'loja' | 'planos'>('loja');
+  const [tab, setTab] = useState<
+    'estabelecimento' | 'planos' | 'integracoes' | 'equipe'
+  >('estabelecimento');
+  const isDono = business?.role === 'owner';
 
   useEffect(() => {
-    function syncPanel() {
+    const apply = () => {
       const hash = window.location.hash;
-      if (hash === '#plano') setPanel('planos');
-      if (hash === '#cnpj') setPanel('loja');
-    }
-    syncPanel();
-    window.addEventListener('hashchange', syncPanel);
-    return () => window.removeEventListener('hashchange', syncPanel);
+      if (hash === '#plano') {
+        setTab('planos');
+      } else if (hash === '#cnpj') {
+        setTab('estabelecimento');
+      } else if (
+        hash === '#integracoes' ||
+        hash.startsWith('#integracoes/') ||
+        hash === '#whatsapp'
+      ) {
+        setTab('integracoes');
+      } else if (hash === '#equipe') {
+        setTab('equipe');
+      }
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
   }, []);
 
-  function showPanel(next: 'loja' | 'planos') {
-    setPanel(next);
-    const hash = next === 'planos' ? '#plano' : '';
-    window.history.replaceState(null, '', `/settings${hash}`);
+  function selectTab(
+    next: 'estabelecimento' | 'planos' | 'integracoes' | 'equipe',
+  ) {
+    setTab(next);
+    const hash =
+      next === 'planos'
+        ? '#plano'
+        : next === 'integracoes'
+          ? '#integracoes'
+          : next === 'equipe'
+            ? '#equipe'
+            : '';
+    window.history.replaceState(
+      null,
+      '',
+      `${window.location.pathname}${window.location.search}${hash}`,
+    );
   }
 
   useEffect(() => {
@@ -140,6 +231,9 @@ export default function SettingsPage() {
     const minCents = business.cashbackMinPurchaseCents ?? null;
     setCashbackMinEnabled(minCents != null);
     setCashbackMinReais(minCents != null ? Math.round(minCents / 100) : 20);
+    const multiple = business.cashbackUseMultiple ?? null;
+    setCashbackMultipleEnabled(multiple != null && multiple >= 2);
+    setCashbackMultiple(multiple != null && multiple >= 2 ? multiple : 3);
     const stampsDays = business.stampsExpireDays ?? null;
     setStampsExpireEnabled(stampsDays != null);
     setStampsExpireDays(stampsDays ?? 90);
@@ -149,6 +243,11 @@ export default function SettingsPage() {
     const cashbackDays = business.cashbackExpireDays ?? null;
     setCashbackExpireEnabled(cashbackDays != null);
     setCashbackExpireDays(cashbackDays ?? 90);
+    setExpiryNoticeEnabled(business.expiryNoticeEnabled !== false);
+    const noticeDays = business.expiryNoticeDays;
+    setExpiryNoticeDays(
+      noticeDays != null && noticeDays >= 1 && noticeDays <= 30 ? noticeDays : 7,
+    );
   }, [business]);
 
   useEffect(() => {
@@ -167,6 +266,13 @@ export default function SettingsPage() {
             id: string;
             name: string;
             address: string | null;
+            postalCode: string | null;
+            street: string | null;
+            streetNumber: string | null;
+            complement: string | null;
+            neighborhood: string | null;
+            city: string | null;
+            state: string | null;
           }>;
         };
         if (cancelled) return;
@@ -174,7 +280,17 @@ export default function SettingsPage() {
           (json.locations ?? []).map((loc) => ({
             id: loc.id,
             name: loc.name,
-            address: loc.address ?? '',
+            legacyAddress: loc.state ? '' : (loc.address ?? ''),
+            address: {
+              ...emptyOperatingAddress(),
+              postalCode: formatCep(loc.postalCode ?? ''),
+              street: loc.street ?? '',
+              streetNumber: loc.streetNumber ?? '',
+              complement: loc.complement ?? '',
+              neighborhood: loc.neighborhood ?? '',
+              city: loc.city ?? '',
+              state: loc.state ?? '',
+            },
           })),
         );
       } catch {
@@ -191,13 +307,17 @@ export default function SettingsPage() {
     };
   }, [cropSrc]);
 
-  function setLocationField(
-    id: string,
-    field: 'name' | 'address',
-    value: string,
-  ) {
+  function setLocationName(id: string, name: string) {
     setLocations((prev) =>
-      prev.map((loc) => (loc.id === id ? { ...loc, [field]: value } : loc)),
+      prev.map((loc) => (loc.id === id ? { ...loc, name } : loc)),
+    );
+  }
+
+  function patchLocationAddress(id: string, patch: Partial<OperatingAddress>) {
+    setLocations((prev) =>
+      prev.map((loc) =>
+        loc.id === id ? { ...loc, address: { ...loc.address, ...patch } } : loc,
+      ),
     );
   }
 
@@ -213,12 +333,16 @@ export default function SettingsPage() {
 
       for (const loc of locations) {
         const trimmedName = loc.name.trim();
-        const trimmedAddress = loc.address.trim();
         if (trimmedName.length < 2) {
           throw new Error('O nome da unidade precisa ter pelo menos 2 caracteres.');
         }
-        if (trimmedAddress.length < 5) {
-          throw new Error('O endereço precisa ter pelo menos 5 caracteres.');
+        const addressError = Object.values(operatingAddressErrors(loc.address))[0];
+        if (addressError) {
+          throw new Error(
+            locations.length > 1
+              ? `${loc.name.trim() || 'Unidade'}: ${addressError}`
+              : addressError,
+          );
         }
       }
 
@@ -239,6 +363,9 @@ export default function SettingsPage() {
         cashbackMinPurchaseCents: cashbackMinEnabled
           ? Math.max(100, Math.round(cashbackMinReais || 1) * 100)
           : null,
+        cashbackUseMultiple: cashbackMultipleEnabled
+          ? Math.max(2, Math.round(cashbackMultiple || 2))
+          : null,
         stampsExpireDays: stampsExpireEnabled
           ? Math.max(1, Math.min(3650, stampsExpireDays || 1))
           : null,
@@ -248,6 +375,8 @@ export default function SettingsPage() {
         cashbackExpireDays: cashbackExpireEnabled
           ? Math.max(1, Math.min(3650, cashbackExpireDays || 1))
           : null,
+        expiryNoticeEnabled,
+        expiryNoticeDays: Math.min(30, Math.max(1, Math.round(expiryNoticeDays) || 7)),
       });
 
       if (locations.length > 0) {
@@ -255,26 +384,28 @@ export default function SettingsPage() {
           ...(await authHeaders()),
           'Content-Type': 'application/json',
         };
-        await Promise.all(
-          locations.map(async (loc) => {
-            const res = await fetch(
-              `${API_URL}/business/locations/${encodeURIComponent(loc.id)}`,
-              {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({
-                  name: loc.name.trim(),
-                  address: loc.address.trim(),
-                }),
-              },
-            );
-            if (!res.ok) {
-              const json = (await res.json().catch(() => null)) as {
-                error?: string;
-              } | null;
-              throw new Error(json?.error ?? 'Não foi possível salvar o endereço.');
-            }
-          }),
+        for (const loc of locations) {
+          const res = await fetch(
+            `${API_URL}/business/locations/${encodeURIComponent(loc.id)}`,
+            {
+              method: 'PATCH',
+              headers,
+              body: JSON.stringify({
+                name: loc.name.trim(),
+                address: loc.address,
+              }),
+            },
+          );
+          if (!res.ok) {
+            const json = (await res.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(json?.error ?? 'Não foi possível salvar o endereço.');
+          }
+        }
+        await refresh();
+        setLocations((prev) =>
+          prev.map((loc) => ({ ...loc, legacyAddress: '' })),
         );
       }
 
@@ -389,52 +520,75 @@ export default function SettingsPage() {
         <h1 className="mb-2 text-[26px] font-semibold tracking-[-0.03em] text-[var(--color-ink)] md:hidden">
           Configurações
         </h1>
-        {business?.billing?.mode === 'locked' ? null : (
-        <div className="mb-6 flex w-fit gap-1 rounded-full bg-[var(--color-neutral-100)] p-1">
-          <button
-            type="button"
-            onClick={() => showPanel('loja')}
-            className={`min-h-9 rounded-full px-4 text-[13px] font-semibold ${
-              panel === 'loja'
-                ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-sm'
-                : 'text-[var(--color-neutral-500)]'
-            }`}
-          >
-            Loja
-          </button>
-          <button
-            type="button"
-            onClick={() => showPanel('planos')}
-            className={`min-h-9 rounded-full px-4 text-[13px] font-semibold ${
-              panel === 'planos'
-                ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-sm'
-                : 'text-[var(--color-neutral-500)]'
-            }`}
-          >
-            Planos
-          </button>
-        </div>
-        )}
-        {panel === 'loja' ? (
-          <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-            Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
-            saldo. A prévia ao lado atualiza na hora.
-          </p>
-        ) : (
-          <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
-            O Plano do estabelecimento. No pagamento você escolhe Pix, boleto ou cartão.
-          </p>
-        )}
-        {loading && !business ? (
-          <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
-        ) : business?.billing?.mode === 'locked' ? (
-          <BillingSettings />
-        ) : (
-          <div className="flex flex-col gap-4">
-          {panel === 'planos' ? (
-            <BillingSettings />
-          ) : (
+        {business?.billing?.mode === 'locked' ? (
           <>
+            <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
+              O Plano do estabelecimento. No pagamento você escolhe Pix, boleto ou cartão.
+            </p>
+            <BillingSettings />
+          </>
+        ) : (
+          <>
+            <div
+              className="mb-6 flex w-fit gap-1 rounded-[14px] bg-[var(--color-neutral-100)] p-1"
+              role="tablist"
+              aria-label="Configurações"
+            >
+              {(
+                [
+                  ['estabelecimento', 'Estabelecimento'],
+                  ['planos', 'Planos'],
+                  ...(isDono ? [['equipe', 'Equipe'] as const] : []),
+                  ['integracoes', 'Integrações'],
+                ] as const
+              ).map(([id, label]) => {
+                const selected = tab === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => selectTab(id)}
+                    className={`min-h-9 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
+                      selected
+                        ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
+                        : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {tab === 'planos' ? (
+              <>
+                <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
+                  O Plano do estabelecimento. No pagamento você escolhe Pix, boleto ou cartão.
+                </p>
+                <BillingSettings />
+              </>
+            ) : tab === 'integracoes' ? (
+              <IntegrationsTab />
+            ) : tab === 'equipe' ? (
+              isDono ? <EquipePanel /> : (
+                <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
+              )
+            ) : (
+              <>
+                <p className="mb-6 max-w-2xl text-[15px] leading-relaxed text-[var(--color-neutral-500)]">
+                  Como o estabelecimento aparece no app do cliente: marca, endereço e regras do
+                  saldo. A prévia ao lado atualiza na hora.
+                </p>
+                {business && !business.timeZone ? (
+                  <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3 text-[14px] text-[var(--color-primary-800)]">
+                    Informe o endereço da unidade. O dia do painel segue o estado onde vocês operam.
+                  </div>
+                ) : null}
+                {loading && !business ? (
+                  <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
+                ) : (
+                  <div className="flex flex-col gap-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
               <div className="flex min-w-0 flex-col gap-3 self-start">
               <form
@@ -667,7 +821,11 @@ export default function SettingsPage() {
                 <Section
                   Icon={MapPin}
                   title="Onde encontrar"
-                  hint="Aparece no app do cliente e na página pública."
+                  hint={
+                    business?.timeZone
+                      ? 'Aparece no app do cliente e na página pública. O dia do painel segue o estado da unidade.'
+                      : 'Informe o endereço. O dia do painel segue o estado onde vocês operam.'
+                  }
                 >
                   {locations.length === 0 ? (
                     <p className="text-[14px] text-[var(--color-neutral-500)]">
@@ -693,32 +851,28 @@ export default function SettingsPage() {
                             Nome da unidade
                             <input
                               value={loc.name}
-                              onChange={(e) =>
-                                setLocationField(loc.id, 'name', e.target.value)
-                              }
+                              onChange={(e) => setLocationName(loc.id, e.target.value)}
                               className={inputClass}
                               placeholder="Ex.: Loja Jardins"
                               required
                               minLength={2}
                             />
                           </label>
-                          <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
-                            Endereço
-                            <input
+                          <div className="mt-3">
+                            <OperatingAddressFields
+                              idPrefix={`location-${loc.id}`}
                               value={loc.address}
-                              onChange={(e) =>
-                                setLocationField(
-                                  loc.id,
-                                  'address',
-                                  e.target.value,
-                                )
-                              }
-                              className={inputClass}
-                              placeholder="Rua, número, bairro"
-                              required
-                              minLength={5}
+                              onChange={(patch) => patchLocationAddress(loc.id, patch)}
+                              errors={operatingAddressErrors(loc.address)}
+                              showErrors={Boolean(error)}
+                              legacyAddress={loc.legacyAddress || undefined}
                             />
-                          </label>
+                          </div>
+                          {locations.length > 1 && index === 0 ? (
+                            <p className="mt-3 text-[12px] leading-snug text-[var(--color-neutral-500)]">
+                              O dia do painel segue a unidade mais antiga que tem estado.
+                            </p>
+                          ) : null}
                         </div>
                       ))}
                     </div>
@@ -777,38 +931,12 @@ export default function SettingsPage() {
                 </Section>
 
                 <Section
-                  Icon={Coins}
-                  title="Benefícios"
-                  hint="Taxa de pontos, teto de cashback e validade do saldo."
+                  Icon={Banknote}
+                  title="Cashback"
+                  hint="A porcentagem fica em cada campanha. Aqui ficam o teto, a compra mínima, o múltiplo e a validade."
+                  iconWrapClassName="bg-[var(--color-cashback-bg)] text-[var(--color-cashback)]"
                 >
-                  <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
-                    R$ para 1 ponto
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={pointsPerReal}
-                      onChange={(e) =>
-                        setPointsPerReal(Math.max(1, Number(e.target.value) || 1))
-                      }
-                      className={inputClass}
-                    />
-                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
-                      Quanto o cliente precisa gastar no balcão para ganhar 1
-                      ponto. Ex.: 10 = R$ 10,00 → 1 ponto.
-                    </span>
-                  </label>
-
-                  <div className="mt-4 rounded-[14px] border border-[var(--color-cashback-ring)] bg-[var(--color-cashback-bg)] px-4 py-3 text-[13px] leading-relaxed text-[var(--color-cashback)]">
-                    A porcentagem de cashback fica em cada campanha, em{' '}
-                    <a href="/campaigns" className="font-semibold underline">
-                      Campanhas
-                    </a>
-                    . Aqui ficam só o teto, a compra mínima e a validade do
-                    saldo.
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
                         <input
@@ -871,105 +999,142 @@ export default function SettingsPage() {
                     </div>
                   </div>
 
-                  <p className="mt-5 text-[13px] font-semibold text-[var(--color-ink)]">
-                    Validade do saldo
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
-                    Em quantos dias o saldo expira depois que o cliente ganha. No
-                    resgate, o mais antigo é usado primeiro.
-                  </p>
-                  <div className="mt-3 flex flex-col gap-4">
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                  <div className="mt-4">
+                    <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                      <input
+                        type="checkbox"
+                        checked={cashbackMultipleEnabled}
+                        onChange={(e) =>
+                          setCashbackMultipleEnabled(e.target.checked)
+                        }
+                        className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                      />
+                      Múltiplo
+                    </label>
+                    <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                      A compra precisa ser pelo menos este número de vezes o
+                      cashback usado. Com 3, R$ 10 exigem uma compra de R$ 30.
+                      Numa compra menor, o uso vai até a compra dividida por
+                      esse número.
+                    </p>
+                    {cashbackMultipleEnabled ? (
+                      <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+                        Vezes
                         <input
-                          type="checkbox"
-                          checked={stampsExpireEnabled}
-                          onChange={(e) =>
-                            setStampsExpireEnabled(e.target.checked)
+                          type="number"
+                          min={2}
+                          value={cashbackMultiple}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            if (raw === '') return;
+                            const n = Math.round(Number(raw));
+                            if (!Number.isFinite(n)) return;
+                            setCashbackMultiple(n);
+                          }}
+                          onBlur={() =>
+                            setCashbackMultiple((n) => Math.max(2, n))
                           }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                          className={inputClass}
                         />
-                        Carimbos expiram
                       </label>
-                      {stampsExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={stampsExpireDays}
-                            onChange={(e) =>
-                              setStampsExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
-                        <input
-                          type="checkbox"
-                          checked={pointsExpireEnabled}
-                          onChange={(e) =>
-                            setPointsExpireEnabled(e.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                        />
-                        Pontos expiram
-                      </label>
-                      {pointsExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={pointsExpireDays}
-                            onChange={(e) =>
-                              setPointsExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
-                    <div>
-                      <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
-                        <input
-                          type="checkbox"
-                          checked={cashbackExpireEnabled}
-                          onChange={(e) =>
-                            setCashbackExpireEnabled(e.target.checked)
-                          }
-                          className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
-                        />
-                        Cashback expira
-                      </label>
-                      {cashbackExpireEnabled ? (
-                        <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
-                          Dias após o ganho
-                          <input
-                            type="number"
-                            min={1}
-                            max={3650}
-                            value={cashbackExpireDays}
-                            onChange={(e) =>
-                              setCashbackExpireDays(
-                                Math.max(1, Number(e.target.value) || 1),
-                              )
-                            }
-                            className={inputClass}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
+                    ) : null}
                   </div>
+
+                  <ExpireToggle
+                    checked={cashbackExpireEnabled}
+                    onChecked={setCashbackExpireEnabled}
+                    days={cashbackExpireDays}
+                    onDays={setCashbackExpireDays}
+                  />
+                </Section>
+
+                <Section
+                  Icon={Stamp}
+                  title="Carimbos"
+                  hint="Em quantos dias o carimbo expira depois que o cliente ganha."
+                  iconWrapClassName="bg-[var(--color-stamps-bg)] text-[var(--color-stamps)]"
+                >
+                  <ExpireToggle
+                    className=""
+                    checked={stampsExpireEnabled}
+                    onChecked={setStampsExpireEnabled}
+                    days={stampsExpireDays}
+                    onDays={setStampsExpireDays}
+                  />
+                </Section>
+
+                <Section
+                  Icon={Gift}
+                  title="Pontos"
+                  hint="Quanto o cliente gasta para ganhar 1 ponto, e em quantos dias o ponto expira."
+                  iconWrapClassName="bg-[var(--color-points-bg)] text-[var(--color-points)]"
+                >
+                  <label className="block text-[13px] font-semibold text-[var(--color-ink)]">
+                    R$ para 1 ponto
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={pointsPerReal}
+                      onChange={(e) =>
+                        setPointsPerReal(Math.max(1, Number(e.target.value) || 1))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      Ex.: 10 = R$ 10,00 → 1 ponto.
+                    </span>
+                  </label>
+                  <ExpireToggle
+                    checked={pointsExpireEnabled}
+                    onChecked={setPointsExpireEnabled}
+                    days={pointsExpireDays}
+                    onDays={setPointsExpireDays}
+                  />
+                </Section>
+
+                <Section Icon={Bell} title="Lembrete">
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={expiryNoticeEnabled}
+                      onChange={(e) => setExpiryNoticeEnabled(e.target.checked)}
+                      className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    />
+                    Avisar antes do vencimento
+                  </label>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                    O cliente é avisado no WhatsApp, se estiver configurado,
+                    e/ou por uma notificação no app, quando faltam esses dias
+                    para carimbos, pontos ou cashback vencerem. O aviso sai
+                    uma vez para cada vencimento e diz quantos dias ainda
+                    faltam, por exemplo “10 pontos vencem em 5 dias”. Com o
+                    aviso desligado, o saldo continua expirando e nenhum aviso
+                    sai.
+                  </p>
+                  <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+                    Dias antes
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={expiryNoticeDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const n = Math.round(Number(raw));
+                        if (!Number.isFinite(n)) return;
+                        setExpiryNoticeDays(n);
+                      }}
+                      onBlur={() =>
+                        setExpiryNoticeDays((n) => Math.min(30, Math.max(1, n || 7)))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      O mesmo número, de 1 a 30, vale para carimbos, pontos e cashback.
+                    </span>
+                  </label>
                 </Section>
                 {error ? (
                   <p
@@ -1037,21 +1202,11 @@ export default function SettingsPage() {
               </div>
             </aside>
           </div>
-
-            {business?.billing && !business.billing.features.whatsapp ? (
-              <FeatureLocked
-                feature="whatsapp"
-                owner={business.role === 'owner'}
-                currentTier={business.billing.tier}
-              >
-                <WhatsAppSettingsCard />
-              </FeatureLocked>
-            ) : (
-              <WhatsAppSettingsCard />
+                  </div>
+                )}
+              </>
             )}
           </>
-          )}
-          </div>
         )}
       </div>
 
@@ -1062,6 +1217,9 @@ export default function SettingsPage() {
           title="Ajustar logo"
           description="O logo começa inteiro no quadrado. Arraste e use o zoom se quiser aproximar."
           fileNamePrefix="logo"
+          // Largest logo in the app is ~72px. 384 stays sharp at 3×.
+          outputWidth={384}
+          quality={0.9}
           onCancel={closeCrop}
           onConfirm={uploadCroppedLogo}
         />
@@ -1074,7 +1232,9 @@ export default function SettingsPage() {
           title="Ajustar capa"
           description="Enquadre a foto 16:9. Ela aparece no topo da página pública e no app."
           fileNamePrefix="hero"
-          outputWidth={1600}
+          // Full-width phone header is about 430px at 3×.
+          outputWidth={1280}
+          quality={0.8}
           onCancel={closeCrop}
           onConfirm={uploadCroppedHero}
         />

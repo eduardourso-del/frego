@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type FormEvent,
@@ -29,6 +30,8 @@ import {
   promoFrequencyHint,
 } from '@/lib/promo-label';
 
+import { birthdayWindowLabel, type BirthdayWindowKind } from '@/lib/birthday-window';
+
 export type CampaignType = 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo';
 export type PromoPeriod = 'day' | 'week' | 'month' | 'year' | 'campaign';
 
@@ -52,6 +55,8 @@ export type CampaignFormState = {
   cartela: boolean;
   /** True after the Campanha has been active once. The Cartela choice is fixed. */
   cartelaLocked: boolean;
+  birthdayWindow: BirthdayWindowKind;
+  birthdayWindowDays: number;
 };
 
 export type AudienceOption = {
@@ -79,6 +84,8 @@ export const emptyCampaignForm: CampaignFormState = {
   redeemPeriod: 'day',
   cartela: false,
   cartelaLocked: false,
+  birthdayWindow: 'days',
+  birthdayWindowDays: 7,
 };
 
 type TypeOption = {
@@ -117,7 +124,7 @@ const TYPES: TypeOption[] = [
   {
     value: 'birthday',
     title: 'Aniversário',
-    hint: 'Presente uma vez por ano, no aniversário.',
+    hint: 'Presente uma vez por ano, na janela que você definir.',
     Icon: Cake,
     color: 'var(--color-ink)',
     bg: 'var(--color-primary-50)',
@@ -239,6 +246,12 @@ function Section({
   );
 }
 
+function clampStepper(raw: string, min: number, max: number): number {
+  const n = Number(raw);
+  if (raw === '' || !Number.isFinite(n)) return min;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+}
+
 function Stepper({
   value,
   min,
@@ -252,28 +265,68 @@ function Stepper({
   onChange: (n: number) => void;
   suffix: string;
 }) {
+  const [text, setText] = useState(String(value));
+  const editing = useRef(false);
+
+  useEffect(() => {
+    if (!editing.current) setText(String(value));
+  }, [value]);
+
+  function commit(raw: string) {
+    const next = clampStepper(raw, min, max);
+    setText(String(next));
+    onChange(next);
+  }
+
+  function step(delta: number) {
+    const parsed = Number(text);
+    const base = text !== '' && Number.isFinite(parsed) ? parsed : min;
+    const next = Math.min(max, Math.max(min, base + delta));
+    setText(String(next));
+    onChange(next);
+  }
+
   return (
     <div className="mt-1.5 flex items-center gap-2">
       <button
         type="button"
         aria-label="Diminuir"
-        onClick={() => onChange(Math.max(min, value - 1))}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => step(-1)}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)]"
       >
         −
       </button>
       <div className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-[12px] border border-[var(--color-neutral-200)] px-3">
         <input
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (!Number.isFinite(n)) return;
-            onChange(Math.min(max, Math.max(min, n)));
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          value={text}
+          onFocus={() => {
+            editing.current = true;
           }}
-          className="w-16 bg-transparent text-center text-[18px] font-semibold tabular-nums outline-none"
+          onBlur={() => {
+            editing.current = false;
+            commit(text);
+          }}
+          onChange={(e) => {
+            const digits = e.target.value.replace(/\D/g, '');
+            if (digits === '') {
+              setText('');
+              return;
+            }
+            const n = Number(digits);
+            if (n > max) {
+              setText(String(max));
+              onChange(max);
+              return;
+            }
+            setText(digits);
+            if (n >= min) onChange(n);
+          }}
+          className="shrink-0 bg-transparent text-center text-[18px] font-semibold tabular-nums outline-none"
+          style={{ width: `${String(max).length + 1}ch` }}
         />
         <span className="text-[13px] text-[var(--color-neutral-500)]">
           {suffix}
@@ -282,11 +335,54 @@ function Stepper({
       <button
         type="button"
         aria-label="Aumentar"
-        onClick={() => onChange(Math.min(max, value + 1))}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => step(1)}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)]"
       >
         +
       </button>
+    </div>
+  );
+}
+
+function ValidityFields({
+  form,
+  setForm,
+}: {
+  form: CampaignFormState;
+  setForm: Dispatch<SetStateAction<CampaignFormState>>;
+}) {
+  return (
+    <div className="mt-3">
+      <span className="text-[13px] font-semibold text-[var(--color-ink)]">
+        Quando vale
+      </span>
+      <div className="mt-1.5 grid grid-cols-2 gap-2">
+        <label className="block text-[12px] font-medium text-[var(--color-neutral-500)]">
+          Início
+          <input
+            type="date"
+            value={form.startsOn}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, startsOn: e.target.value }))
+            }
+            className={inputClass}
+          />
+        </label>
+        <label className="block text-[12px] font-medium text-[var(--color-neutral-500)]">
+          Fim
+          <input
+            type="date"
+            value={form.endsOn}
+            onChange={(e) => setForm((f) => ({ ...f, endsOn: e.target.value }))}
+            className={inputClass}
+          />
+        </label>
+      </div>
+      <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
+        Vazio = sem data. A campanha segue até você pausar ou arquivar. Dias em
+        Brasília.
+      </p>
     </div>
   );
 }
@@ -300,39 +396,6 @@ function PromoRules({
 }) {
   return (
     <div className="mt-3 flex flex-col gap-3">
-      <div>
-        <span className="text-[13px] font-semibold text-[var(--color-ink)]">
-          Quando vale
-        </span>
-        <div className="mt-1.5 grid grid-cols-2 gap-2">
-          <label className="block text-[12px] font-medium text-[var(--color-neutral-500)]">
-            Início
-            <input
-              type="date"
-              value={form.startsOn}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, startsOn: e.target.value }))
-              }
-              className={inputClass}
-            />
-          </label>
-          <label className="block text-[12px] font-medium text-[var(--color-neutral-500)]">
-            Fim
-            <input
-              type="date"
-              value={form.endsOn}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, endsOn: e.target.value }))
-              }
-              className={inputClass}
-            />
-          </label>
-        </div>
-        <p className="mt-1.5 text-[12px] font-normal text-[var(--color-neutral-500)]">
-          Vazio = sem data. Dias em Brasília.
-        </p>
-      </div>
-
       <div>
         <span className="text-[13px] font-semibold text-[var(--color-ink)]">
           Dias da semana
@@ -526,6 +589,7 @@ export function CampaignCreateForm({
     primaryColor?: string | null;
     primaryColorDark?: string | null;
     pointsPerReal?: number;
+    cashbackUseMultiple?: number | null;
   } | null;
   isEditing: boolean;
   busy: boolean;
@@ -637,6 +701,67 @@ export function CampaignCreateForm({
               />
             </label>
 
+            {form.type === 'birthday' ? (
+              <div className="mt-3">
+                <p className="text-[13px] font-semibold text-[var(--color-ink)]">
+                  Quando libera
+                </p>
+                <div className="mt-1.5 grid grid-cols-2 gap-2">
+                  {(
+                    [
+                      ['days', 'A partir do aniversário'],
+                      ['month', 'Mês do aniversário'],
+                    ] as const
+                  ).map(([value, label]) => {
+                    const selected = form.birthdayWindow === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({ ...f, birthdayWindow: value }))
+                        }
+                        className={`min-h-11 rounded-[12px] border px-3 text-[13px] font-semibold ${
+                          selected
+                            ? 'border-[var(--color-primary-500)] bg-[var(--color-primary-50)] text-[var(--color-ink)]'
+                            : 'border-[var(--color-neutral-200)] text-[var(--color-neutral-500)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.birthdayWindow === 'days' ? (
+                  <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+                    Quantos dias
+                    <Stepper
+                      value={form.birthdayWindowDays}
+                      min={1}
+                      max={90}
+                      suffix={form.birthdayWindowDays === 1 ? 'dia' : 'dias'}
+                      onChange={(n) =>
+                        setForm((f) => ({ ...f, birthdayWindowDays: n }))
+                      }
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      O dia do aniversário entra na conta. 15 dias = o dia e os
+                      14 seguintes.
+                    </span>
+                  </label>
+                ) : (
+                  <p className="mt-2 text-[12px] text-[var(--color-neutral-500)]">
+                    Do dia 1 ao último dia do mês da data que o cliente
+                    cadastrou.
+                  </p>
+                )}
+                <p className="mt-2 text-[12px] text-[var(--color-neutral-500)]">
+                  No app, o presente libera e bloqueia nesta janela. O texto do
+                  prêmio é o que o cliente lê sobre a regra.
+                </p>
+              </div>
+            ) : null}
+
             {form.type === 'stamps' ? (
               <>
                 <label className="mt-3 flex items-start gap-2 text-[13px] font-semibold text-[var(--color-ink)]">
@@ -686,7 +811,7 @@ export function CampaignCreateForm({
                 Pontos para resgatar
                 <Stepper
                   value={form.stampsNeeded}
-                  min={10}
+                  min={1}
                   max={10000}
                   suffix="pontos"
                   onChange={(n) =>
@@ -721,6 +846,8 @@ export function CampaignCreateForm({
               <PromoRules form={form} setForm={setForm} />
             ) : null}
 
+            <ValidityFields form={form} setForm={setForm} />
+
             <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
               Nome no app
               <input
@@ -732,6 +859,22 @@ export function CampaignCreateForm({
                 className={inputClass}
                 placeholder={TYPE_DEFAULTS[form.type].name}
               />
+            </label>
+
+            <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+              Descrição
+              <input
+                value={form.rewardDescription}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, rewardDescription: e.target.value }))
+                }
+                maxLength={200}
+                className={inputClass}
+                placeholder="Uma linha a mais, se quiser"
+              />
+              <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                Opcional. Aparece no cartão do cliente.
+              </span>
             </label>
           </Section>
 
@@ -889,8 +1032,21 @@ export function CampaignCreateForm({
               cashbackPercent={
                 form.type === 'cashback' ? form.cashbackPercent : 0
               }
+              cashbackUseMultiple={
+                form.type === 'cashback'
+                  ? (business?.cashbackUseMultiple ?? null)
+                  : null
+              }
               rewardTitle={form.rewardTitle}
               rewardDescription={form.rewardDescription}
+              birthdayHint={
+                form.type === 'birthday'
+                  ? birthdayWindowLabel(
+                      form.birthdayWindow,
+                      form.birthdayWindowDays,
+                    )
+                  : undefined
+              }
               rewardImageUrl={form.rewardImageUrl || null}
               promoHint={
                 form.type === 'promo'

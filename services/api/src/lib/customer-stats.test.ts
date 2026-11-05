@@ -31,6 +31,7 @@ function snap(
     stampsExpireDays: null,
     pointsExpireDays: null,
     cashbackExpireDays: null,
+    cashbackUseMultiple: null,
     cashbackPercent: 0,
     lots: [],
     campaigns,

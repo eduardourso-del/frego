@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Firebase Auth encrypts the session with a device keystore key.
+         Restoring these prefs onto another install signs the cashier out. -->
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>

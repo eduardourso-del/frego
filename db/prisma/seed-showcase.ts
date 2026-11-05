@@ -124,6 +124,7 @@ async function main() {
       cashbackExpireDays: 90,
       cashbackMinPurchaseCents: 1500,
       cashbackMaxCents: 2000,
+      timeZone: 'America/Sao_Paulo',
     },
     create: {
       id: BIZ_ID,
@@ -139,6 +140,7 @@ async function main() {
       cashbackExpireDays: 90,
       cashbackMinPurchaseCents: 1500,
       cashbackMaxCents: 2000,
+      timeZone: 'America/Sao_Paulo',
       createdAt: new Date('2024-11-08T10:00:00-03:00'),
     },
   });
@@ -159,6 +161,8 @@ async function main() {
     update: {
       name: 'Bela Vista — Consolação',
       address: 'Rua da Consolação, 2140 — Bela Vista, São Paulo',
+      city: 'São Paulo',
+      state: 'SP',
       isOpen: true,
     },
     create: {
@@ -166,6 +170,8 @@ async function main() {
       businessId: business.id,
       name: 'Bela Vista — Consolação',
       address: 'Rua da Consolação, 2140 — Bela Vista, São Paulo',
+      city: 'São Paulo',
+      state: 'SP',
       isOpen: true,
     },
   });

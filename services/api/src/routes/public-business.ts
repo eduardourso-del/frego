@@ -31,6 +31,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           slogan: true,
           slug: true,
           cashbackPercent: true,
+          cashbackUseMultiple: true,
           pointsPerReal: true,
           locations: {
             orderBy: { createdAt: 'asc' },
@@ -58,6 +59,8 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
               weekdays: true,
               redeemMax: true,
               redeemPeriod: true,
+              birthdayWindow: true,
+              birthdayWindowDays: true,
             },
           },
         },
@@ -99,6 +102,7 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           slogan: business.slogan,
           slug: business.slug,
           cashbackPercent: maxCashback,
+          cashbackUseMultiple: business.cashbackUseMultiple,
           pointsPerReal: business.pointsPerReal,
         },
         locations,
@@ -112,6 +116,8 @@ export const publicBusinessRoutes: FastifyPluginAsync = async (app) => {
           rewardTitle: c.rewardTitle,
           rewardDescription: c.rewardDescription,
           rewardImageUrl: c.rewardImageUrl,
+          birthdayWindow: c.birthdayWindow,
+          birthdayWindowDays: c.birthdayWindowDays,
         })),
       };
     },

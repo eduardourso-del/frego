@@ -8,9 +8,14 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  sendEmailVerification,
   verifyPasswordResetCode,
   confirmPasswordReset,
+  applyActionCode,
+  checkActionCode,
+  signOut,
   type Auth,
+  type User,
 } from 'firebase/auth';
 import {
   getStorage,
@@ -19,6 +24,7 @@ import {
   getDownloadURL,
   type FirebaseStorage,
 } from 'firebase/storage';
+import { prepareRewardImage } from '@/lib/prepare-image';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? '',
@@ -111,6 +117,38 @@ export async function confirmStaffPasswordReset(code: string, password: string) 
   await confirmPasswordReset(getFirebaseAuth(), code, password);
 }
 
+/** The inbox confirmation link returns here after Firebase applies it. */
+export const EMAIL_CONFIRM_PATH = '/confirmar-email';
+
+export async function sendStaffEmailVerification(user: User) {
+  const continueUrl = `${window.location.origin}${EMAIL_CONFIRM_PATH}`;
+  try {
+    await sendEmailVerification(user, { url: continueUrl });
+  } catch (err) {
+    const code = firebaseErrorCode(err);
+    if (
+      code === 'auth/unauthorized-continue-uri' ||
+      code === 'auth/invalid-continue-uri'
+    ) {
+      await sendEmailVerification(user);
+      return;
+    }
+    throw err;
+  }
+}
+
+/** Applies a verify-email code and returns the address it confirmed. */
+export async function applyStaffEmailVerification(code: string) {
+  const auth = getFirebaseAuth();
+  const info = await checkActionCode(auth, code);
+  await applyActionCode(auth, code);
+  return info.data.email ?? null;
+}
+
+export async function signOutStaff() {
+  await signOut(getFirebaseAuth());
+}
+
 export function firebaseErrorCode(err: unknown): string {
   if (err && typeof err === 'object' && 'code' in err) {
     return String((err as { code: unknown }).code);
@@ -126,6 +164,9 @@ export async function getIdToken(forceRefresh = false): Promise<string | null> {
   if (!user) return null;
   return user.getIdToken(forceRefresh);
 }
+
+/** Timestamped paths never change, so clients can keep the file. */
+const IMAGE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 function assertImageFile(file: File) {
   if (!file.type.startsWith('image/')) {
@@ -156,7 +197,10 @@ async function uploadBusinessImage(
   const path = `businesses/${businessId}/${folder}/${Date.now()}.${storageExt(file)}`;
   try {
     const storageRef = ref(getFirebaseStorage(), path);
-    await uploadBytes(storageRef, file, { contentType: file.type });
+    await uploadBytes(storageRef, file, {
+      contentType: file.type,
+      cacheControl: IMAGE_CACHE_CONTROL,
+    });
     return getDownloadURL(storageRef);
   } catch (err) {
     const code =
@@ -180,7 +224,8 @@ export async function uploadCampaignRewardImage(
   businessId: string,
   file: File,
 ): Promise<string> {
-  return uploadBusinessImage(businessId, 'rewards', file);
+  const prepared = await prepareRewardImage(file);
+  return uploadBusinessImage(businessId, 'rewards', prepared);
 }
 
 /** Logo do estabelecimento → Firebase Storage. */

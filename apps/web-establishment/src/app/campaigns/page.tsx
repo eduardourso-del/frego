@@ -17,7 +17,12 @@ import { SegmentedControl } from '@/components/ui';
 import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { formatCoverage } from '@/lib/campaign-return';
-import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
+import { birthdayWindowLabel } from '@/lib/birthday-window';
+import {
+  campaignValidityLine,
+  promoFrequencyHint,
+  promoHint,
+} from '@/lib/promo-label';
 import { CampaignCompareChart } from '@/components/campaign-compare-chart';
 import { TermInfo } from '@/components/term-info';
 import { formatBrl } from '@/lib/money';
@@ -48,6 +53,8 @@ type Campaign = {
   weekdays?: number[];
   redeemMax?: number | null;
   redeemPeriod?: string | null;
+  birthdayWindow?: 'days' | 'month' | null;
+  birthdayWindowDays?: number | null;
 };
 
 type CampaignPerformance = {
@@ -629,6 +636,8 @@ function CampaignsPageContent() {
       redeemPeriod: period,
       cartela: Boolean(c.cartela),
       cartelaLocked: Boolean(c.activatedAt),
+      birthdayWindow: c.birthdayWindow === 'month' ? 'month' : 'days',
+      birthdayWindowDays: c.birthdayWindowDays ?? 7,
     });
     setShowForm(true);
     setError(null);
@@ -675,29 +684,33 @@ function CampaignsPageContent() {
         cashbackPercent:
           form.type === 'cashback' ? form.cashbackPercent : undefined,
         rewardTitle: form.rewardTitle || undefined,
-        rewardDescription: form.rewardDescription || undefined,
+        rewardDescription: form.rewardDescription.trim() || null,
         rewardImageUrl: form.rewardImageUrl || null,
         audienceSegmentId: form.audienceSegmentId || null,
+        startsOn: form.startsOn || null,
+        endsOn: form.endsOn || null,
         ...(form.type === 'promo'
           ? {
-              startsOn: form.startsOn || null,
-              endsOn: form.endsOn || null,
               weekdays: form.weekdays,
               redeemMax: form.unlimited ? null : form.redeemMax,
               redeemPeriod: form.unlimited ? null : form.redeemPeriod,
             }
           : form.type === 'stamps'
             ? {
-                startsOn: null,
-                endsOn: null,
                 weekdays: [],
                 redeemMax: form.unlimited ? null : form.redeemMax,
                 redeemPeriod: form.unlimited ? null : form.redeemPeriod,
                 cartela: form.cartela,
               }
+            : form.type === 'birthday'
+              ? {
+                  weekdays: [],
+                  redeemMax: null,
+                  redeemPeriod: null,
+                  birthdayWindow: form.birthdayWindow,
+                  birthdayWindowDays: form.birthdayWindowDays,
+                }
             : {
-                startsOn: null,
-                endsOn: null,
                 weekdays: [],
                 redeemMax: null,
                 redeemPeriod: null,
@@ -1028,7 +1041,11 @@ function CampaignsPageContent() {
                       {c.type === 'spend'
                         ? `Meta ${c.stampsNeeded} pontos`
                         : c.type === 'birthday'
-                          ? 'Presente no aniversário · uma vez ao ano'
+                          ? birthdayWindowLabel(
+                              c.birthdayWindow,
+                              c.birthdayWindowDays,
+                              { onceAYear: true },
+                            )
                           : c.type === 'cashback'
                             ? `Cashback ${c.cashbackPercent ?? 0}% · válido no caixa`
                             : c.type === 'promo'
@@ -1036,6 +1053,9 @@ function CampaignsPageContent() {
                               : c.redeemMax != null
                                 ? `${c.stampsNeeded} carimbos · ${promoFrequencyHint(c)}`
                                 : `${c.stampsNeeded} carimbos`}
+                      {c.type !== 'promo' && campaignValidityLine(c)
+                        ? ` · ${campaignValidityLine(c)}`
+                        : ''}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
                     {perfById[c.id] && (

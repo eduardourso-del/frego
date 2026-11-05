@@ -5,6 +5,7 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import '../../ui/empty_state.dart';
 import '../../ui/balance_lots_section.dart';
 import '../../ui/campaign_order.dart';
 import '../../ui/skeleton.dart';
@@ -298,48 +299,13 @@ class _HistoryPageState extends State<HistoryPage> {
           ),
         )
       else if (_items.isEmpty && _lots.isEmpty)
-        SliverFillRemaining(
+        const SliverFillRemaining(
           hasScrollBody: false,
-          child: Padding(
-            padding: const EdgeInsets.all(FregoLargeTitlePage.gutter),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: FregoColors.primary50,
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Icon(
-                    FregoIcons.historyFilled,
-                    color: FregoColors.ink,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Nada por aqui ainda',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: FregoColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Quando você acumular ou resgatar em uma loja, o movimento aparece aqui com o código do voucher.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.4,
-                    color: FregoColors.neutral500,
-                  ),
-                ),
-              ],
-            ),
+          child: FregoEmptyState(
+            title: 'Nada por aqui ainda',
+            body:
+                'Carimbos, pontos e resgates aparecem aqui na ordem em que acontecem.',
+            badge: FregoIcons.historyFilled,
           ),
         )
       else ...[

@@ -29,6 +29,7 @@ Os dois compartilham o mesmo mapa mental. Desktop no painel web pode mostrar mai
 ├─────────────────────────────────┤
 │ Registrar:                      │
 │   Telefone · cliente · valor    │
+│   Cashback (se houver saldo)    │  Usar todo o saldo, ou um valor
 │   2 vouchers abertos do cliente │
 │ Voucher:                        │
 │   Código · Escanear QR          │
@@ -45,7 +46,7 @@ Overlays (não empilhar na coluna principal):
 | Vários clientes com os mesmos 4 dígitos | Folha / diálogo com tiles grandes |
 | Mais de 2 vouchers abertos | Folha com lista completa + Confirmar em cada linha |
 | Mais de 3 lançamentos | Folha com histórico do cliente neste turno |
-| Escanear QR (PDV e web mobile, com câmera) | Folha com viewfinder; preenche o Código; **Usar** continua o sticky |
+| Escanear QR (PDV e web mobile, com câmera) | Folha com viewfinder; preenche o Código; **Confirmar** continua o sticky |
 | Desfazer | Diálogo de confirmação (já existente) |
 | Nome ou telefone errado no cadastro desta loja | Folha **Corrigir**: nome e telefone. O saldo desta loja passa para o número certo só enquanto o cadastro não é conta (sem app e só nesta loja) |
 
@@ -54,8 +55,8 @@ Overlays (não empilhar na coluna principal):
 1. **Identidade do cliente** (nome + telefone) quando houver lookup.
 2. **Campo ativo** (telefone, valor ou voucher) — 28px, centralizado, alvo ≥ 48px.
 3. **CTA sticky** — uma ação, 52px de altura, largura total.
-4. Saldos (carimbos / pontos / cashback) — leitura, não ação.
-5. Voucher só no modo Voucher (não no fluxo de lançar).
+4. Saldos (carimbos / pontos / cashback) — leitura. O saldo de cashback também marca **Usar todo o saldo** quando a linha está na compra.
+5. Voucher só no modo Voucher (não no fluxo de lançar). Carimbo não oferece a linha de cashback.
 
 Textos longos de onboarding saem da tela de caixa. Uma linha basta.
 
@@ -68,8 +69,8 @@ Uma ação primária por vez. O rótulo segue **estado + foco**. Sem foco, usa o
 | Registrar, sem lookup | Telefone / nenhum | Buscar | Lookup 4 dígitos ou telefone |
 | Registrar, não encontrado | Telefone completo / nenhum | Buscar / criar… | Lookup global ou cadastro + earn |
 | Registrar, vários matches | Qualquer | Buscar | Nova busca; escolha é na folha |
-| Registrar, cliente encontrado | Valor, cashback, nenhum | Carimbar / Registrar… | Earn (ou adicionar à loja) |
-| Voucher | Código / valor / nenhum | Usar | Fulfill código |
+| Registrar, cliente encontrado | Valor, cashback, nenhum | Carimbar / Registrar… / Adicionar à loja | Earn, ou adicionar quem já está no Frego. **Só cadastrar** não lança carimbo, pontos nem cashback. Com cashback preenchido: **Registrar · usar R$ …** |
+| Voucher | Código / valor / nenhum | Confirmar | Fulfill código |
 | Voucher, expirado | Qualquer | Aceitar mesmo assim | Fulfill com `acceptExpired` |
 
 Desfazer: se houver `_lastSale`, chip **Desfazer** à esquerda do CTA. Nunca substitui o primário.
@@ -81,8 +82,9 @@ Web mobile: a barra fica **acima** das tabs do `AppShell` (~5.5rem + safe area).
 ## Campos e teclado
 
 - Telefone: `numeric`, submit = Buscar.
-- Valor: `numeric` com máscara BRL, submit = earn. No voucher, o mesmo campo é opcional e não bloqueia **Usar**.
-- Voucher: caracteres, máscara `XXX-XXX`, submit = Usar. Envia `amountCents` se o valor (do voucher ou do lançamento) estiver preenchido. **Escanear QR** (secundário, modo Voucher) preenche o mesmo campo e limpa o valor leftover; não Confirma. Desktop web (`md+`) não mostra o controle.
+- Valor: `numeric` com máscara BRL, submit = earn. No voucher, o mesmo campo é opcional e não bloqueia **Confirmar**.
+- Cashback (só com saldo, na mesma compra de pontos ou cashback — não no carimbo): **Usar todo o saldo** preenche o menor entre saldo e compra, sem digitar. O campo continua editável para um valor menor. No modo cashback, **Não entra cashback nesta compra** usa o saldo e não gera cashback novo. A linha diz `− R$ … · a pagar R$ …` e, se a compra gera cashback, `· entra + R$ …`.
+- Voucher: caracteres, máscara `XXX-XXX`, submit = Confirmar. Envia `amountCents` se o valor (do voucher ou do lançamento) estiver preenchido. **Escanear QR** (secundário, modo Voucher) preenche o mesmo campo e limpa o valor leftover; não Confirma. Desktop web (`md+`) não mostra o controle.
 - Com campo focado, o sticky mostra **só** a ação daquele campo.
 
 ## PDV vs web

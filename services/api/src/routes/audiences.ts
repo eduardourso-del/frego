@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import {
   AUDIENCE_PRESETS,
   audienceRulesSchema,
@@ -61,6 +61,7 @@ function serializeAudience(
 }
 
 export const audienceRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', rejectBalcao);
   app.get('/audiences', async (request) => {
     const auth = requireAuth(request);
     const segments = await prisma.audienceSegment.findMany({

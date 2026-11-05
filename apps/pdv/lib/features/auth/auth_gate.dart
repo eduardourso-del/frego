@@ -1,28 +1,35 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../session/staff_auth.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/native_splash.dart';
 import 'business_gate.dart';
 import 'login_page.dart';
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
   @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    StaffAuth.instance.restore();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
-          removeFregoNativeSplash();
-          return const FregoSplash();
-        }
-        final user = snap.data;
-        if (user == null) {
-          removeFregoNativeSplash();
-          return const LoginPage();
-        }
+    return ListenableBuilder(
+      listenable: StaffAuth.instance,
+      builder: (context, _) {
+        removeFregoNativeSplash();
+        final auth = StaffAuth.instance;
+        if (!auth.ready) return const FregoSplash();
+        final user = auth.currentUser;
+        if (user == null) return const LoginPage();
         return BusinessGate(key: ValueKey(user.uid), user: user);
       },
     );

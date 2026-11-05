@@ -5,6 +5,7 @@ import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import '../../ui/campaign_order.dart';
+import '../../ui/cashback_copy.dart';
 import '../../ui/loyalty_campaign_card.dart';
 import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
@@ -354,6 +355,17 @@ class _WalletPageState extends State<WalletPage> {
                                             label: 'Cashback',
                                             value:
                                                 'R\$ ${(cashbackCents / 100).toStringAsFixed(2).replaceAll('.', ',')}',
+                                            caption: () {
+                                              final multiple =
+                                                  cashbackUseMultipleOf(
+                                                campaigns,
+                                              );
+                                              return multiple == null
+                                                  ? null
+                                                  : cashbackMultipleOffer(
+                                                      multiple,
+                                                    );
+                                            }(),
                                           ),
                                         ),
                                     ],
@@ -423,6 +435,8 @@ class _WalletPageState extends State<WalletPage> {
                                 final daysUntil =
                                     (c['daysUntilBirthday'] as num?)?.toInt();
                                 final unlocksAt = c['unlocksAt'] as String?;
+                                final description =
+                                    (c['rewardDescription'] as String?)?.trim();
 
                                 if (isCashback) {
                                   final primary = _parseHex(
@@ -453,14 +467,24 @@ class _WalletPageState extends State<WalletPage> {
                                       rewardTitle: c['rewardTitle']
                                               as String? ??
                                           'Volta em R\$',
+                                      rewardDescription: description,
                                       canRedeem: false,
                                       buttonLabel: lockedReason == 'audience'
                                           ? 'Indisponível pra você'
                                           : 'Use no caixa',
+                                      statusHint: outsideDatesLine(
+                                        lockedReason: lockedReason,
+                                        unlocksAt: unlocksAt,
+                                      ),
+                                      promoCalendar:
+                                          PromoCalendar.fromCampaign(c),
                                       cashbackPercent: (c['cashbackPercent']
                                               as num?)
                                           ?.toInt(),
                                       cashbackBalanceCents: cashbackBalance,
+                                      cashbackUseMultiple:
+                                          (c['cashbackUseMultiple'] as num?)
+                                              ?.toInt(),
                                       onRedeem: null,
                                       onOpen: () => _openCampaign(c),
                                     ),
@@ -495,6 +519,13 @@ class _WalletPageState extends State<WalletPage> {
                                             'Presente de aniversário';
                                     buttonLabel = 'Bloqueado';
                                   }
+                                  if (lockedReason == 'outside_dates') {
+                                    subtitle = outsideDatesLine(
+                                      lockedReason: lockedReason,
+                                      unlocksAt: unlocksAt,
+                                    )!;
+                                    buttonLabel = 'Fora do período';
+                                  }
                                 } else if (isPromo) {
                                   subtitle = promoStatusLine(
                                     lockedReason: lockedReason,
@@ -528,11 +559,18 @@ class _WalletPageState extends State<WalletPage> {
                                   if (scope != null) {
                                     subtitle = '$scope · $subtitle';
                                   }
-                                  buttonLabel = lockedReason == 'quota_exhausted'
-                                      ? 'Já resgatado'
-                                      : canRedeem
-                                          ? 'Resgatar'
-                                          : 'Ainda falta';
+                                  final window = outsideDatesLine(
+                                    lockedReason: lockedReason,
+                                    unlocksAt: unlocksAt,
+                                  );
+                                  if (window != null) subtitle = window;
+                                  buttonLabel = window != null
+                                      ? 'Fora do período'
+                                      : lockedReason == 'quota_exhausted'
+                                          ? 'Já resgatado'
+                                          : canRedeem
+                                              ? 'Resgatar'
+                                              : 'Ainda falta';
                                 }
 
                                 if (isPromo) {
@@ -564,8 +602,7 @@ class _WalletPageState extends State<WalletPage> {
                                       rewardTitle: c['rewardTitle']
                                               as String? ??
                                           'Prêmio',
-                                      rewardDescription:
-                                          c['rewardDescription'] as String?,
+                                      rewardDescription: description,
                                       rewardImageUrl:
                                           c['rewardImageUrl'] as String?,
                                       canRedeem: canRedeem,
@@ -664,6 +701,21 @@ class _WalletPageState extends State<WalletPage> {
                                             ),
                                           ],
                                         ),
+                                        if (description != null &&
+                                            description.isNotEmpty) ...[
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            description,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              height: 1.35,
+                                              fontWeight: FontWeight.w500,
+                                              color: FregoColors.neutral500,
+                                            ),
+                                          ),
+                                        ],
                                         const SizedBox(height: 6),
                                         Text(
                                           subtitle,
@@ -677,6 +729,13 @@ class _WalletPageState extends State<WalletPage> {
                                                 : FregoColors.neutral500,
                                           ),
                                         ),
+                                        if (campaignValidityLine(
+                                              PromoCalendar.fromCampaign(c),
+                                            )
+                                            case final validity?) ...[
+                                          const SizedBox(height: 8),
+                                          CampaignValidityRow(line: validity),
+                                        ],
                                         const SizedBox(height: 12),
                                         SizedBox(
                                           width: double.infinity,
@@ -713,10 +772,11 @@ class _WalletPageState extends State<WalletPage> {
 }
 
 class _PoolChip extends StatelessWidget {
-  const _PoolChip({required this.label, required this.value});
+  const _PoolChip({required this.label, required this.value, this.caption});
 
   final String label;
   final String value;
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -746,6 +806,18 @@ class _PoolChip extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
+          if (caption != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              caption!,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.8),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+              ),
+            ),
+          ],
         ],
       ),
     );

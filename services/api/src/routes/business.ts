@@ -5,6 +5,13 @@ import { requireAuth } from '../plugins/auth.js';
 import { loadBilling, locationIsOperable, presentBilling } from '../lib/billing.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
+import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
+import {
+  locationAddressData,
+  operatingAddressSchema,
+  parseOperatingAddress,
+  syncBusinessFuso,
+} from '../lib/operating-address.js';
 
 const hexColor = z
   .string()
@@ -32,9 +39,14 @@ const updateBody = z.object({
     .max(10_000_000)
     .nullable()
     .optional(),
+  /** Múltiplo, from 2 up. Null clears it. */
+  cashbackUseMultiple: z.number().int().min(2).max(1_000_000).nullable().optional(),
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
+  /** Antecedência. Off keeps the day count and sends no wallet Lembrete. */
+  expiryNoticeEnabled: z.boolean().optional(),
+  expiryNoticeDays: z.number().int().min(1).max(30).optional(),
   slug: z
     .string()
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug em minúsculas-com-hífen')
@@ -47,7 +59,7 @@ const updateBody = z.object({
 
 const updateLocationBody = z.object({
   name: z.string().min(2).max(80).optional(),
-  address: z.string().min(5).max(200).nullable().optional(),
+  address: operatingAddressSchema.optional(),
   isOpen: z.boolean().optional(),
 });
 
@@ -67,9 +79,13 @@ function publicBusiness(b: {
   cashbackPercent: number;
   cashbackMaxCents: number | null;
   cashbackMinPurchaseCents: number | null;
+  cashbackUseMultiple: number | null;
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
+  expiryNoticeEnabled: boolean;
+  expiryNoticeDays: number;
+  timeZone: string | null;
 }, activeEarnKinds: EarnKind[] = []) {
   return {
     id: b.id,
@@ -87,23 +103,36 @@ function publicBusiness(b: {
     cashbackPercent: b.cashbackPercent,
     cashbackMaxCents: b.cashbackMaxCents,
     cashbackMinPurchaseCents: b.cashbackMinPurchaseCents,
+    cashbackUseMultiple: b.cashbackUseMultiple,
     stampsExpireDays: b.stampsExpireDays,
     pointsExpireDays: b.pointsExpireDays,
     cashbackExpireDays: b.cashbackExpireDays,
+    expiryNoticeEnabled: b.expiryNoticeEnabled,
+    expiryNoticeDays: b.expiryNoticeDays,
+    timeZone: b.timeZone,
     activeEarnKinds,
   };
 }
 
-async function businessResponse(
+async function businessForMember(
+  auth: { teamMemberId: string; role: string },
   business: Parameters<typeof publicBusiness>[0],
   activeEarnKinds: EarnKind[],
-  role: string,
 ) {
-  const loaded = await loadBilling(business.id);
+  const [member, loaded] = await Promise.all([
+    prisma.teamMember.findUnique({
+      where: { id: auth.teamMemberId },
+      select: { displayName: true },
+    }),
+    loadBilling(business.id),
+  ]);
   return {
-    ...publicBusiness(business, activeEarnKinds),
-    role,
-    billing: loaded ? presentBilling(loaded.account, loaded.access) : null,
+    business: {
+      ...publicBusiness(business, activeEarnKinds),
+      role: auth.role,
+      displayName: member?.displayName ?? null,
+      billing: loaded ? presentBilling(loaded.account, loaded.access) : null,
+    },
   };
 }
 
@@ -115,9 +144,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       where: { id: auth.businessId },
     });
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return {
-      business: await businessResponse(business, activeEarnKinds, auth.role),
-    };
+    return businessForMember(auth, business, activeEarnKinds);
   });
 
   /** Atualiza experiência da loja (nome, cores, logo, slogan). Owner/manager. */
@@ -135,6 +162,15 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       if (taken) {
         return reply.code(409).send({ error: 'SLUG_TAKEN' });
       }
+    }
+
+    let closeExpiry = false;
+    if (body.expiryNoticeEnabled === false) {
+      const current = await prisma.business.findUniqueOrThrow({
+        where: { id: auth.businessId },
+        select: { expiryNoticeEnabled: true },
+      });
+      closeExpiry = current.expiryNoticeEnabled;
     }
 
     let cnpj: string | undefined;
@@ -182,6 +218,10 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackMinPurchaseCents === undefined
             ? undefined
             : body.cashbackMinPurchaseCents,
+        cashbackUseMultiple:
+          body.cashbackUseMultiple === undefined
+            ? undefined
+            : body.cashbackUseMultiple,
         stampsExpireDays:
           body.stampsExpireDays === undefined
             ? undefined
@@ -194,15 +234,17 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackExpireDays === undefined
             ? undefined
             : body.cashbackExpireDays,
+        expiryNoticeEnabled: body.expiryNoticeEnabled,
+        expiryNoticeDays: body.expiryNoticeDays,
         slug: body.slug === undefined ? undefined : body.slug,
         cnpj,
       },
     });
 
+    if (closeExpiry) await closeToldExpiryNotices(auth.businessId);
+
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return {
-      business: await businessResponse(business, activeEarnKinds, auth.role),
-    };
+    return businessForMember(auth, business, activeEarnKinds);
   });
 
   /** Unidades (endereço) do negócio autenticado. */
@@ -215,6 +257,13 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
         id: true,
         name: true,
         address: true,
+        postalCode: true,
+        street: true,
+        streetNumber: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
         isOpen: true,
       },
     });
@@ -229,6 +278,12 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     }
     const { locationId } = request.params as { locationId: string };
     const body = updateLocationBody.parse(request.body);
+    const parsedAddress = body.address
+      ? parseOperatingAddress(body.address)
+      : null;
+    if (parsedAddress && !parsedAddress.ok) {
+      return reply.code(400).send({ error: parsedAddress.error });
+    }
 
     const existing = await prisma.location.findFirst({
       where: { id: locationId, businessId: auth.businessId },
@@ -248,16 +303,29 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       where: { id: locationId },
       data: {
         name: body.name,
-        address: body.address === undefined ? undefined : body.address,
+        ...(parsedAddress?.ok
+          ? locationAddressData(parsedAddress.address)
+          : {}),
         isOpen: body.isOpen,
       },
       select: {
         id: true,
         name: true,
         address: true,
+        postalCode: true,
+        street: true,
+        streetNumber: true,
+        complement: true,
+        neighborhood: true,
+        city: true,
+        state: true,
         isOpen: true,
       },
     });
+
+    if (parsedAddress?.ok) {
+      await syncBusinessFuso(auth.businessId);
+    }
 
     return { location };
   });

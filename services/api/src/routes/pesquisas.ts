@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
-import { requireAuth, requireCustomerAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao, requireCustomerAuth } from '../plugins/auth.js';
 import {
   archivePesquisa,
   getPesquisaDetail,
@@ -66,6 +66,11 @@ function fail(
 }
 
 export const pesquisaRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', async (request, reply) => {
+    const path = request.url.split('?')[0] ?? '';
+    if (path.startsWith('/public/') || path.startsWith('/me/')) return;
+    return rejectBalcao(request, reply);
+  });
   app.get('/pesquisas', async (request) => {
     const auth = requireAuth(request);
     return listPesquisas(auth.businessId);

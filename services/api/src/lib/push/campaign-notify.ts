@@ -6,7 +6,7 @@ import {
 } from '../audience.js';
 import { campaignNotifyCopy } from '../notify/campaign-copy.js';
 import { notifyCampaignAudienceWhatsApp } from '../whatsapp/campaign-notify.js';
-import { apnsWithData, sendAndPruneFcm } from './send.js';
+import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
 
 export { chunkTokens, isStaleFcmTokenError } from './send.js';
 export { campaignPushCopy } from '../notify/campaign-copy.js';
@@ -48,12 +48,7 @@ export function buildCampaignPushMessage(input: {
       businessId: input.businessId,
       campaignId: input.campaignId,
     },
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: 'frego_campaigns',
-      },
-    },
+    android: androidPushConfig(),
     apns: apnsWithData({
       type: 'campaign_new',
       businessId: input.businessId,

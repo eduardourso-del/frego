@@ -6,7 +6,14 @@ import { isSubscriptionTier, setCortesia, startTrial } from '../lib/billing.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { foldLedgerTx } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { civilYmd } from '../lib/promo.js';
 import { loadTagsByMembershipIds } from '../lib/tags.js';
+import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
+import { patchBusinessCampaign } from './campaigns.js';
+import {
+  emailOwnerIfApproved,
+  emailOwnerIfRefused,
+} from '../lib/mail/business-approved.js';
 
 const STATUSES = [
   'pending',
@@ -65,10 +72,14 @@ const updateBusinessBody = z.object({
     .max(10_000_000)
     .nullable()
     .optional(),
+  cashbackUseMultiple: z.number().int().min(2).max(1_000_000).nullable().optional(),
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
+  expiryNoticeEnabled: z.boolean().optional(),
+  expiryNoticeDays: z.number().int().min(1).max(30).optional(),
   status: z.enum(STATUSES).optional(),
+  explorationVisible: z.boolean().optional(),
   slug: z
     .union([
       z
@@ -214,6 +225,10 @@ async function loadBusinessDetail(id: string) {
           connectedAt: true,
         },
       },
+      audienceSegments: {
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true },
+      },
       campaigns: {
         orderBy: { updatedAt: 'desc' },
         take: 40,
@@ -223,8 +238,21 @@ async function loadBusinessDetail(id: string) {
           type: true,
           status: true,
           stampsNeeded: true,
+          pointsPerReal: true,
+          cashbackPercent: true,
           rewardTitle: true,
+          rewardDescription: true,
+          rewardImageUrl: true,
           cartela: true,
+          activatedAt: true,
+          startsOn: true,
+          endsOn: true,
+          weekdays: true,
+          redeemMax: true,
+          redeemPeriod: true,
+          birthdayWindow: true,
+          birthdayWindowDays: true,
+          audienceSegment: { select: { id: true, name: true } },
         },
       },
     },
@@ -267,6 +295,7 @@ async function loadBusinessDetail(id: string) {
       name: business.name,
       type: business.type,
       status: business.status,
+      explorationVisible: business.explorationVisible,
       logoUrl: business.logoUrl,
       heroImageUrl: business.heroImageUrl,
       primaryColor: business.primaryColor,
@@ -278,13 +307,17 @@ async function loadBusinessDetail(id: string) {
       cashbackPercent: business.cashbackPercent,
       cashbackMaxCents: business.cashbackMaxCents,
       cashbackMinPurchaseCents: business.cashbackMinPurchaseCents,
+      cashbackUseMultiple: business.cashbackUseMultiple,
       stampsExpireDays: business.stampsExpireDays,
       pointsExpireDays: business.pointsExpireDays,
       cashbackExpireDays: business.cashbackExpireDays,
+      expiryNoticeEnabled: business.expiryNoticeEnabled,
+      expiryNoticeDays: business.expiryNoticeDays,
       createdAt: business.createdAt.toISOString(),
       updatedAt: business.updatedAt.toISOString(),
     },
     locations: business.locations,
+    audiences: business.audienceSegments,
     team: business.teamMembers.map((m) => ({
       ...m,
       createdAt: m.createdAt.toISOString(),
@@ -307,7 +340,27 @@ async function loadBusinessDetail(id: string) {
         const performance =
           campaignActivity.get(campaign.id) ?? emptyActivity();
         return {
-          ...campaign,
+          id: campaign.id,
+          name: campaign.name,
+          type: campaign.type,
+          status: campaign.status,
+          stampsNeeded: campaign.stampsNeeded,
+          pointsPerReal: campaign.pointsPerReal,
+          cashbackPercent: campaign.cashbackPercent,
+          rewardTitle: campaign.rewardTitle,
+          rewardDescription: campaign.rewardDescription,
+          rewardImageUrl: campaign.rewardImageUrl,
+          cartela: campaign.cartela,
+          activatedAt: campaign.activatedAt?.toISOString() ?? null,
+          startsOn: civilYmd(campaign.startsOn),
+          endsOn: civilYmd(campaign.endsOn),
+          weekdays: campaign.weekdays,
+          redeemMax: campaign.redeemMax,
+          redeemPeriod: campaign.redeemPeriod,
+          birthdayWindow: campaign.birthdayWindow,
+          birthdayWindowDays: campaign.birthdayWindowDays,
+          audienceSegmentId: campaign.audienceSegment?.id ?? null,
+          audienceName: campaign.audienceSegment?.name ?? null,
           earns30d: performance.earns,
           redeems30d: performance.redeems,
         };
@@ -755,6 +808,25 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return detail;
   });
 
+  app.patch(
+    '/admin/businesses/:id/campaigns/:campaignId',
+    async (request, reply) => {
+      requirePlatformAuth(request);
+      const { id, campaignId } = request.params as {
+        id: string;
+        campaignId: string;
+      };
+      const result = await patchBusinessCampaign({
+        businessId: id,
+        campaignId,
+        body: request.body,
+        log: (msg, extra) => request.log.info(extra ?? {}, msg),
+      });
+      if (!result.ok) return reply.code(result.status).send(result.body);
+      return { campaign: result.campaign };
+    },
+  );
+
   app.get('/admin/businesses/:id/customers', async (request, reply) => {
     requirePlatformAuth(request);
     const { id } = request.params as { id: string };
@@ -811,6 +883,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const closeExpiry =
+      body.expiryNoticeEnabled === false && existing.expiryNoticeEnabled;
+
     await prisma.business.update({
       where: { id },
       data: {
@@ -833,6 +908,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackMinPurchaseCents === undefined
             ? undefined
             : body.cashbackMinPurchaseCents,
+        cashbackUseMultiple:
+          body.cashbackUseMultiple === undefined
+            ? undefined
+            : body.cashbackUseMultiple,
         stampsExpireDays:
           body.stampsExpireDays === undefined
             ? undefined
@@ -845,12 +924,29 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackExpireDays === undefined
             ? undefined
             : body.cashbackExpireDays,
+        expiryNoticeEnabled: body.expiryNoticeEnabled,
+        expiryNoticeDays: body.expiryNoticeDays,
         slug: slug === undefined ? undefined : slug,
+        explorationVisible: body.explorationVisible,
       },
     });
 
+    if (closeExpiry) await closeToldExpiryNotices(id);
+
     if (body.status && body.status !== existing.status) {
-      await setBusinessStatus(id, body.status);
+      const updated = await setBusinessStatus(id, body.status);
+      await emailOwnerIfApproved(
+        request.log,
+        existing.status,
+        body.status,
+        updated,
+      );
+      await emailOwnerIfRefused(
+        request.log,
+        existing.status,
+        body.status,
+        updated,
+      );
     }
 
     const detail = await loadBusinessDetail(id);
@@ -910,6 +1006,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     const updated = await setBusinessStatus(id, 'trial');
     await startTrial(id);
+    await emailOwnerIfApproved(request.log, 'pending', 'trial', updated);
 
     return {
       business: {
@@ -955,6 +1052,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const updated = await setBusinessStatus(id, 'suspended');
+    await emailOwnerIfRefused(request.log, 'pending', 'suspended', updated);
 
     return {
       business: {

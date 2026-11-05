@@ -52,6 +52,12 @@ enum CampaignType {
   promo
 }
 
+/// Birthday Campanha: days begin on the birthday, or that birthday's calendar month.
+enum BirthdayWindow {
+  days
+  month
+}
+
 /// How often a customer may Resgatar a Promoção. Null on the Campanha means unlimited.
 enum PromoRedeemPeriod {
   day
@@ -158,6 +164,8 @@ model Business {
   /// padaria | café | restaurant | pizzaria | hamburgueria | … (see @frego/tokens BUSINESS_TYPES)
   type      String
   status    BusinessStatus @default(trial)
+  /// Operator included this Estabelecimento in Exploração. Off until chosen.
+  explorationVisible Boolean @default(false) @map("exploration_visible")
   logoUrl   String?        @map("logo_url")
   /// Imagem de capa (hero) da página pública e detalhe no app.
   heroImageUrl String?       @map("hero_image_url")
@@ -177,12 +185,20 @@ model Business {
   cashbackMaxCents Int?  @map("cashback_max_cents")
   /// Compra mínima (centavos pagos) para creditar cashback.
   cashbackMinPurchaseCents Int? @map("cashback_min_purchase_cents")
+  /// Múltiplo: the compra must cover at least this many times the cashback Usado. Null = no extra cap.
+  cashbackUseMultiple Int? @map("cashback_use_multiple")
   /// Dias até carimbos expirarem após o ganho. null = não expiram.
   stampsExpireDays Int?  @map("stamps_expire_days")
   /// Dias até pontos expirarem após o ganho. null = não expiram.
   pointsExpireDays Int?  @map("points_expire_days")
   /// Dias até o cashback expirar após o ganho. null = não expira.
   cashbackExpireDays Int? @map("cashback_expire_days")
+  /// Aviso antes do vencimento. Desligado, o saldo ainda expira e esse Lembrete não sai.
+  expiryNoticeEnabled Boolean @default(true) @map("expiry_notice_enabled")
+  /// Dias antes do vencimento. Um número para carimbos, pontos e cashback.
+  expiryNoticeDays Int @default(7) @map("expiry_notice_days")
+  /// IANA zone derived from the operating UF. Null until that address is saved.
+  timeZone String? @map("time_zone")
   createdAt DateTime       @default(now()) @map("created_at")
   updatedAt DateTime       @updatedAt @map("updated_at")
 
@@ -197,6 +213,10 @@ model Business {
   billing      BillingAccount?
   whatsapp     BusinessWhatsAppConnection?
   whatsappWebhookEvents WhatsAppWebhookEvent[]
+  saipos       BusinessSaiposConnection?
+  saiposSales  SaiposSale[]
+  favorites    Favorite[]
+  earnNotifyHolds EarnNotifyHold[]
 
   @@map("businesses")
 }
@@ -205,7 +225,16 @@ model Location {
   id         String   @id @default(cuid())
   businessId String   @map("business_id")
   name       String
+  /// Linha composta para a página pública e o app. As partes abaixo definem o Fuso.
   address    String?
+  postalCode   String? @map("postal_code")
+  street       String?
+  streetNumber String? @map("street_number")
+  complement   String?
+  neighborhood String?
+  city         String?
+  /// UF (2 letters). The oldest unidade with a UF sets Business.timeZone.
+  state        String?
   isOpen     Boolean  @default(true) @map("is_open")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
@@ -238,12 +267,34 @@ model TeamMember {
   location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
   transactions Transaction[]
   taggedMemberships MembershipTag[]
+  saiposConnections BusinessSaiposConnection[]
 
   @@unique([businessId, firebaseUid])
   @@index([firebaseUid])
   @@index([email])
   @@index([phoneE164])
   @@map("team_members")
+}
+
+/// Owner's Cadastro. Not an Estabelecimento until the e-mail is confirmed.
+model BusinessApplication {
+  id               String   @id @default(cuid())
+  firebaseUid      String   @unique @map("firebase_uid")
+  email            String
+  ownerName        String   @map("owner_name")
+  businessName     String   @map("business_name")
+  type             String
+  slogan           String?
+  cnpj             String?
+  primaryColor     String   @default("#070707") @map("primary_color")
+  primaryColorDark String   @default("#070707") @map("primary_color_dark")
+  locationName     String   @map("location_name")
+  address          Json
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([email])
+  @@map("business_applications")
 }
 
 // ─── Global customer identity ────────────────────────────────────────────────
@@ -261,16 +312,25 @@ model Customer {
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   /// Opt-out de push no app. Default on — OS permission is still required.
   notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+  /// Cidade: where the Cliente lives. City label plus UF.
+  city        String?
+  state       String?
+  /// City Exploração is listing after she picks one. Not her Cidade.
+  browseCity  String?  @map("browse_city")
+  browseState String?  @map("browse_state")
+  browseCityChosen Boolean @default(false) @map("browse_city_chosen")
   /// Set when the customer deletes the in-app account (PII anonymized).
   deletedAt   DateTime? @map("deleted_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   memberships  Membership[]
+  favorites    Favorite[]
   deviceTokens DeviceToken[]
   transactions Transaction[] @relation("CustomerActorTransactions")
   convites     Convite[]
   respostas    Resposta[]
+  earnNotifyHolds EarnNotifyHold[]
 
   @@index([phoneLast4])
   @@index([deletedAt])
@@ -310,11 +370,69 @@ model Membership {
   tags         MembershipTag[]
   convites     Convite[]
   respostas    Resposta[]
+  accountNotices AccountNotice[]
 
   @@unique([customerId, businessId])
   @@index([businessId])
   @@index([customerId, isFavorite])
   @@map("memberships")
+}
+
+/// One claim per expiring wallet date or ending Promoção, so the daily
+/// reminder does not repeat a channel that already landed.
+model AccountNotice {
+  id            String    @id @default(cuid())
+  membershipId  String    @map("membership_id")
+  /// expiry | campaign_end
+  kind          String
+  noticeKey     String    @unique @map("notice_key")
+  /// sent | skipped. Null means that channel can still be tried.
+  pushState     String?   @map("push_state")
+  whatsappState String?   @map("whatsapp_state")
+  /// YYYY-MM-DD in America/Sao_Paulo. Quiet until this day. A last-day retry leaves it empty.
+  holdUntil     String?   @map("hold_until")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([membershipId])
+  @@map("account_notices")
+}
+
+/// One pending earn message per Cliente at an Estabelecimento.
+/// Taps inside the quiet window fold into this row; the flush sends once.
+model EarnNotifyHold {
+  id         String   @id @default(cuid())
+  businessId String   @map("business_id")
+  customerId String   @map("customer_id")
+  /// Increments whenever the held burst changes.
+  version    Int      @default(1)
+  sendAfter  DateTime @map("send_after")
+  payload    Json
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, customerId])
+  @@index([sendAfter])
+  @@map("earn_notify_holds")
+}
+
+/// A Cliente's private mark on an Estabelecimento. Not a Clube.
+model Favorite {
+  customerId String   @map("customer_id")
+  businessId String   @map("business_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, businessId])
+  @@index([businessId])
+  @@map("favorites")
 }
 
 /// House-defined label. Catalog lives on the business; assignment is per membership.
@@ -383,6 +501,10 @@ model Campaign {
   cartela      Boolean   @default(false)
   /// Set the first time the Campanha becomes active. Locks cartela.
   activatedAt  DateTime? @map("activated_at")
+  /// Birthday: days starting on the birthday, or the birthday's calendar month.
+  birthdayWindow     BirthdayWindow @default(days) @map("birthday_window")
+  /// Inclusive day count when birthdayWindow is days. Kept when the Janela is the month.
+  birthdayWindowDays Int            @default(7) @map("birthday_window_days")
   /// Se definido, só membros da audiência podem resgatar.
   audienceSegmentId String?   @map("audience_segment_id")
   /// Set when audience FCM was claimed/sent. Re-activate does not send again.
@@ -654,6 +776,12 @@ model BusinessWhatsAppConnection {
   templatePesquisaStatus WhatsAppTemplateStatus   @default(missing) @map("template_pesquisa_status")
   templatePesquisaId     String?                  @map("template_pesquisa_id")
   templatePesquisaSyncedAt DateTime?              @map("template_pesquisa_synced_at")
+  /// Expiring wallet or a Promoção that is ending while Resgatar is open.
+  templateNoticeName   String                   @default("frego_account_notice_v1") @map("template_notice_name")
+  templateNoticeLang   String                   @default("pt_BR") @map("template_notice_lang")
+  templateNoticeStatus WhatsAppTemplateStatus   @default(missing) @map("template_notice_status")
+  templateNoticeId     String?                  @map("template_notice_id")
+  templateNoticeSyncedAt DateTime?              @map("template_notice_synced_at")
   /// True when onboarded via WhatsApp Business app coexistence (keep app + Cloud API).
   coexistence        Boolean                  @default(false)
   smbSyncStartedAt   DateTime?                @map("smb_sync_started_at")
@@ -687,4 +815,63 @@ model WhatsAppWebhookEvent {
   @@index([businessId, createdAt])
   @@index([phoneNumberId])
   @@map("whatsapp_webhook_events")
+}
+
+// ─── Saipos data API (closed sales → Clube earn) ────────────────────────────
+
+enum SaiposConnectionStatus {
+  connected
+  error
+}
+
+enum SaiposSaleStatus {
+  processing
+  credited
+  skipped
+  reversed
+  reverse_blocked
+}
+
+/// One data-API token per Estabelecimento. The painel never reads it back.
+model BusinessSaiposConnection {
+  id                      String                 @id @default(cuid())
+  businessId              String                 @unique @map("business_id")
+  /// AES-GCM ciphertext of the Saipos data token (base64).
+  tokenCiphertext         String                 @map("token_ciphertext")
+  tokenKeyVersion         Int                    @default(1) @map("token_key_version")
+  status                  SaiposConnectionStatus @default(connected)
+  connectedByTeamMemberId String?                @map("connected_by_team_member_id")
+  /// updated_at watermark. Sales before connectedAt are not credited.
+  cursorUpdatedAt         DateTime?              @map("cursor_updated_at")
+  lastSyncAt              DateTime?              @map("last_sync_at")
+  lastError               String?                @map("last_error")
+  connectedAt             DateTime               @default(now()) @map("connected_at")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+
+  business    Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  connectedBy TeamMember? @relation(fields: [connectedByTeamMemberId], references: [id], onDelete: SetNull)
+
+  @@map("business_saipos_connections")
+}
+
+/// One Saipos id_sale per Estabelecimento, so a later pull does not credit twice.
+model SaiposSale {
+  id           String           @id @default(cuid())
+  businessId   String           @map("business_id")
+  saiposSaleId String           @map("saipos_sale_id")
+  /// Frego ledger sale id, once credited.
+  saleId       String?          @map("sale_id")
+  membershipId String?          @map("membership_id")
+  status       SaiposSaleStatus
+  skipReason   String?          @map("skip_reason")
+  amountCents  Int?             @map("amount_cents")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, saiposSaleId])
+  @@index([businessId, status])
+  @@map("saipos_sales")
 }

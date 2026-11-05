@@ -111,7 +111,14 @@ export default function PrivacidadePage() {
         </li>
       </ul>
 
-      <h3>2.4 Cookies e tecnologias similares</h3>
+      <h3>2.4 Saipos</h3>
+      <p>
+        Quando o estabelecimento cola o token da API de dados da Saipos, guardamos
+        esse token criptografado e, das vendas fechadas, o telefone, o nome e o
+        valor usados para creditar o clube.
+      </p>
+
+      <h3>2.5 Cookies e tecnologias similares</h3>
       <p>
         Nos sites do Frego podemos usar cookies e armazenamento local
         essenciais à autenticação, sessão e preferências (ex.: loja ativa).
@@ -207,7 +214,8 @@ export default function PrivacidadePage() {
       <h2>6. Segurança</h2>
       <p>
         Adotamos medidas técnicas e organizacionais razoáveis, incluindo
-        criptografia de tokens sensíveis (ex.: tokens WhatsApp em repouso),
+        criptografia de tokens sensíveis (ex.: tokens WhatsApp e o token da
+        Saipos em repouso),
         controle de acesso, comunicação HTTPS e segregação multi-tenant por
         negócio. Nenhum sistema é 100% seguro; pedimos que você proteja suas
         credenciais e dispositivo.

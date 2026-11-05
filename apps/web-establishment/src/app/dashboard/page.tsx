@@ -8,7 +8,7 @@ import { FeatureLocked } from '@/components/plan-lock';
 import { CampaignPerformanceSection } from '@/components/campaign-performance-section';
 import { TermInfo } from '@/components/term-info';
 import { useAuth } from '@/lib/auth-context';
-import { useBusiness } from '@/lib/business-context';
+import { memberDisplayName, useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { TERM } from '@/lib/term-copy';
 import { WhatsAppAttentionBanner } from '@/components/whatsapp-settings-card';
@@ -378,6 +378,7 @@ export default function DashboardPage() {
     authHeaders,
     businessId,
     business,
+    businesses,
     loading: businessLoading,
   } = useBusiness();
   const kinds = business?.activeEarnKinds;
@@ -390,11 +391,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const firstName = useMemo(() => {
+    const named = memberDisplayName(businesses, businessId);
+    if (named) return named.split(/\s+/)[0] ?? named;
     const email = user?.email;
     if (!email) return 'equipe';
     const local = email.split('@')[0] ?? 'equipe';
     return local.charAt(0).toUpperCase() + local.slice(1);
-  }, [user]);
+  }, [businesses, businessId, user]);
 
   const load = useCallback(async () => {
     if (!businessId) return;
@@ -477,6 +480,15 @@ export default function DashboardPage() {
           </div>
         </div>
         <WhatsAppAttentionBanner />
+        {business && !business.timeZone ? (
+          <div className="mb-4 rounded-[12px] border border-[var(--color-primary-200)] bg-[var(--color-primary-50)] px-4 py-3 text-[14px] text-[var(--color-primary-800)]">
+            Informe o endereço da unidade em{' '}
+            <Link href="/settings" className="font-semibold underline">
+              Configurações
+            </Link>
+            . O dia do painel segue o estado onde vocês operam.
+          </div>
+        ) : null}
         {error && (
           <div
             className="mb-4 rounded-[12px] border border-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-[14px] text-[var(--color-danger)]"

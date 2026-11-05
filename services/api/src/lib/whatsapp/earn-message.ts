@@ -10,6 +10,14 @@ export type EarnNotifyLines = {
   hintLine: string;
 };
 
+export type EarnBurstPart = {
+  unitKind: 'stamps' | 'points' | 'cashback';
+  quantity: number;
+  amountCents?: number | null;
+  cashbackCents?: number | null;
+  stampLabel?: string | null;
+};
+
 export type EarnNotifyInput = {
   businessId: string;
   businessName: string;
@@ -19,14 +27,74 @@ export type EarnNotifyInput = {
   quantity: number;
   amountCents?: number | null;
   cashbackCents?: number | null;
+  /** Counter sale this earn belongs to. Used to drop the held message if that sale is reversed. */
+  saleId?: string | null;
   transactionId?: string | null;
   wallet: WalletSnapshot;
   /** Set on a carimbo earn so the copy names a Cartela or the shared balance. */
   stampEarn?: { cartela: boolean; label: string; balance: number } | null;
   /** Set when this earn opened or refreshed a Convite. */
   pesquisa?: { sentence: string; url: string; conviteId: string } | null;
+  /**
+   * Earn line for a burst that may mix carimbos, pontos, and cashback.
+   * Built when the hold is sent, so a reverse still sees the parts that remain.
+   */
+  summaryLine?: string | null;
   log?: (msg: string, extra?: Record<string, unknown>) => void;
 };
+
+function money(cents: number): string {
+  return (cents / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+}
+
+/** One earn line for every kind credited in the quiet window. */
+export function earnBurstLine(parts: EarnBurstPart[]): string {
+  const stampGroups = new Map<string, number>();
+  let pointsQty = 0;
+  let pointsCents = 0;
+  let pointsHaveAmount = false;
+  let cashbackCents = 0;
+
+  for (const part of parts) {
+    if (part.unitKind === 'stamps') {
+      const label = part.stampLabel ?? '';
+      stampGroups.set(label, (stampGroups.get(label) ?? 0) + part.quantity);
+    } else if (part.unitKind === 'points') {
+      pointsQty += part.quantity;
+      if (part.amountCents != null) {
+        pointsHaveAmount = true;
+        pointsCents += part.amountCents;
+      }
+    }
+    if (part.unitKind === 'cashback') {
+      cashbackCents += part.cashbackCents ?? 0;
+    } else if (part.cashbackCents != null && part.cashbackCents > 0) {
+      cashbackCents += part.cashbackCents;
+    }
+  }
+
+  const segments: string[] = [];
+  for (const [label, qty] of stampGroups) {
+    if (qty <= 0) continue;
+    const qtyText = qty === 1 ? '1 carimbo' : `${qty} carimbos`;
+    segments.push(label ? `${qtyText} · ${label}` : qtyText);
+  }
+  if (pointsQty > 0) {
+    segments.push(
+      pointsHaveAmount
+        ? `${pointsQty} pts (${money(pointsCents)})`
+        : `${pointsQty} pts`,
+    );
+  }
+  if (cashbackCents > 0) {
+    segments.push(`${money(cashbackCents)} cashback`);
+  }
+  const line = segments.length > 0 ? `+${segments.join(' + ')}` : 'compra registrada';
+  return line.slice(0, 120);
+}
 
 /**
  * Build the 4 template body parameters for Meta WhatsApp.
@@ -40,17 +108,14 @@ export function buildEarnWhatsAppLines(input: {
   cashbackCents?: number | null;
   wallet: WalletSnapshot;
   stampEarn?: { cartela: boolean; label: string; balance: number } | null;
+  summaryLine?: string | null;
 }): EarnNotifyLines {
   const businessName = (input.businessName || 'Frego').slice(0, 60);
 
-  const money = (cents: number) =>
-    (cents / 100).toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-    });
-
   let earnLine: string;
-  if (input.unitKind === 'points') {
+  if (input.summaryLine) {
+    earnLine = input.summaryLine;
+  } else if (input.unitKind === 'points') {
     const reais =
       input.amountCents != null ? money(input.amountCents) : null;
     earnLine = reais
@@ -70,6 +135,7 @@ export function buildEarnWhatsAppLines(input: {
         : qty;
   }
   if (
+    !input.summaryLine &&
     input.unitKind !== 'cashback' &&
     input.cashbackCents &&
     input.cashbackCents > 0

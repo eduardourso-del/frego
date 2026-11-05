@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +7,20 @@ import 'package:flutter/services.dart';
 
 import '../theme/frego_icons.dart';
 import '../theme/frego_theme.dart';
+
+/// [SliverAppBar.onStretchTrigger] runs during layout. Calling setState there
+/// throws, and the reload never starts. Wait for the frame to finish first.
+Future<void> fregoStretchRefresh(Future<void> Function() reload) {
+  final done = Completer<void>();
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    try {
+      await reload();
+    } finally {
+      if (!done.isCompleted) done.complete();
+    }
+  });
+  return done.future;
+}
 
 /// Preferência de UI nativa: Cupertino no iOS/macOS, Material no Android/web.
 abstract final class FregoAdaptive {
@@ -43,9 +59,10 @@ abstract final class FregoAdaptive {
         CupertinoPageRoute<T>(builder: (_) => page, settings: settings),
       );
     }
-    return Navigator.of(context, rootNavigator: rootNavigator).push<T>(
-      MaterialPageRoute<T>(builder: (_) => page, settings: settings),
-    );
+    return Navigator.of(
+      context,
+      rootNavigator: rootNavigator,
+    ).push<T>(MaterialPageRoute<T>(builder: (_) => page, settings: settings));
   }
 
   static Future<T?> pushAndRemoveUntil<T>(
@@ -57,8 +74,10 @@ abstract final class FregoAdaptive {
     final route = useCupertino(context)
         ? CupertinoPageRoute<T>(builder: (_) => page, settings: settings)
         : MaterialPageRoute<T>(builder: (_) => page, settings: settings);
-    return Navigator.of(context, rootNavigator: rootNavigator)
-        .pushAndRemoveUntil<T>(route, (_) => false);
+    return Navigator.of(
+      context,
+      rootNavigator: rootNavigator,
+    ).pushAndRemoveUntil<T>(route, (_) => false);
   }
 
   static void showMessage(BuildContext context, String message) {
@@ -77,9 +96,9 @@ abstract final class FregoAdaptive {
       );
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   static Future<DateTime?> pickDate(
@@ -341,11 +360,11 @@ class FregoLargeTitlePage extends StatelessWidget {
         toolbarHeight: 64,
         surfaceTintColor: Colors.transparent,
         titleTextStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontSize: 34,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-              color: FregoColors.ink,
-            ),
+          fontSize: 34,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.4,
+          color: FregoColors.ink,
+        ),
       ),
       body: SafeArea(
         top: false,
@@ -382,10 +401,12 @@ class _FregoStickyNavBar extends StatelessWidget {
     final navStyle = largeTitle
         ? theme.navLargeTitleTextStyle
         : theme.navTitleTextStyle;
-    final implyLeading = automaticallyImplyLeading &&
+    final implyLeading =
+        automaticallyImplyLeading &&
         leading == null &&
         ModalRoute.of(context)?.canPop == true;
-    final leadingWidget = leading ??
+    final leadingWidget =
+        leading ??
         (implyLeading
             ? CupertinoButton(
                 padding: EdgeInsets.zero,
@@ -514,13 +535,12 @@ class FregoPrimaryButton extends StatelessWidget {
           ),
         ),
       );
-      return expanded ? SizedBox(width: double.infinity, child: button) : button;
+      return expanded
+          ? SizedBox(width: double.infinity, child: button)
+          : button;
     }
 
-    final button = FilledButton(
-      onPressed: onPressed,
-      child: Text(label),
-    );
+    final button = FilledButton(onPressed: onPressed, child: Text(label));
     return expanded ? SizedBox(width: double.infinity, child: button) : button;
   }
 }
@@ -569,7 +589,9 @@ class FregoSecondaryButton extends StatelessWidget {
           child: child,
         ),
       );
-      return expanded ? SizedBox(width: double.infinity, child: button) : button;
+      return expanded
+          ? SizedBox(width: double.infinity, child: button)
+          : button;
     }
 
     final button = icon == null
@@ -602,10 +624,12 @@ class FregoTextField extends StatelessWidget {
     this.inputFormatters,
     this.onChanged,
     this.onSubmitted,
+    this.onTapOutside,
     this.obscureText = false,
     this.readOnly = false,
     this.style,
     this.autofillHints,
+    this.suffix,
   });
 
   final TextEditingController controller;
@@ -624,10 +648,12 @@ class FregoTextField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+  final TapRegionCallback? onTapOutside;
   final bool obscureText;
   final bool readOnly;
   final TextStyle? style;
   final Iterable<String>? autofillHints;
+  final Widget? suffix;
 
   @override
   Widget build(BuildContext context) {
@@ -667,12 +693,16 @@ class FregoTextField extends StatelessWidget {
             autofillHints: autofillHints,
             onChanged: onChanged,
             onSubmitted: onSubmitted,
+            onTapOutside: onTapOutside,
+            suffix: suffix == null
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: suffix,
+                  ),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-            style: style ??
-                const TextStyle(
-                  fontSize: 17,
-                  color: FregoColors.ink,
-                ),
+            style:
+                style ?? const TextStyle(fontSize: 17, color: FregoColors.ink),
             placeholderStyle: const TextStyle(
               fontSize: 17,
               color: FregoColors.neutral400,
@@ -719,21 +749,17 @@ class FregoTextField extends StatelessWidget {
       autofillHints: autofillHints,
       onChanged: onChanged,
       onSubmitted: onSubmitted,
-      style: style ??
-          const TextStyle(
-            fontSize: 17,
-            color: FregoColors.ink,
-          ),
+      onTapOutside: onTapOutside,
+      style: style ?? const TextStyle(fontSize: 17, color: FregoColors.ink),
       decoration: InputDecoration(
         labelText: label,
         hintText: placeholder,
         errorText: errorText,
         counterText: maxLength != null ? '' : null,
+        suffixIcon: suffix,
         filled: true,
         fillColor: enabled ? FregoColors.card : FregoColors.neutral100,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
       ),
     );
   }
