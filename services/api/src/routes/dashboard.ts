@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@frego/db';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import {
   AUDIENCE_PRESETS,
   countMembershipsByRules,
@@ -186,6 +186,7 @@ function tierFor(agg: MemberAgg, isVip: boolean): 'vip' | 'regular' | 'new' {
 }
 
 export const dashboardRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', rejectBalcao);
   app.get('/dashboard', async (request) => {
     const auth = requireAuth(request);
     const query = periodQuerySchema.parse(request.query);

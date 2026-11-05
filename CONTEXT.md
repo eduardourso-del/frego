@@ -32,13 +32,45 @@ _Avoid_: tier, package, assinatura (the brand mark is already called that)
 A Plano a Frego operator sets on an Estabelecimento with no charge. It does not expire on its own.
 _Avoid_: grant, comp, free plan, trial
 
+**Membro**:
+A person identified by e-mail on the Equipe of an Estabelecimento. Not a Cliente.
+_Avoid_: conta, account, user, funcionário
+
+**Equipe**:
+The Membros of one Estabelecimento.
+_Avoid_: team, staff, contas, users
+
+**Dono**:
+The one Membro the Cadastro creates. That place is not granted again.
+_Avoid_: owner, admin, gerente
+
+**Balcão**:
+A Membro the Dono adds. The till page on the Painel has the same name.
+_Avoid_: employee, caixa, operador, gerente
+
+**Aguardando**:
+The condition of a Membro who has not set a password. They cannot sign in.
+_Avoid_: pending, convite, invite
+
+**Desativado**:
+The condition of a Membro the Dono has turned off at this Estabelecimento. They cannot sign in here. The till's record of them remains.
+_Avoid_: disabled, inactive, bloqueado, excluído
+
+**Painel**:
+The Estabelecimento's web pages for the Equipe. The day there follows the Fuso.
+_Avoid_: dashboard, admin, backoffice
+
+**PDV**:
+The till app for a Membro.
+_Avoid_: Painel, caixa
+
 **Cliente**:
-The person identified by a phone number. That number is the account. Staff may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
+The person identified by a phone number. That number is the account. A Membro may correct the display name. An unclaimed registration — no app, and only this Estabelecimento — may be moved onto the right number so the Benefício follows. A Cliente who already uses the app, or who belongs to another Estabelecimento, keeps her number.
 _Avoid_: client, user, consumer, customer
 
 **Clube**:
 The program a Cliente belongs to at one Estabelecimento.
-_Avoid_: fidelidade, loyalty, programa de fidelidade
+_Avoid_: fidelidade, loyalty, programa de fidelidade, Membro
 
 **Benefício**:
 What the Clube puts in the Cliente's wallet: carimbos, pontos, cashback, or a Prêmio.

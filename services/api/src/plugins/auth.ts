@@ -1,7 +1,8 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { prisma, type TeamRole } from '@frego/db';
 import { verifyFirebaseIdToken } from '../lib/firebase.js';
+import { attachStaffLocation } from '../lib/operating-address.js';
 import { phoneLast4, toE164 } from '../lib/phone.js';
 
 export type AuthContext = {
@@ -311,6 +312,38 @@ async function resolveCustomer(
   };
 }
 
+async function toAuthContext(
+  member: {
+    id: string;
+    businessId: string;
+    role: TeamRole;
+    locationId: string | null;
+  },
+  firebaseUid: string,
+): Promise<AuthContext> {
+  const locationId = await attachStaffLocation(member);
+  return {
+    firebaseUid,
+    businessId: member.businessId,
+    teamMemberId: member.id,
+    role: member.role,
+    locationId,
+  };
+}
+
+/** Setting the password ends Aguardando on every Equipe that shares the inbox. */
+async function activateWaitingMemberships(firebaseUid: string, email: string) {
+  const waiting = await prisma.teamMember.findFirst({
+    where: { email, status: 'pending' },
+    select: { id: true },
+  });
+  if (!waiting) return;
+  await prisma.teamMember.updateMany({
+    where: { email, status: 'pending' },
+    data: { firebaseUid, status: 'active', email },
+  });
+}
+
 async function resolveTeamMember(
   request: FastifyRequest,
   decoded: { uid: string; email?: string; phone_number?: string },
@@ -322,62 +355,49 @@ async function resolveTeamMember(
     typeof businessIdHeader === 'string' && businessIdHeader.length > 0
       ? businessIdHeader
       : undefined;
+  const path = request.url.split('?')[0];
 
-  let member = businessId
-    ? await prisma.teamMember.findUnique({
+  if (email) await activateWaitingMemberships(firebaseUid, email);
+
+  const onBusiness = businessId
+    ? await prisma.teamMember.findFirst({
         where: {
-          businessId_firebaseUid: { businessId, firebaseUid },
+          businessId,
+          OR: [{ firebaseUid }, ...(email ? [{ email }] : [])],
         },
+        orderBy: { createdAt: 'asc' },
       })
     : null;
 
-  if (!member || member.status !== 'active') {
-    member = await prisma.teamMember.findFirst({
-      where: { firebaseUid, status: 'active' },
-      orderBy: { createdAt: 'asc' },
-    });
-  }
-
-  if ((!member || member.status !== 'active') && email) {
-    const byEmail = await prisma.teamMember.findFirst({
-      where: {
-        email,
-        status: { in: ['active', 'pending'] },
-        ...(businessId ? { businessId } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (byEmail) {
-      member = await prisma.teamMember.update({
-        where: { id: byEmail.id },
-        data: { firebaseUid, status: 'active', email },
-      });
-    } else if (businessId) {
-      const byEmailAny = await prisma.teamMember.findFirst({
-        where: {
-          email,
-          status: { in: ['active', 'pending'] },
-        },
+  if (path === '/me/businesses') {
+    const member =
+      (onBusiness?.status === 'active' ? onBusiness : null) ??
+      (await prisma.teamMember.findFirst({
+        where: { firebaseUid, status: 'active' },
         orderBy: { createdAt: 'asc' },
-      });
-      if (byEmailAny) {
-        member = await prisma.teamMember.update({
-          where: { id: byEmailAny.id },
-          data: { firebaseUid, status: 'active', email },
-        });
-      }
-    }
+      }));
+    return member ? await toAuthContext(member, firebaseUid) : null;
   }
 
-  if (!member || member.status !== 'active') return null;
+  if (businessId) {
+    if (!onBusiness || onBusiness.status !== 'active') return null;
+    return await toAuthContext(onBusiness, firebaseUid);
+  }
 
-  return {
-    firebaseUid,
-    businessId: member.businessId,
-    teamMemberId: member.id,
-    role: member.role,
-    locationId: member.locationId,
-  };
+  const member = await prisma.teamMember.findFirst({
+    where: { firebaseUid, status: 'active' },
+    orderBy: { createdAt: 'asc' },
+  });
+  return member ? await toAuthContext(member, firebaseUid) : null;
+}
+
+export async function rejectBalcao(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (request.auth?.role === 'employee') {
+    return reply.code(403).send({ error: 'FORBIDDEN' });
+  }
 }
 
 export const authPlugin = fp(authPluginImpl, { name: 'auth' });

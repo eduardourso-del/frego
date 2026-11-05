@@ -100,7 +100,7 @@ export async function finishBusinessRegistration(): Promise<FinishRegistration> 
 
 /** Where to go after a staff sign-in. Existing owners skip the email gate. */
 export async function pathAfterStaffSignIn(): Promise<
-  '/dashboard' | '/confirmar-email' | '/register'
+  '/dashboard' | '/counter' | '/confirmar-email' | '/register'
 > {
   const user = getFirebaseAuth().currentUser;
   if (!user) return '/confirmar-email';
@@ -108,7 +108,12 @@ export async function pathAfterStaffSignIn(): Promise<
   const token = await getIdToken(true);
   if (!token) return '/dashboard';
   const businesses = await listMyBusinesses(token);
-  if (businesses === null || businesses.length > 0) return '/dashboard';
+  if (businesses === null) return '/dashboard';
+  if (businesses.length > 0) {
+    const rows = businesses as Array<{ role?: string }>;
+    if (rows.every((b) => b.role === 'employee')) return '/counter';
+    return '/dashboard';
+  }
   if (!user.emailVerified) return '/confirmar-email';
   const finished = await finishBusinessRegistration();
   if (finished.kind === 'created') rememberBusiness(finished.businessId);

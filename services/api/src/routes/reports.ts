@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from '@frego/db';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import {
   countMembershipsByRules,
   parseAudienceRules,
@@ -140,6 +140,7 @@ function summarize(txs: TxLite[], timeZone: string) {
 }
 
 export const reportsRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', rejectBalcao);
   app.get('/reports', async (request) => {
     const auth = requireAuth(request);
     const query = periodQuerySchema.parse(request.query);

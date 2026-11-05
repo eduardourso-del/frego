@@ -103,14 +103,43 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   userRef.current = user;
   const refreshGen = useRef(0);
 
+  const businessesRef = useRef<BusinessBrand[]>([]);
+  businessesRef.current = businesses;
+  const switchGen = useRef(0);
+  const activeIdRef = useRef<string | null>(null);
+
   const setBusinessId = useCallback(
     (id: string) => {
+      const gen = ++switchGen.current;
+      activeIdRef.current = id;
       setBusinessIdState(id);
       if (typeof window !== 'undefined' && user?.uid) {
         localStorage.setItem(storageKeyFor(user.uid), id);
       }
+      const fromList = businessesRef.current.find((b) => b.id === id);
+      if (fromList) setBusiness(fromList);
+      void (async () => {
+        const token = await getToken();
+        if (!token || gen !== switchGen.current) return;
+        const res = await fetch(`${API_URL}/business`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Business-Id': id,
+          },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || gen !== switchGen.current) return;
+        const next = json.business as BusinessBrand;
+        const listed = businessesRef.current.find((b) => b.id === id) ?? fromList;
+        setBusiness({
+          ...listed,
+          ...next,
+          role: next.role ?? listed?.role,
+          displayName: next.displayName ?? listed?.displayName,
+        });
+      })();
     },
-    [user?.uid],
+    [getToken, user?.uid],
   );
 
   const authHeaders = useCallback(async () => {
@@ -177,6 +206,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
       const list = (listJson.businesses ?? []) as BusinessBrand[];
       setBusinesses(list);
+      businessesRef.current = list;
 
       const activeId =
         list.find((b) => b.id === preferId)?.id ?? list[0]?.id ?? null;
@@ -204,10 +234,19 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       const json = await res.json();
       if (!current()) return;
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar a loja.');
+      if (activeIdRef.current && activeIdRef.current !== activeId) return;
       const next = json.business as BusinessBrand;
-      setBusiness(next);
+      const fromList = list.find((b) => b.id === activeId);
+      activeIdRef.current = activeId;
+      setBusiness({
+        ...fromList,
+        ...next,
+        role: next.role ?? fromList?.role,
+        displayName: next.displayName ?? fromList?.displayName,
+      });
     } catch {
       if (!current()) return;
+      if (activeIdRef.current && activeIdRef.current !== (businessId ?? null)) return;
       resetBusinessState();
     } finally {
       if (current()) setLoading(false);
@@ -228,7 +267,16 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível salvar.');
       const next = json.business as BusinessBrand;
-      setBusiness(next);
+      setBusiness((current) =>
+        current
+          ? {
+              ...current,
+              ...next,
+              role: next.role ?? current.role,
+              displayName: next.displayName ?? current.displayName,
+            }
+          : next,
+      );
       setBusinesses((prev) =>
         prev.map((b) => (b.id === next.id ? { ...b, ...next } : b)),
       );

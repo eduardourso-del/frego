@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -14,11 +14,12 @@ import {
   ClipboardList,
   BookOpen,
   MoreHorizontal,
+  ChevronDown,
   X,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { memberDisplayName, useBusiness } from '@/lib/business-context';
+import { memberDisplayName, useBusiness, type BusinessBrand } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { BusinessLogo } from '@/components/remote-img';
 import { FregoWordmark } from '@/components/brand';
@@ -61,6 +62,137 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function ShopMark({
+  businesses,
+  businessId,
+  onSelect,
+  name,
+  logoUrl,
+  letter,
+  primary,
+  title,
+}: {
+  businesses: BusinessBrand[];
+  businessId: string | null;
+  onSelect: (id: string) => void;
+  name: string;
+  logoUrl: string | null | undefined;
+  letter: string;
+  primary: string;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const several = businesses.length > 1;
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointer(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const mark = (
+    <>
+      <BusinessLogo
+        src={logoUrl}
+        letter={letter}
+        className="h-9 w-9 shrink-0 rounded-[11px] object-cover shadow-sm ring-1 ring-black/5"
+        letterClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[15px] font-bold text-white shadow-sm"
+        background={primary}
+      />
+      <span className="min-w-0">
+        <span className="inline-flex max-w-full min-w-0 items-center gap-0.5">
+          <span className="min-w-0 truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--color-ink)]">
+            {name}
+          </span>
+          {several ? (
+            <ChevronDown
+              size={16}
+              className={`shrink-0 text-[var(--color-neutral-400)] transition-transform ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          ) : null}
+        </span>
+        {title ? (
+          <span className="block truncate text-[12px] text-[var(--color-neutral-500)] md:hidden">
+            {title}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
+
+  return (
+    <div ref={rootRef} className="relative min-w-0 w-full flex-1">
+      {several ? (
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-center gap-2.5 rounded-[12px] py-1 text-left"
+          onClick={() => setOpen((value) => !value)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label="Trocar estabelecimento"
+        >
+          {mark}
+        </button>
+      ) : (
+        <div className="flex min-w-0 items-center gap-2.5 py-1">{mark}</div>
+      )}
+      {open && several ? (
+        <ul
+          role="listbox"
+          aria-label="Estabelecimentos"
+          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-auto rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-1 shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
+        >
+          {businesses.map((shop) => {
+            const selected = shop.id === businessId;
+            const shopLetter = shop.name.trim().charAt(0).toUpperCase() || 'V';
+            return (
+              <li key={shop.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`flex w-full items-center gap-2 rounded-[10px] px-2 py-2 text-left ${
+                    selected
+                      ? 'bg-[var(--color-primary-50)]'
+                      : 'hover:bg-[var(--color-bg)]'
+                  }`}
+                  onClick={() => {
+                    setOpen(false);
+                    if (shop.id !== businessId) onSelect(shop.id);
+                  }}
+                >
+                  <BusinessLogo
+                    src={shop.logoUrl}
+                    letter={shopLetter}
+                    className="h-7 w-7 shrink-0 rounded-[8px] object-cover ring-1 ring-black/5"
+                    letterClassName="flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px] text-[12px] font-bold text-white"
+                    background={shop.primaryColor ?? primary}
+                  />
+                  <span className="min-w-0 flex-1 truncate text-[14px] font-semibold text-[var(--color-ink)]">
+                    {shop.name}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 type AppShellProps = {
   children: ReactNode;
   businessName?: string;
@@ -99,14 +231,21 @@ export function AppShell({
   const staffInitials = initialsFrom(memberName ?? user?.email ?? staffLabel);
   const businessBlocked =
     business?.status === 'pending' || business?.status === 'suspended';
+  const balcao = business?.role === 'employee';
 
-  const visibleUtility = businessBlocked
+  const visibleMain = balcao
+    ? mainNav.filter((item) => item.href === '/customers')
+    : mainNav;
+
+  const visibleUtility = (businessBlocked
     ? utilityNav.filter((item) => item.href !== '/counter')
-    : utilityNav;
+    : utilityNav
+  ).filter((item) => !balcao || item.href !== '/settings');
 
-  const visibleMobileTabs = businessBlocked
+  const visibleMobileTabs = (businessBlocked
     ? mobileTabs.filter((item) => item.href !== '/counter')
-    : mobileTabs;
+    : mobileTabs
+  ).filter((item) => !balcao || item.href === '/customers' || item.href === '/counter');
 
   const moreActive =
     isActivePath(pathname, '/settings') ||
@@ -119,6 +258,21 @@ export function AppShell({
   useEffect(() => {
     setMoreOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    if (!balcao) return;
+    const donoOnly = [
+      '/dashboard',
+      '/audiences',
+      '/campaigns',
+      '/pesquisas',
+      '/reports',
+      '/settings',
+    ];
+    if (donoOnly.some((href) => isActivePath(pathname, href))) {
+      router.replace('/counter');
+    }
+  }, [balcao, pathname, router]);
 
   useEffect(() => {
     if (authLoading || businessLoading || !user || business) return;
@@ -215,42 +369,16 @@ export function AppShell({
   }
 
   const brandMark = (
-    <div className="flex min-w-0 items-center gap-2.5">
-      <BusinessLogo
-        src={logoUrl}
-        letter={letter}
-        className="h-9 w-9 shrink-0 rounded-[11px] object-cover shadow-sm ring-1 ring-black/5"
-        letterClassName="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] text-[15px] font-bold text-white shadow-sm"
-        background={primary}
-      />
-      <div className="min-w-0">
-        {businesses.length > 1 ? (
-          <label className="block">
-            <span className="sr-only">Trocar loja</span>
-            <select
-              value={businessId ?? ''}
-              onChange={(e) => setBusinessId(e.target.value)}
-              className="max-w-[160px] truncate rounded-[8px] border-0 bg-transparent py-0 pl-0 pr-6 text-[15px] font-semibold text-[var(--color-ink)] focus:ring-0 md:max-w-none"
-            >
-              {businesses.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <p className="truncate text-[15px] font-semibold tracking-[-0.01em] text-[var(--color-ink)]">
-            {name}
-          </p>
-        )}
-        {title ? (
-          <p className="truncate text-[12px] text-[var(--color-neutral-500)] md:hidden">
-            {title}
-          </p>
-        ) : null}
-      </div>
-    </div>
+    <ShopMark
+      businesses={businesses}
+      businessId={businessId}
+      onSelect={setBusinessId}
+      name={name}
+      logoUrl={logoUrl}
+      letter={letter}
+      primary={primary}
+      title={title}
+    />
   );
 
   return (
@@ -268,7 +396,7 @@ export function AppShell({
           className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overscroll-y-contain"
           aria-label="Principal"
         >
-          {mainNav.map((item) => (
+          {visibleMain.map((item) => (
             <NavLink key={item.href} {...item} />
           ))}
         </nav>
@@ -335,7 +463,9 @@ export function AppShell({
 
         <div className="min-h-0 flex-1 scroll-smooth overflow-auto overscroll-y-contain">
           <div className="pb-[calc(5.25rem+env(safe-area-inset-bottom))] md:pb-0">
-            {skipPendingGate ? children : <PendingGate>{children}</PendingGate>}
+            <div key={businessId ?? 'none'}>
+              {skipPendingGate ? children : <PendingGate>{children}</PendingGate>}
+            </div>
           </div>
         </div>
 
@@ -346,7 +476,11 @@ export function AppShell({
         >
           <div
             className={`mx-auto grid max-w-lg px-1 pt-1.5 pb-[max(0.35rem,env(safe-area-inset-bottom))] ${
-              visibleMobileTabs.length >= 4 ? 'grid-cols-5' : 'grid-cols-4'
+              visibleMobileTabs.length >= 4
+                ? 'grid-cols-5'
+                : visibleMobileTabs.length === 2
+                  ? 'grid-cols-3'
+                  : 'grid-cols-4'
             }`}
           >
             {visibleMobileTabs.map((item) => {
@@ -442,7 +576,7 @@ export function AppShell({
                   Mais
                 </p>
                 <p className="text-[13px] text-[var(--color-neutral-500)]">
-                  Pesquisa, audiências, relatórios, o guia e a conta
+                  {balcao ? 'O guia e a conta' : 'Pesquisa, audiências, relatórios, o guia e a conta'}
                 </p>
               </div>
               <button
@@ -475,50 +609,78 @@ export function AppShell({
               </div>
 
               {businesses.length > 1 ? (
-                <label className="mb-4 block">
-                  <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
+                <div className="mb-4">
+                  <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
                     Loja ativa
-                  </span>
-                  <select
-                    value={businessId ?? ''}
-                    onChange={(e) => setBusinessId(e.target.value)}
-                    className="min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[15px] font-medium"
-                  >
-                    {businesses.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  </p>
+                  <ul className="flex flex-col gap-0.5">
+                    {businesses.map((shop) => {
+                      const selected = shop.id === businessId;
+                      const shopLetter =
+                        shop.name.trim().charAt(0).toUpperCase() || 'V';
+                      return (
+                        <li key={shop.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (shop.id !== businessId) setBusinessId(shop.id);
+                              setMoreOpen(false);
+                            }}
+                            className={`flex min-h-11 w-full items-center gap-2.5 rounded-[12px] px-2.5 text-left ${
+                              selected
+                                ? 'bg-[var(--color-primary-50)] text-[var(--color-ink)]'
+                                : 'text-[var(--color-ink)] hover:bg-[var(--color-bg)]'
+                            }`}
+                            aria-current={selected ? 'true' : undefined}
+                          >
+                            <BusinessLogo
+                              src={shop.logoUrl}
+                              letter={shopLetter}
+                              className="h-8 w-8 shrink-0 rounded-[9px] object-cover ring-1 ring-black/5"
+                              letterClassName="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-[13px] font-bold text-white"
+                              background={shop.primaryColor ?? primary}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-[14px] font-semibold">
+                              {shop.name}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               ) : null}
 
               <div className="flex flex-col gap-0.5">
-                <NavLink
-                  href="/pesquisas"
-                  label="Pesquisa"
-                  icon={ClipboardList}
-                  beta
-                  onNavigate={() => setMoreOpen(false)}
-                />
-                <NavLink
-                  href="/audiences"
-                  label="Audiências"
-                  icon={Layers}
-                  onNavigate={() => setMoreOpen(false)}
-                />
-                <NavLink
-                  href="/reports"
-                  label="Relatórios"
-                  icon={BarChart3}
-                  onNavigate={() => setMoreOpen(false)}
-                />
-                <NavLink
-                  href="/settings"
-                  label="Configurações"
-                  icon={Settings}
-                  onNavigate={() => setMoreOpen(false)}
-                />
+                {balcao ? null : (
+                  <>
+                    <NavLink
+                      href="/pesquisas"
+                      label="Pesquisa"
+                      icon={ClipboardList}
+                      beta
+                      onNavigate={() => setMoreOpen(false)}
+                    />
+                    <NavLink
+                      href="/audiences"
+                      label="Audiências"
+                      icon={Layers}
+                      onNavigate={() => setMoreOpen(false)}
+                    />
+                    <NavLink
+                      href="/reports"
+                      label="Relatórios"
+                      icon={BarChart3}
+                      onNavigate={() => setMoreOpen(false)}
+                    />
+                    <NavLink
+                      href="/settings"
+                      label="Configurações"
+                      icon={Settings}
+                      onNavigate={() => setMoreOpen(false)}
+                    />
+                  </>
+                )}
                 <NavLink
                   href="/guia"
                   label="Guia"

@@ -23,6 +23,7 @@ import { tagRoutes } from './routes/tags.js';
 import { reminderRoutes } from './routes/reminders.js';
 import { earnNotifyRoutes } from './routes/earn-notifies.js';
 import { saiposRoutes } from './routes/saipos.js';
+import { equipeRoutes } from './routes/equipe.js';
 import { startAccountReminderSchedule } from './lib/reminders/run.js';
 import { startSaiposSyncSchedule } from './lib/saipos/sync.js';
 import { startEarnNotifyFlushSchedule } from './lib/whatsapp/earn-notify-hold.js';
@@ -58,6 +59,7 @@ async function main() {
   await app.register(meRoutes);
   await app.register(explorationRoutes);
   await app.register(businessRoutes);
+  await app.register(equipeRoutes);
   await app.register(dashboardRoutes);
   await app.register(reportsRoutes);
   await app.register(customerRoutes);

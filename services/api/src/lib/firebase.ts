@@ -49,6 +49,51 @@ export function getFirebaseMessaging(): Messaging {
   return getMessaging();
 }
 
+export async function findFirebaseUserByEmail(email: string) {
+  ensureFirebase();
+  try {
+    return await getAuth().getUserByEmail(email);
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code === 'auth/user-not-found') return null;
+    throw err;
+  }
+}
+
+export function firebaseUserHasPassword(user: {
+  passwordHash?: string;
+  providerData?: Array<{ providerId: string }>;
+}): boolean {
+  if (user.passwordHash) return true;
+  return (user.providerData ?? []).some((p) => p.providerId === 'password');
+}
+
+export async function createFirebaseStaffUser(input: {
+  email: string;
+  displayName: string;
+}) {
+  ensureFirebase();
+  return getAuth().createUser({
+    email: input.email,
+    displayName: input.displayName,
+    emailVerified: true,
+  });
+}
+
+/** Our page, so setting the password can finish Aguardando before the Painel opens. */
+export async function staffPasswordResetUrl(
+  email: string,
+  origin: string,
+): Promise<string> {
+  ensureFirebase();
+  const link = await getAuth().generatePasswordResetLink(email, {
+    url: `${origin}/login`,
+  });
+  const oob = new URL(link).searchParams.get('oobCode');
+  if (!oob) return link;
+  return `${origin}/redefinir-senha?mode=resetPassword&oobCode=${encodeURIComponent(oob)}`;
+}
+
 /** Removes the Firebase Auth user. No-op if the uid is already gone. */
 export async function deleteFirebaseUser(uid: string): Promise<void> {
   ensureFirebase();

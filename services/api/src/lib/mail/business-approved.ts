@@ -38,7 +38,7 @@ const LOGO_URL =
   'https://frego.app.br/brand/png/frego-assinatura-escura-600.png';
 const CONTACT_EMAIL = 'contato@frego.app.br';
 
-function brandedHtml(input: {
+export function brandedHtml(input: {
   title: string;
   hello: string;
   body: string;
@@ -110,7 +110,7 @@ function brandedHtml(input: {
 </html>`;
 }
 
-function greeting(ownerName: string | null) {
+export function greeting(ownerName: string | null) {
   const first = oneLine(ownerName ?? '').split(/\s+/).filter(Boolean)[0];
   return first ? `Olá, ${first}.` : 'Olá.';
 }

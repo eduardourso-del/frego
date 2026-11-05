@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import { fetchSaiposSales } from '../lib/saipos/client.js';
 import {
   currentTokenKeyVersion,
@@ -31,6 +31,7 @@ export function saiposConnectionPublic(row: {
 }
 
 export const saiposRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', rejectBalcao);
   app.get('/saipos/connection', async (request) => {
     const auth = requireAuth(request);
     const row = await prisma.businessSaiposConnection.findUnique({

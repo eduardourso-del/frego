@@ -1322,6 +1322,7 @@ class _TillPageState extends State<TillPage> {
   @override
   Widget build(BuildContext context) {
     final business = _session.business;
+    final severalShops = _session.businesses.length > 1;
     final voucherTask = _task == _TillTask.voucher;
     final title = voucherTask
         ? 'Confirmar voucher'
@@ -1340,29 +1341,41 @@ class _TillPageState extends State<TillPage> {
       // resize leaves the bar under the IME on some Android devices.
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        title: Row(
-          children: [
-            _BusinessMark(
-              name: business?.name ?? '',
-              logoUrl: business?.logoUrl,
-              color:
-                  _parseTagColor(business?.primaryColor) ??
-                  FregoColors.ink,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Balcão · ${business?.name ?? 'funcionário'}',
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.4,
-                  color: FregoColors.neutral400,
+        title: InkWell(
+          onTap: severalShops ? () => _session.showPicker() : null,
+          borderRadius: BorderRadius.circular(10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _BusinessMark(
+                name: business?.name ?? '',
+                logoUrl: business?.logoUrl,
+                color:
+                    _parseTagColor(business?.primaryColor) ??
+                    FregoColors.ink,
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Text(
+                  business?.name ?? 'Estabelecimento',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: FregoColors.ink,
+                  ),
                 ),
               ),
-            ),
-          ],
+              if (severalShops) ...[
+                const SizedBox(width: 2),
+                const Icon(
+                  Icons.expand_more_rounded,
+                  size: 22,
+                  color: FregoColors.neutral400,
+                ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -1371,16 +1384,20 @@ class _TillPageState extends State<TillPage> {
           ),
           PopupMenuButton<String>(
             icon: const Icon(FregoIcons.more),
-            onSelected: (value) {
-              if (value == 'switch') _session.showPicker();
+            onSelected: (value) async {
+              if (value == 'switch') {
+                final opened = await _session.showPicker();
+                if (!opened && mounted) {
+                  _toast('Esta conta está só neste estabelecimento.');
+                }
+              }
               if (value == 'out') _session.signOut();
             },
             itemBuilder: (context) => [
-              if (_session.businesses.length > 1)
-                const PopupMenuItem(
-                  value: 'switch',
-                  child: Text('Trocar loja'),
-                ),
+              const PopupMenuItem(
+                value: 'switch',
+                child: Text('Trocar estabelecimento'),
+              ),
               const PopupMenuItem(value: 'out', child: Text('Sair')),
             ],
           ),

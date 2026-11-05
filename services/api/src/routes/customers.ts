@@ -2,6 +2,10 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import {
+  operatingLocationId,
+  pickStaffLocation,
+} from '../lib/operating-address.js';
 import { openClube } from '../lib/open-clube.js';
 import { normalizeLast4, phoneLast4, toE164 } from '../lib/phone.js';
 import { campaignSpendableUnits, deriveWallet } from '../lib/wallet.js';
@@ -228,9 +232,15 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
    * Query: `q` (nome / telefone / last4), `limit` (default 100, max 200),
    * `audienceId` ou regras (spendCentsMin, windowDays, inactiveDaysMin, …).
    */
-  app.get('/customers', async (request) => {
+  app.get('/customers', async (request, reply) => {
     const auth = requireAuth(request);
     const query = request.query as Record<string, string | undefined>;
+    if (
+      auth.role === 'employee' &&
+      (query.audienceId || queryRulesFromParams(query))
+    ) {
+      return reply.code(403).send({ error: 'FORBIDDEN' });
+    }
     const rawQ = (query.q ?? '').trim();
     const digits = rawQ.replace(/\D/g, '');
     const limit = Math.min(
@@ -679,7 +689,11 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           message: resolved.message,
         });
       }
-      stampLocationId = body.locationId ?? auth.locationId ?? null;
+      stampLocationId = pickStaffLocation({
+        requested: body.locationId,
+        memberLocationId: auth.locationId,
+        operatingLocationId: await operatingLocationId(auth.businessId),
+      });
       if (!stampLocationId) {
         return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
       }
@@ -910,6 +924,9 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     const auth = requireAuth(request);
     const { id } = request.params as { id: string };
     const body = patchBody.parse(request.body);
+    if (auth.role === 'employee' && body.isVip !== undefined) {
+      return reply.code(403).send({ error: 'FORBIDDEN' });
+    }
 
     const membership = await prisma.membership.findFirst({
       where: { customerId: id, businessId: auth.businessId },

@@ -2,7 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '@frego/db';
-import { requireAuth } from '../plugins/auth.js';
+import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import {
   currentTokenKeyVersion,
   decryptToken,
@@ -302,6 +302,7 @@ async function applyAllTemplateStates(
 }
 
 export const whatsappRoutes: FastifyPluginAsync = async (app) => {
+  app.addHook('preHandler', rejectBalcao);
   /** Status for current business — never returns secrets. */
   app.get('/whatsapp/connection', async (request) => {
     const auth = requireAuth(request);

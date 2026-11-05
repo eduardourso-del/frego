@@ -113,6 +113,24 @@ function publicBusiness(b: {
   };
 }
 
+async function businessForMember(
+  auth: { teamMemberId: string; role: string },
+  business: Parameters<typeof publicBusiness>[0],
+  activeEarnKinds: EarnKind[],
+) {
+  const member = await prisma.teamMember.findUnique({
+    where: { id: auth.teamMemberId },
+    select: { displayName: true },
+  });
+  return {
+    business: {
+      ...publicBusiness(business, activeEarnKinds),
+      role: auth.role,
+      displayName: member?.displayName ?? null,
+    },
+  };
+}
+
 export const businessRoutes: FastifyPluginAsync = async (app) => {
   /** Perfil + branding do tenant autenticado — só este negócio. */
   app.get('/business', async (request) => {
@@ -121,7 +139,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       where: { id: auth.businessId },
     });
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return { business: publicBusiness(business, activeEarnKinds) };
+    return businessForMember(auth, business, activeEarnKinds);
   });
 
   /** Atualiza experiência da loja (nome, cores, logo, slogan). Owner/manager. */
@@ -221,7 +239,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
     if (closeExpiry) await closeToldExpiryNotices(auth.businessId);
 
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
-    return { business: publicBusiness(business, activeEarnKinds) };
+    return businessForMember(auth, business, activeEarnKinds);
   });
 
   /** Unidades (endereço) do negócio autenticado. */

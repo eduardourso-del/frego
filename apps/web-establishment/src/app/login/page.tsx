@@ -22,7 +22,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (loading || !user || busy || redirecting.current) return;
-    router.replace('/dashboard');
+    redirecting.current = true;
+    void pathAfterStaffSignIn()
+      .then((path) => router.replace(path))
+      .catch(() => router.replace('/dashboard'));
   }, [loading, user, busy, router]);
 
   useEffect(() => {

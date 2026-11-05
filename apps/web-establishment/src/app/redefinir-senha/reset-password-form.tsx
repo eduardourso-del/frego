@@ -5,8 +5,11 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   confirmStaffPasswordReset,
+  signInStaff,
+  signOutStaff,
   verifyStaffPasswordReset,
 } from '@/lib/firebase';
+import { API_URL } from '@/lib/api';
 import { resetCodeExpired, resetPasswordError } from '@/lib/password-reset';
 import { useAuth } from '@/lib/auth-context';
 import { FregoWordmark } from '@/components/brand';
@@ -80,6 +83,16 @@ export function ResetPasswordForm() {
     setError(null);
     try {
       await confirmStaffPasswordReset(code, password);
+      try {
+        const cred = await signInStaff(email, password);
+        const token = await cred.user.getIdToken();
+        await fetch(`${API_URL}/me/businesses`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await signOutStaff();
+      } catch {
+        // The password is set. The next sign-in finishes Aguardando.
+      }
       setStatus('saved');
     } catch (err) {
       if (resetCodeExpired(err)) {

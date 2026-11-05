@@ -4,6 +4,10 @@ import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import { recordSaleEarn, type RecordSaleMode } from '../lib/record-sale.js';
 import { reverseLedgerSale } from '../lib/reverse-sale.js';
+import {
+  operatingLocationId,
+  pickStaffLocation,
+} from '../lib/operating-address.js';
 
 const createTxBody = z.object({
   membershipId: z.string().min(1),
@@ -71,7 +75,11 @@ export const transactionRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
     }
 
-    const locationId = body.locationId ?? auth.locationId;
+    const locationId = pickStaffLocation({
+      requested: body.locationId,
+      memberLocationId: auth.locationId,
+      operatingLocationId: await operatingLocationId(auth.businessId),
+    });
     if (!locationId) {
       return reply.code(400).send({ error: 'LOCATION_REQUIRED' });
     }

@@ -19,19 +19,28 @@ class BusinessGate extends StatefulWidget {
   State<BusinessGate> createState() => _BusinessGateState();
 }
 
-class _BusinessGateState extends State<BusinessGate> {
+class _BusinessGateState extends State<BusinessGate> with WidgetsBindingObserver {
   late final StaffSession _session = StaffSession(user: widget.user);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _session.load();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _session.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _session.refreshBusinesses();
+    }
   }
 
   @override
@@ -49,7 +58,7 @@ class _BusinessGateState extends State<BusinessGate> {
 
         if (_session.error != null && _session.businesses.isEmpty) {
           return _StatusScaffold(
-            title: 'Sem loja',
+            title: 'Sem estabelecimento',
             body: humanizeError(_session.error!),
             actionLabel: 'Tentar de novo',
             onAction: _session.load,
@@ -75,8 +84,10 @@ class _BusinessGateState extends State<BusinessGate> {
             onAction: _session.signOut,
             extra: _session.businesses.length > 1
                 ? TextButton(
-                    onPressed: _session.showPicker,
-                    child: const Text('Trocar loja'),
+                    onPressed: () {
+                      _session.showPicker();
+                    },
+                    child: const Text('Trocar estabelecimento'),
                   )
                 : null,
           );
@@ -90,8 +101,10 @@ class _BusinessGateState extends State<BusinessGate> {
             onAction: _session.signOut,
             extra: _session.businesses.length > 1
                 ? TextButton(
-                    onPressed: _session.showPicker,
-                    child: const Text('Trocar loja'),
+                    onPressed: () {
+                      _session.showPicker();
+                    },
+                    child: const Text('Trocar estabelecimento'),
                   )
                 : null,
           );
@@ -112,7 +125,18 @@ class _BusinessPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Escolher loja'),
+        leading: session.business != null
+            ? IconButton(
+                tooltip: 'Voltar',
+                onPressed: session.cancelPicker,
+                icon: const Icon(Icons.arrow_back_rounded),
+              )
+            : null,
+        title: Text(
+          session.business == null
+              ? 'Escolher estabelecimento'
+              : 'Trocar estabelecimento',
+        ),
         actions: [
           TextButton(
             onPressed: () => openSupport(context),
@@ -131,8 +155,9 @@ class _BusinessPicker extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(height: 8),
         itemBuilder: (context, i) {
           final b = session.businesses[i];
+          final selected = b.id == session.businessId;
           return Material(
-            color: FregoColors.card,
+            color: selected ? FregoColors.primary50 : FregoColors.card,
             borderRadius: BorderRadius.circular(14),
             child: InkWell(
               borderRadius: BorderRadius.circular(14),
@@ -144,13 +169,7 @@ class _BusinessPicker extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    CircleAvatar(
-                      backgroundColor: FregoColors.primary50,
-                      foregroundColor: FregoColors.primary600,
-                      child: Text(
-                        b.name.isEmpty ? '?' : b.name[0].toUpperCase(),
-                      ),
-                    ),
+                    _ShopAvatar(business: b),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -173,7 +192,10 @@ class _BusinessPicker extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const Icon(FregoIcons.store, color: FregoColors.neutral400),
+                    if (selected)
+                      const Icon(FregoIcons.check, color: FregoColors.ink)
+                    else
+                      const Icon(FregoIcons.store, color: FregoColors.neutral400),
                   ],
                 ),
               ),
@@ -187,7 +209,40 @@ class _BusinessPicker extends StatelessWidget {
   String _statusLabel(StaffBusiness b) {
     if (b.isPending) return 'Aguardando aprovação';
     if (b.isSuspended) return 'Suspenso';
-    return b.role ?? 'Ativo';
+    return switch (b.role) {
+      'owner' => 'Dono',
+      'employee' => 'Balcão',
+      _ => 'Ativo',
+    };
+  }
+}
+
+class _ShopAvatar extends StatelessWidget {
+  const _ShopAvatar({required this.business});
+
+  final StaffBusiness business;
+
+  @override
+  Widget build(BuildContext context) {
+    final letter = business.name.trim().isEmpty
+        ? '?'
+        : business.name.trim()[0].toUpperCase();
+    final fallback = CircleAvatar(
+      backgroundColor: FregoColors.primary50,
+      foregroundColor: FregoColors.primary600,
+      child: Text(letter),
+    );
+    final url = business.logoUrl?.trim();
+    if (url == null || url.isEmpty) return fallback;
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
   }
 }
 

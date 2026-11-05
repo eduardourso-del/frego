@@ -9,6 +9,7 @@ import {
 } from '@/components/logo-crop-dialog';
 import { ShopAppPreview } from '@/components/shop-app-preview';
 import { IntegrationsTab } from '@/components/integrations/integrations-tab';
+import { EquipePanel } from '@/components/equipe-panel';
 import { TagManager } from '@/components/tag-manager';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
@@ -163,9 +164,10 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropKind, setCropKind] = useState<'logo' | 'hero' | null>(null);
-  const [tab, setTab] = useState<'estabelecimento' | 'integracoes'>(
+  const [tab, setTab] = useState<'estabelecimento' | 'integracoes' | 'equipe'>(
     'estabelecimento',
   );
+  const isDono = business?.role === 'owner';
 
   useEffect(() => {
     const apply = () => {
@@ -176,6 +178,8 @@ export default function SettingsPage() {
         hash === '#whatsapp'
       ) {
         setTab('integracoes');
+      } else if (hash === '#equipe') {
+        setTab('equipe');
       }
     };
     apply();
@@ -183,9 +187,10 @@ export default function SettingsPage() {
     return () => window.removeEventListener('hashchange', apply);
   }, []);
 
-  function selectTab(next: 'estabelecimento' | 'integracoes') {
+  function selectTab(next: 'estabelecimento' | 'integracoes' | 'equipe') {
     setTab(next);
-    const hash = next === 'integracoes' ? '#integracoes' : '';
+    const hash =
+      next === 'integracoes' ? '#integracoes' : next === 'equipe' ? '#equipe' : '';
     window.history.replaceState(
       null,
       '',
@@ -508,6 +513,7 @@ export default function SettingsPage() {
           {(
             [
               ['estabelecimento', 'Estabelecimento'],
+              ...(isDono ? [['equipe', 'Equipe'] as const] : []),
               ['integracoes', 'Integrações'],
             ] as const
           ).map(([id, label]) => {
@@ -543,6 +549,10 @@ export default function SettingsPage() {
         ) : null}
         {tab === 'integracoes' ? (
           <IntegrationsTab />
+        ) : tab === 'equipe' ? (
+          isDono ? <EquipePanel /> : (
+            <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
+          )
         ) : loading && !business ? (
           <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
         ) : (

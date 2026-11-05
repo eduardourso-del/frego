@@ -568,6 +568,7 @@ function CustomersPageContent() {
     business,
     loading: businessLoading,
   } = useBusiness();
+  const balcao = business?.role === 'employee';
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -669,13 +670,23 @@ function CustomersPageContent() {
   ]);
 
   useEffect(() => {
+    if (!balcao || !audienceFilter) return;
+    const params = new URLSearchParams(searchParams.toString());
+    clearAudienceParams(params);
+    const qs = params.toString();
+    router.replace(qs ? `/customers?${qs}` : '/customers', { scroll: false });
+  }, [balcao, audienceFilter, router, searchParams]);
+
+  useEffect(() => {
     if (authLoading || businessLoading) return;
     if (
       !businessId ||
       business?.status === 'pending' ||
-      business?.status === 'suspended'
+      business?.status === 'suspended' ||
+      business?.role === 'employee'
     ) {
       setAudiences([]);
+      setCatalog([]);
       return;
     }
     let cancelled = false;
@@ -713,7 +724,7 @@ function CustomersPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [authHeaders, authLoading, businessLoading, businessId, business?.status]);
+  }, [authHeaders, authLoading, businessLoading, businessId, business?.status, business?.role]);
 
   function replaceCustomersQuery(mutate: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
@@ -993,6 +1004,7 @@ function CustomersPageContent() {
           </label>
         </form>
 
+        {balcao ? null : (
         <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center">
           <SegmentedControl<QuickFilter | 'custom'>
             value={activeQuick ?? 'custom'}
@@ -1039,8 +1051,9 @@ function CustomersPageContent() {
             </Link>
           </div>
         </div>
+        )}
 
-        {catalog.length > 0 ? (
+        {!balcao && catalog.length > 0 ? (
           <div className="mb-5 flex flex-wrap gap-1.5">
             {catalog.map((tag) => {
               const on = selectedTagIds.has(tag.id);
@@ -1102,6 +1115,7 @@ function CustomersPageContent() {
                 {list.audience.memberCount === 1 ? '' : 's'}
               </span>
             )}
+            {balcao ? null : (
             <Link
               href={campaignCreateHref(
                 audienceFilter,
@@ -1111,6 +1125,7 @@ function CustomersPageContent() {
             >
               Criar campanha →
             </Link>
+            )}
             <button
               type="button"
               onClick={() => setQuickFilter('all')}
@@ -1331,6 +1346,8 @@ function CustomersPageContent() {
                       </div>
                     </div>
 
+                    {balcao ? null : (
+                    <>
                     <button
                       type="button"
                       disabled={vipBusy}
@@ -1412,6 +1429,8 @@ function CustomersPageContent() {
                         </div>
                       </div>
                     ) : null}
+                    </>
+                    )}
 
                     <div className="mt-4 grid grid-cols-3 gap-2">
                       <div className="rounded-[11px] bg-[var(--color-bg)] px-2 py-2.5 text-center">
@@ -1480,7 +1499,7 @@ function CustomersPageContent() {
                           </p>
                         </div>
                         <span className="rounded-full bg-[var(--color-success-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-success)]">
-                          Membro
+                          Clube
                         </span>
                       </div>
                       {profile.otherShopsCount > 0 ? (
