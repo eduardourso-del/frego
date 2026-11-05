@@ -165,6 +165,10 @@ model Business {
   pointsExpireDays Int?  @map("points_expire_days")
   /// Dias até o cashback expirar após o ganho. null = não expira.
   cashbackExpireDays Int? @map("cashback_expire_days")
+  /// Aviso antes do vencimento. Desligado, o saldo ainda expira e esse Lembrete não sai.
+  expiryNoticeEnabled Boolean @default(true) @map("expiry_notice_enabled")
+  /// Dias antes do vencimento. Um número para carimbos, pontos e cashback.
+  expiryNoticeDays Int @default(7) @map("expiry_notice_days")
   /// IANA zone derived from the operating UF. Null until that address is saved.
   timeZone String? @map("time_zone")
   createdAt DateTime       @default(now()) @map("created_at")
@@ -357,6 +361,8 @@ model AccountNotice {
   /// sent | skipped. Null means that channel can still be tried.
   pushState     String?   @map("push_state")
   whatsappState String?   @map("whatsapp_state")
+  /// YYYY-MM-DD in America/Sao_Paulo. Quiet until this day. A last-day retry leaves it empty.
+  holdUntil     String?   @map("hold_until")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 

@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react';
 import { INTEGRATIONS } from '@/components/integrations/catalog';
 
 function integrationIdFromHash(hash: string): string | null {
+  if (hash === '#whatsapp') return 'whatsapp';
   if (!hash.startsWith('#integracoes/')) return null;
   const id = hash.slice('#integracoes/'.length);
   return INTEGRATIONS.some((item) => item.id === id) ? id : null;
@@ -36,6 +37,7 @@ export function IntegrationsTab() {
         const open = openId === item.id;
         const Status = item.Status;
         const Panel = item.Panel;
+        const Mark = item.Mark;
         return (
           <section
             key={item.id}
@@ -47,17 +49,24 @@ export function IntegrationsTab() {
               onClick={() => toggle(item.id)}
               className="flex w-full items-start gap-3 px-5 py-4 text-left"
             >
-              <span className="min-w-0 flex-1">
-                {item.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.logo} alt={item.name} className="h-8 w-auto" />
-                ) : (
-                  <span className="block text-[16px] font-semibold text-[var(--color-ink)]">
-                    {item.name}
+              <span className="flex min-w-0 flex-1 items-start gap-2.5">
+                {Mark ? (
+                  <span className="mt-0.5">
+                    <Mark />
                   </span>
-                )}
-                <span className="mt-1.5 block text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
-                  {item.summary}
+                ) : null}
+                <span className="min-w-0">
+                  {item.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.logo} alt={item.name} className="h-8 w-auto" />
+                  ) : (
+                    <span className="block text-[16px] font-semibold text-[var(--color-ink)]">
+                      {item.name}
+                    </span>
+                  )}
+                  <span className="mt-1.5 block text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+                    {item.summary}
+                  </span>
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">

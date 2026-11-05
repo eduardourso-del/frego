@@ -96,6 +96,22 @@ _Avoid_: resgatar, confirmar, voucher
 A whole number, from 2 up, on the Estabelecimento. The compra must be at least that many times the cashback Usado. With none set, Usar can take up to the compra.
 _Avoid_: compra mínima, teto, fator
 
+**Validade**:
+The days after an earn that carimbos, pontos, or cashback last at one Estabelecimento. Each of the three has its own. With none set, that wallet does not expire.
+_Avoid_: antecedência, janela, ttl
+
+**Vencimento**:
+The last day carimbos, pontos, or cashback from one earn can still be used.
+_Avoid_: validade, expiração
+
+**Lembrete**:
+A notice a Cliente receives. One kind says remaining carimbos, pontos, or cashback are near vencimento. Another says a Promoção is near its end. WhatsApp and push carry the same Lembrete.
+_Avoid_: notificação, aviso, alerta, convite
+
+**Antecedência**:
+How far ahead of vencimento an Estabelecimento sends the Lembrete for carimbos, pontos, and cashback. One day count on the Estabelecimento, and a switch. Turned off, that Lembrete does not go out.
+_Avoid_: validade, janela
+
 **Pesquisa**:
 The questions an Estabelecimento asks a Cliente: up to five polegar questions and one optional note.
 _Avoid_: survey, research, campanha, NPS

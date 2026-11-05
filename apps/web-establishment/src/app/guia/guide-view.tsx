@@ -684,23 +684,19 @@ export function GuideView() {
                 />
                 <Setting
                   title="Cashback"
-                  body="Teto por compra, compra mínima, múltiplo e em quantos dias o saldo expira. A porcentagem continua na campanha."
+                  body="Teto por compra, compra mínima, múltiplo e em quantos dias o saldo expira. O aviso antes do vencimento vale para carimbos, pontos e cashback, e pode ficar desligado. A porcentagem continua na campanha."
                 />
                 <Setting
                   title="Carimbos"
-                  body="Em quantos dias o carimbo expira depois do ganho. No resgate, o saldo mais antigo sai primeiro."
+                  body="Em quantos dias o carimbo expira depois do ganho. No resgate, o saldo mais antigo sai primeiro. O aviso antes do vencimento é o mesmo dos pontos e do cashback, e pode ficar desligado."
                 />
                 <Setting
                   title="Pontos"
-                  body="Reais para 1 ponto, e em quantos dias o ponto expira depois do ganho."
-                />
-                <Setting
-                  title="WhatsApp"
-                  body="Conecta o WhatsApp do estabelecimento. As mensagens de visita, de boas-vindas e de campanha saem depois que o texto é aprovado."
+                  body="Reais para 1 ponto, e em quantos dias o ponto expira depois do ganho. O aviso antes do vencimento é o mesmo dos carimbos e do cashback, e pode ficar desligado."
                 />
                 <Setting
                   title="Integrações"
-                  body="O estabelecimento liga só o que usa. Saipos credita pontos e cashback das vendas fechadas."
+                  body="O estabelecimento liga só o que usa. WhatsApp envia cadastro, acúmulo, campanha, pesquisa e o lembrete. Saipos credita pontos e cashback das vendas fechadas."
                 />
               </ul>
             </Screen>

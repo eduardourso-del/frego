@@ -1,8 +1,17 @@
 import { addCivilDays, ymdInSaoPaulo } from '../promo.js';
 import type { WalletLot } from '../wallet.js';
 
-/** Days before the date, inclusive of the date itself, that open a reminder. */
+/** Promoção Lembrete window. The wallet Lembrete uses the Estabelecimento's Antecedência. */
 export const ACCOUNT_NOTICE_WINDOW_DAYS = 7;
+
+/** Antecedência is a whole number from 1 to 30. */
+export function clampExpiryNoticeDays(days: number): number {
+  if (!Number.isFinite(days)) return ACCOUNT_NOTICE_WINDOW_DAYS;
+  return Math.min(30, Math.max(1, Math.trunc(days)));
+}
+
+/** Room already used by the Lembrete body. Whole lines have to fit inside it. */
+export const ACCOUNT_NOTICE_BODY_LIMIT = 180;
 
 export type ExpiryNotice = {
   keySuffix: string;
@@ -168,6 +177,53 @@ function expiryClause(item: ExpiryNotice): string {
 
 export function expiryDetail(items: ExpiryNotice[]): string {
   return `${items.map(expiryClause).join('. ')}.`;
+}
+
+function takePrefix<T extends ExpiryNotice>(
+  items: T[],
+  limit: number,
+): { taken: T[]; rest: T[] } {
+  const taken: T[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i]!;
+    if (expiryDetail([...taken, item]).length <= limit) {
+      taken.push(item);
+      continue;
+    }
+    if (taken.length === 0) {
+      return { taken: [item], rest: items.slice(i + 1) };
+    }
+    return { taken, rest: items.slice(i) };
+  }
+  return { taken, rest: [] };
+}
+
+/**
+ * Soonest vencimento first. The first message takes every whole line that fits.
+ * Further messages the same morning carry only lines that vence hoje.
+ * Any other line that does not fit waits.
+ * A line longer than the room goes alone and the sender keeps its current cut.
+ */
+export function packExpiryNotices<T extends ExpiryNotice>(
+  items: T[],
+  limit = ACCOUNT_NOTICE_BODY_LIMIT,
+): { send: T[][]; defer: T[] } {
+  if (items.length === 0) return { send: [], defer: [] };
+  const first = takePrefix(items, limit);
+  const send: T[][] = first.taken.length > 0 ? [first.taken] : [];
+  const lastDay: T[] = [];
+  const defer: T[] = [];
+  for (const item of first.rest) {
+    if (item.daysLeft <= 0) lastDay.push(item);
+    else defer.push(item);
+  }
+  let pending = lastDay;
+  while (pending.length > 0) {
+    const next = takePrefix(pending, limit);
+    send.push(next.taken);
+    pending = next.rest;
+  }
+  return { send, defer };
 }
 
 export function campaignEndingDetail(items: EndingCampaignNotice[]): string {

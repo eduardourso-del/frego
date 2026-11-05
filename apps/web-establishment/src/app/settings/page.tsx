@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState, type ReactNode } from 'react';
-import { Banknote, ExternalLink, Gift, Globe, ImageIcon, MapPin, Palette, Stamp, Store, type LucideIcon } from 'lucide-react';
+import { Banknote, Bell, ExternalLink, Gift, Globe, ImageIcon, MapPin, Palette, Stamp, Store, type LucideIcon } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import {
   ImageCropDialog,
@@ -9,7 +9,6 @@ import {
 } from '@/components/logo-crop-dialog';
 import { ShopAppPreview } from '@/components/shop-app-preview';
 import { IntegrationsTab } from '@/components/integrations/integrations-tab';
-import { WhatsAppSettingsCard } from '@/components/whatsapp-settings-card';
 import { TagManager } from '@/components/tag-manager';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
@@ -155,6 +154,8 @@ export default function SettingsPage() {
   const [pointsExpireDays, setPointsExpireDays] = useState(90);
   const [cashbackExpireEnabled, setCashbackExpireEnabled] = useState(false);
   const [cashbackExpireDays, setCashbackExpireDays] = useState(90);
+  const [expiryNoticeEnabled, setExpiryNoticeEnabled] = useState(true);
+  const [expiryNoticeDays, setExpiryNoticeDays] = useState(7);
   const [locations, setLocations] = useState<LocationDraft[]>([]);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -162,12 +163,18 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [cropSrc, setCropSrc] = useState<string | null>(null);
   const [cropKind, setCropKind] = useState<'logo' | 'hero' | null>(null);
-  const [tab, setTab] = useState<'estabelecimento' | 'integracoes'>('estabelecimento');
+  const [tab, setTab] = useState<'estabelecimento' | 'integracoes'>(
+    'estabelecimento',
+  );
 
   useEffect(() => {
     const apply = () => {
       const hash = window.location.hash;
-      if (hash === '#integracoes' || hash.startsWith('#integracoes/')) {
+      if (
+        hash === '#integracoes' ||
+        hash.startsWith('#integracoes/') ||
+        hash === '#whatsapp'
+      ) {
         setTab('integracoes');
       }
     };
@@ -216,6 +223,11 @@ export default function SettingsPage() {
     const cashbackDays = business.cashbackExpireDays ?? null;
     setCashbackExpireEnabled(cashbackDays != null);
     setCashbackExpireDays(cashbackDays ?? 90);
+    setExpiryNoticeEnabled(business.expiryNoticeEnabled !== false);
+    const noticeDays = business.expiryNoticeDays;
+    setExpiryNoticeDays(
+      noticeDays != null && noticeDays >= 1 && noticeDays <= 30 ? noticeDays : 7,
+    );
   }, [business]);
 
   useEffect(() => {
@@ -343,6 +355,8 @@ export default function SettingsPage() {
         cashbackExpireDays: cashbackExpireEnabled
           ? Math.max(1, Math.min(3650, cashbackExpireDays || 1))
           : null,
+        expiryNoticeEnabled,
+        expiryNoticeDays: Math.min(30, Math.max(1, Math.round(expiryNoticeDays) || 7)),
       });
 
       if (locations.length > 0) {
@@ -1036,6 +1050,50 @@ export default function SettingsPage() {
                     onDays={setPointsExpireDays}
                   />
                 </Section>
+
+                <Section Icon={Bell} title="Lembrete">
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold text-[var(--color-ink)]">
+                    <input
+                      type="checkbox"
+                      checked={expiryNoticeEnabled}
+                      onChange={(e) => setExpiryNoticeEnabled(e.target.checked)}
+                      className="h-4 w-4 rounded border-[var(--color-neutral-300)]"
+                    />
+                    Avisar antes do vencimento
+                  </label>
+                  <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-neutral-500)]">
+                    O cliente é avisado no WhatsApp, se estiver configurado,
+                    e/ou por uma notificação no app, quando faltam esses dias
+                    para carimbos, pontos ou cashback vencerem. O aviso sai
+                    uma vez para cada vencimento e diz quantos dias ainda
+                    faltam, por exemplo “10 pontos vencem em 5 dias”. Com o
+                    aviso desligado, o saldo continua expirando e nenhum aviso
+                    sai.
+                  </p>
+                  <label className="mt-2 block text-[13px] font-semibold text-[var(--color-neutral-500)]">
+                    Dias antes
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={expiryNoticeDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const n = Math.round(Number(raw));
+                        if (!Number.isFinite(n)) return;
+                        setExpiryNoticeDays(n);
+                      }}
+                      onBlur={() =>
+                        setExpiryNoticeDays((n) => Math.min(30, Math.max(1, n || 7)))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                      O mesmo número, de 1 a 30, vale para carimbos, pontos e cashback.
+                    </span>
+                  </label>
+                </Section>
                 {error ? (
                   <p
                     className="text-[13px] text-[var(--color-danger)] lg:hidden"
@@ -1102,8 +1160,6 @@ export default function SettingsPage() {
               </div>
             </aside>
           </div>
-
-            <WhatsAppSettingsCard />
           </div>
         )}
       </div>

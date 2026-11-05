@@ -5,10 +5,13 @@ import {
   accountNoticeCopy,
   campaignEndingDetail,
   channelSettled,
+  clampExpiryNoticeDays,
   collectEndingCampaigns,
   collectExpiryNotices,
   expiryDetail,
   msUntilNextReminder,
+  packExpiryNotices,
+  type ExpiryNotice,
 } from './account-notice.js';
 
 function lot(partial: Partial<WalletLot> & Pick<WalletLot, 'unitKind' | 'quantity'>): WalletLot {
@@ -68,6 +71,81 @@ describe('collectExpiryNotices', () => {
     ]);
     assert.equal(notices.length, 2);
     assert.equal(notices.find((n) => n.destinationLabel === 'Café')?.quantity, 5);
+  });
+
+  it('uses the Estabelecimento Antecedência as the window', () => {
+    const notices = collectExpiryNotices(
+      [
+        lot({ unitKind: 'points', quantity: 10, daysLeft: 3 }),
+        lot({ unitKind: 'points', quantity: 10, daysLeft: 4, expiresAt: '2026-10-21' }),
+      ],
+      3,
+    );
+    assert.deepEqual(
+      notices.map((n) => n.daysLeft),
+      [3],
+    );
+  });
+});
+
+function expiryNotice(
+  daysLeft: number,
+  expiresAt: string,
+): ExpiryNotice {
+  return {
+    keySuffix: `${expiresAt}:${daysLeft}`,
+    unitKind: 'points',
+    quantity: 10,
+    expiresAt,
+    daysLeft,
+    destinationLabel: null,
+  };
+}
+
+describe('packExpiryNotices', () => {
+  it('sends further last-day lines the same morning and waits with the rest', () => {
+    const hoje = expiryNotice(0, '2026-10-17');
+    const outroHoje = expiryNotice(0, '2026-10-17');
+    const depois = expiryNotice(3, '2026-10-20');
+    const packed = packExpiryNotices([hoje, outroHoje, depois], 30);
+    assert.equal(expiryDetail([hoje]).length <= 30, true);
+    assert.equal(packed.send.length, 2);
+    assert.deepEqual(packed.send[0], [hoje]);
+    assert.deepEqual(packed.send[1], [outroHoje]);
+    assert.deepEqual(packed.defer, [depois]);
+  });
+
+  it('keeps a later line in the first message when the whole line fits', () => {
+    const hoje = expiryNotice(0, '2026-10-17');
+    const amanha = expiryNotice(1, '2026-10-18');
+    const depois = expiryNotice(5, '2026-10-22');
+    const packed = packExpiryNotices([hoje, amanha, depois], 50);
+    assert.deepEqual(packed.send, [[hoje, amanha]]);
+    assert.deepEqual(packed.defer, [depois]);
+  });
+
+  it('sends a line that alone is longer than the room', () => {
+    const longa: ExpiryNotice = {
+      keySuffix: 'longa',
+      unitKind: 'stamps',
+      quantity: 2,
+      expiresAt: '2026-10-20',
+      daysLeft: 4,
+      destinationLabel: 'C'.repeat(200),
+    };
+    const packed = packExpiryNotices([longa]);
+    assert.equal(expiryDetail([longa]).length > 180, true);
+    assert.deepEqual(packed.send, [[longa]]);
+    assert.deepEqual(packed.defer, []);
+  });
+});
+
+describe('clampExpiryNoticeDays', () => {
+  it('keeps 1 to 30 and falls back to 7', () => {
+    assert.equal(clampExpiryNoticeDays(3), 3);
+    assert.equal(clampExpiryNoticeDays(0), 1);
+    assert.equal(clampExpiryNoticeDays(90), 30);
+    assert.equal(clampExpiryNoticeDays(Number.NaN), 7);
   });
 });
 

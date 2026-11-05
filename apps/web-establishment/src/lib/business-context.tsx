@@ -36,6 +36,9 @@ export type BusinessBrand = {
   stampsExpireDays?: number | null;
   pointsExpireDays?: number | null;
   cashbackExpireDays?: number | null;
+  /** Antecedência. Off sends no wallet Lembrete. The count stays. */
+  expiryNoticeEnabled?: boolean;
+  expiryNoticeDays?: number;
   /** IANA zone from the operating UF. Null until Configurações saves it. */
   timeZone?: string | null;
   role?: string;

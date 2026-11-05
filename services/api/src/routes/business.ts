@@ -4,6 +4,7 @@ import { prisma } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
+import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
 import {
   locationAddressData,
   operatingAddressSchema,
@@ -42,6 +43,9 @@ const updateBody = z.object({
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
+  /** Antecedência. Off keeps the day count and sends no wallet Lembrete. */
+  expiryNoticeEnabled: z.boolean().optional(),
+  expiryNoticeDays: z.number().int().min(1).max(30).optional(),
   slug: z
     .string()
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug em minúsculas-com-hífen')
@@ -78,6 +82,8 @@ function publicBusiness(b: {
   stampsExpireDays: number | null;
   pointsExpireDays: number | null;
   cashbackExpireDays: number | null;
+  expiryNoticeEnabled: boolean;
+  expiryNoticeDays: number;
   timeZone: string | null;
 }, activeEarnKinds: EarnKind[] = []) {
   return {
@@ -100,6 +106,8 @@ function publicBusiness(b: {
     stampsExpireDays: b.stampsExpireDays,
     pointsExpireDays: b.pointsExpireDays,
     cashbackExpireDays: b.cashbackExpireDays,
+    expiryNoticeEnabled: b.expiryNoticeEnabled,
+    expiryNoticeDays: b.expiryNoticeDays,
     timeZone: b.timeZone,
     activeEarnKinds,
   };
@@ -131,6 +139,15 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       if (taken) {
         return reply.code(409).send({ error: 'SLUG_TAKEN' });
       }
+    }
+
+    let closeExpiry = false;
+    if (body.expiryNoticeEnabled === false) {
+      const current = await prisma.business.findUniqueOrThrow({
+        where: { id: auth.businessId },
+        select: { expiryNoticeEnabled: true },
+      });
+      closeExpiry = current.expiryNoticeEnabled;
     }
 
     let cnpj: string | undefined;
@@ -194,10 +211,14 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackExpireDays === undefined
             ? undefined
             : body.cashbackExpireDays,
+        expiryNoticeEnabled: body.expiryNoticeEnabled,
+        expiryNoticeDays: body.expiryNoticeDays,
         slug: body.slug === undefined ? undefined : body.slug,
         cnpj,
       },
     });
+
+    if (closeExpiry) await closeToldExpiryNotices(auth.businessId);
 
     const activeEarnKinds = await activeEarnKindsForBusiness(business.id);
     return { business: publicBusiness(business, activeEarnKinds) };

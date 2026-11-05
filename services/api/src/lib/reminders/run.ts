@@ -5,11 +5,13 @@ import {
   campaignEndingDetail,
   campaignNoticeKey,
   channelSettled,
+  clampExpiryNoticeDays,
   collectEndingCampaigns,
   collectExpiryNotices,
   expiryDetail,
   expiryNoticeKey,
   msUntilNextReminder,
+  packExpiryNotices,
   type ChannelAttempt,
 } from '../notify/account-notice.js';
 import { sendAccountNoticePush } from '../push/account-notice.js';
@@ -34,7 +36,10 @@ type NoticeRow = {
   noticeKey: string;
   pushState: string | null;
   whatsappState: string | null;
+  holdUntil: string | null;
 };
+
+type DeliverResult = { outcome: 'sent' | 'idle'; retryKeys: string[] };
 
 type WhatsAppReady =
   | {
@@ -89,9 +94,31 @@ async function ensureNotices(
   }
   const rows = await prisma.accountNotice.findMany({
     where: { noticeKey: { in: keys } },
-    select: { noticeKey: true, pushState: true, whatsappState: true },
+    select: {
+      noticeKey: true,
+      pushState: true,
+      whatsappState: true,
+      holdUntil: true,
+    },
   });
   return new Map(rows.map((row) => [row.noticeKey, row]));
+}
+
+function heldUntilLater(row: NoticeRow | undefined, today: string): boolean {
+  return Boolean(row?.holdUntil && row.holdUntil > today);
+}
+
+function channelStillOpen(row: NoticeRow | undefined): boolean {
+  if (!row) return true;
+  return row.pushState == null || row.whatsappState == null;
+}
+
+async function holdNotices(keys: string[], holdUntil: string): Promise<void> {
+  if (keys.length === 0) return;
+  await prisma.accountNotice.updateMany({
+    where: { noticeKey: { in: keys } },
+    data: { holdUntil },
+  });
 }
 
 async function claimChannel(
@@ -251,7 +278,7 @@ async function deliver(input: {
   tokens: string[];
   whatsapp: WhatsAppReady;
   log?: ReminderLog;
-}): Promise<'sent' | 'idle'> {
+}): Promise<DeliverResult> {
   const pendingPush = input.keys.filter(
     (key) => input.rows.get(key)?.pushState == null,
   );
@@ -260,9 +287,12 @@ async function deliver(input: {
   );
   const claimedPush = await claimChannel(pendingPush, 'push');
   const claimedWhatsapp = await claimChannel(pendingWhatsapp, 'whatsapp');
-  if (claimedPush.length === 0 && claimedWhatsapp.length === 0) return 'idle';
+  if (claimedPush.length === 0 && claimedWhatsapp.length === 0) {
+    return { outcome: 'idle', retryKeys: [] };
+  }
 
   let sent = false;
+  const retryKeys: string[] = [];
   if (claimedPush.length > 0) {
     try {
       const groups = input.campaignIdFor
@@ -270,7 +300,7 @@ async function deliver(input: {
         : [claimedPush];
       const sentKeys: string[] = [];
       const skippedKeys: string[] = [];
-      const retryKeys: string[] = [];
+      const retryPush: string[] = [];
       for (const keys of groups) {
         const copy = accountNoticeCopy(
           input.businessName,
@@ -287,13 +317,14 @@ async function deliver(input: {
             input.campaignIdFor?.(keys[0]!) ?? input.campaignId ?? null,
         });
         const settled = channelSettled('push', push);
-        if (settled === 'retry') retryKeys.push(...keys);
+        if (settled === 'retry') retryPush.push(...keys);
         else if (settled === 'sent') sentKeys.push(...keys);
         else skippedKeys.push(...keys);
       }
-      await releaseChannel(retryKeys, 'push');
+      await releaseChannel(retryPush, 'push');
       await markChannel(sentKeys, 'push', 'sent');
       await markChannel(skippedKeys, 'push', 'skipped');
+      retryKeys.push(...retryPush);
       if (sentKeys.length > 0) sent = true;
     } catch (err) {
       await releaseChannel(claimedPush, 'push');
@@ -311,8 +342,10 @@ async function deliver(input: {
         log: input.log,
       });
       const settled = channelSettled('whatsapp', whatsapp);
-      if (settled === 'retry') await releaseChannel(claimedWhatsapp, 'whatsapp');
-      else {
+      if (settled === 'retry') {
+        await releaseChannel(claimedWhatsapp, 'whatsapp');
+        retryKeys.push(...claimedWhatsapp);
+      } else {
         await markChannel(claimedWhatsapp, 'whatsapp', settled);
         if (settled === 'sent') sent = true;
       }
@@ -322,7 +355,7 @@ async function deliver(input: {
     }
   }
 
-  return sent ? 'sent' : 'idle';
+  return { outcome: sent ? 'sent' : 'idle', retryKeys };
 }
 
 export async function runAccountReminders(input?: {
@@ -358,7 +391,12 @@ export async function runAccountReminders(input?: {
         },
       ],
     },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      expiryNoticeEnabled: true,
+      expiryNoticeDays: true,
+    },
   });
 
   let memberships = 0;
@@ -390,9 +428,15 @@ export async function runAccountReminders(input?: {
           business.id,
           wallet,
         );
-        const expiry = collectExpiryNotices(wallet.lots);
+        const expiry = business.expiryNoticeEnabled
+          ? collectExpiryNotices(
+              wallet.lots,
+              clampExpiryNoticeDays(business.expiryNoticeDays),
+            )
+          : [];
         const ending = collectEndingCampaigns(recognized.campaigns, today);
         const tokens = membership.customer.deviceTokens.map((row) => row.token);
+        const tomorrow = addCivilDays(today, 1);
 
         if (expiry.length > 0) {
           const keyed = expiry.map((item) => ({
@@ -404,25 +448,43 @@ export async function runAccountReminders(input?: {
             'expiry',
             keyed.map((item) => item.noticeKey),
           );
-          const result = await deliver({
-            keys: keyed.map((item) => item.noticeKey),
-            rows: stored,
-            detailFor: (keys) => {
-              const wanted = new Set(keys);
-              return expiryDetail(
-                keyed.filter((item) => wanted.has(item.noticeKey)),
-              );
-            },
-            pushType: 'wallet_expiry',
-            businessId: business.id,
-            businessName: business.name,
-            phoneE164: membership.customer.phoneE164,
-            notificationsEnabled: membership.customer.notificationsEnabled,
-            tokens,
-            whatsapp,
-            log: input?.log,
+          const due = keyed.filter((item) => {
+            const row = stored.get(item.noticeKey);
+            return !heldUntilLater(row, today) && channelStillOpen(row);
           });
-          if (result === 'sent') expirySent += 1;
+          const packed = packExpiryNotices(due);
+          await holdNotices(
+            packed.defer.map((item) => item.noticeKey),
+            tomorrow,
+          );
+          for (const message of packed.send) {
+            const result = await deliver({
+              keys: message.map((item) => item.noticeKey),
+              rows: stored,
+              detailFor: (keys) => {
+                const wanted = new Set(keys);
+                return expiryDetail(
+                  message.filter((item) => wanted.has(item.noticeKey)),
+                );
+              },
+              pushType: 'wallet_expiry',
+              businessId: business.id,
+              businessName: business.name,
+              phoneE164: membership.customer.phoneE164,
+              notificationsEnabled: membership.customer.notificationsEnabled,
+              tokens,
+              whatsapp,
+              log: input?.log,
+            });
+            const retry = new Set(result.retryKeys);
+            await holdNotices(
+              message
+                .filter((item) => item.daysLeft > 0 && retry.has(item.noticeKey))
+                .map((item) => item.noticeKey),
+              tomorrow,
+            );
+            if (result.outcome === 'sent') expirySent += 1;
+          }
         }
 
         if (ending.length > 0) {
@@ -439,13 +501,18 @@ export async function runAccountReminders(input?: {
             'campaign_end',
             keyed.map((item) => item.noticeKey),
           );
+          const due = keyed.filter((item) => {
+            const row = stored.get(item.noticeKey);
+            return !heldUntilLater(row, today) && channelStillOpen(row);
+          });
+          if (due.length === 0) return;
           const result = await deliver({
-            keys: keyed.map((item) => item.noticeKey),
+            keys: due.map((item) => item.noticeKey),
             rows: stored,
             detailFor: (keys) => {
               const wanted = new Set(keys);
               return campaignEndingDetail(
-                keyed.filter((item) => wanted.has(item.noticeKey)),
+                due.filter((item) => wanted.has(item.noticeKey)),
               );
             },
             pushType: 'campaign_ending',
@@ -459,7 +526,14 @@ export async function runAccountReminders(input?: {
             whatsapp,
             log: input?.log,
           });
-          if (result === 'sent') campaignSent += 1;
+          const retry = new Set(result.retryKeys);
+          await holdNotices(
+            due
+              .filter((item) => item.daysLeft > 0 && retry.has(item.noticeKey))
+              .map((item) => item.noticeKey),
+            tomorrow,
+          );
+          if (result.outcome === 'sent') campaignSent += 1;
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'reminder_failed';

@@ -51,6 +51,8 @@ type Detail = {
     stampsExpireDays: number | null;
     pointsExpireDays: number | null;
     cashbackExpireDays: number | null;
+    expiryNoticeEnabled: boolean;
+    expiryNoticeDays: number;
     createdAt: string;
     updatedAt: string;
   };
@@ -208,6 +210,8 @@ export default function BusinessDetailPage() {
   const [pointsExpireDays, setPointsExpireDays] = useState(90);
   const [cashbackExpireEnabled, setCashbackExpireEnabled] = useState(false);
   const [cashbackExpireDays, setCashbackExpireDays] = useState(90);
+  const [expiryNoticeEnabled, setExpiryNoticeEnabled] = useState(true);
+  const [expiryNoticeDays, setExpiryNoticeDays] = useState(7);
   const [locations, setLocations] = useState<LocationDraft[]>([]);
 
   const applyDetail = useCallback((next: Detail) => {
@@ -231,6 +235,10 @@ export default function BusinessDetailPage() {
     setPointsExpireDays(b.pointsExpireDays ?? 90);
     setCashbackExpireEnabled(b.cashbackExpireDays != null);
     setCashbackExpireDays(b.cashbackExpireDays ?? 90);
+    setExpiryNoticeEnabled(b.expiryNoticeEnabled !== false);
+    setExpiryNoticeDays(
+      b.expiryNoticeDays >= 1 && b.expiryNoticeDays <= 30 ? b.expiryNoticeDays : 7,
+    );
     setLocations(
       next.locations.map((loc) => ({
         ...loc,
@@ -319,6 +327,8 @@ export default function BusinessDetailPage() {
           cashbackExpireDays: cashbackExpireEnabled
             ? Math.max(1, Math.min(3650, cashbackExpireDays || 1))
             : null,
+          expiryNoticeEnabled,
+          expiryNoticeDays: Math.min(30, Math.max(1, Math.round(expiryNoticeDays) || 7)),
         }),
       });
       const json = await res.json();
@@ -1083,6 +1093,49 @@ export default function BusinessDetailPage() {
                       className={inputClass}
                     />
                   )}
+                </div>
+                <div>
+                  <label className="flex cursor-pointer items-center gap-2.5 text-[14px] font-semibold">
+                    <input
+                      type="checkbox"
+                      checked={expiryNoticeEnabled}
+                      onChange={(e) => setExpiryNoticeEnabled(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    Avisar antes do vencimento
+                  </label>
+                  <p className="mt-1 text-[12px] font-normal normal-case tracking-normal leading-relaxed text-[var(--color-neutral-500)]">
+                    O cliente é avisado no WhatsApp, se estiver configurado,
+                    e/ou por uma notificação no app, quando faltam esses dias
+                    para carimbos, pontos ou cashback vencerem. O aviso sai
+                    uma vez para cada vencimento e diz quantos dias ainda
+                    faltam, por exemplo “10 pontos vencem em 5 dias”. Com o
+                    aviso desligado, o saldo continua expirando e nenhum aviso
+                    sai.
+                  </p>
+                  <label className="mt-2 block text-[13px] font-semibold normal-case tracking-normal text-[var(--color-neutral-500)]">
+                    Dias antes
+                    <input
+                      type="number"
+                      min={1}
+                      max={30}
+                      value={expiryNoticeDays}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === '') return;
+                        const n = Math.round(Number(raw));
+                        if (!Number.isFinite(n)) return;
+                        setExpiryNoticeDays(n);
+                      }}
+                      onBlur={() =>
+                        setExpiryNoticeDays((n) => Math.min(30, Math.max(1, n || 7)))
+                      }
+                      className={inputClass}
+                    />
+                    <span className="mt-1.5 block text-[12px] font-normal normal-case tracking-normal text-[var(--color-neutral-500)]">
+                      O mesmo número, de 1 a 30, vale para carimbos, pontos e cashback.
+                    </span>
+                  </label>
                 </div>
               </div>
             </section>

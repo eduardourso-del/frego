@@ -7,6 +7,7 @@ import { foldLedgerTx } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { civilYmd } from '../lib/promo.js';
 import { loadTagsByMembershipIds } from '../lib/tags.js';
+import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
 import { patchBusinessCampaign } from './campaigns.js';
 import {
   emailOwnerIfApproved,
@@ -74,6 +75,8 @@ const updateBusinessBody = z.object({
   stampsExpireDays: expireDays.optional(),
   pointsExpireDays: expireDays.optional(),
   cashbackExpireDays: expireDays.optional(),
+  expiryNoticeEnabled: z.boolean().optional(),
+  expiryNoticeDays: z.number().int().min(1).max(30).optional(),
   status: z.enum(STATUSES).optional(),
   explorationVisible: z.boolean().optional(),
   slug: z
@@ -301,6 +304,8 @@ async function loadBusinessDetail(id: string) {
       stampsExpireDays: business.stampsExpireDays,
       pointsExpireDays: business.pointsExpireDays,
       cashbackExpireDays: business.cashbackExpireDays,
+      expiryNoticeEnabled: business.expiryNoticeEnabled,
+      expiryNoticeDays: business.expiryNoticeDays,
       createdAt: business.createdAt.toISOString(),
       updatedAt: business.updatedAt.toISOString(),
     },
@@ -871,6 +876,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const closeExpiry =
+      body.expiryNoticeEnabled === false && existing.expiryNoticeEnabled;
+
     await prisma.business.update({
       where: { id },
       data: {
@@ -909,10 +917,14 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           body.cashbackExpireDays === undefined
             ? undefined
             : body.cashbackExpireDays,
+        expiryNoticeEnabled: body.expiryNoticeEnabled,
+        expiryNoticeDays: body.expiryNoticeDays,
         slug: slug === undefined ? undefined : slug,
         explorationVisible: body.explorationVisible,
       },
     });
+
+    if (closeExpiry) await closeToldExpiryNotices(id);
 
     if (body.status && body.status !== existing.status) {
       const updated = await setBusinessStatus(id, body.status);
