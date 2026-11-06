@@ -17,9 +17,9 @@ import {
   type PeriodValue,
 } from '@/components/period-picker';
 
-type RangeKey = 'today' | '7d' | '30d' | 'custom';
+type RangeKey = 'today' | '7d' | '30d' | '90d' | 'custom';
 
-type Kpi = { value: number; deltaPct: number | null };
+type Kpi = { value: number; previous?: number; deltaPct: number | null };
 
 type TopCustomer = {
   membershipId: string;
@@ -49,7 +49,10 @@ type DashboardData = {
     repeatRate: Kpi;
     avgVisits?: Kpi;
     revenueCents?: Kpi;
+    cashbackEarnedCents?: Kpi;
+    cashbackSpentCents?: Kpi;
     newCustomers?: Kpi;
+    campaignRedeems?: Kpi;
     campaignReturnCents?: Kpi;
   };
   funnel?: {
@@ -100,9 +103,13 @@ type DashboardData = {
   weekSeries: Array<{
     date: string;
     day: string;
-    stamps: number;
+    visits: number;
     redeems: number;
+    prevDate?: string;
+    prevVisits?: number;
+    prevRedeems?: number;
   }>;
+  weekDeltaPct?: number | null;
   live: Array<{
     id: string;
     type: 'stamp' | 'redeem';
@@ -127,6 +134,7 @@ type DashboardData = {
     stampsNeeded: number | null;
     cashbackPercent?: number | null;
     redeems?: number;
+    redeemsDeltaPct?: number | null;
     redeemers?: number;
     fulfillPct?: number;
     openVouchers?: number;
@@ -141,6 +149,7 @@ const RANGES: { key: RangeKey; label: string }[] = [
   { key: 'today', label: 'Hoje' },
   { key: '7d', label: '7 dias' },
   { key: '30d', label: '30 dias' },
+  { key: '90d', label: '90 dias' },
 ];
 
 const TIER_LABEL: Record<TopCustomer['tier'], string> = {
@@ -174,6 +183,14 @@ function formatMoney(cents: number) {
   });
 }
 
+function formatCount(n: number) {
+  return n.toLocaleString('pt-BR');
+}
+
+function formatAvg(n: number) {
+  return n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
 function Delta({ value }: { value: number | null }) {
   if (value === null) {
     return (
@@ -205,12 +222,14 @@ function KpiCard({
   label,
   value,
   deltaPct,
+  previous,
   suffix = '',
   hint,
 }: {
   label: ReactNode;
   value: number | string;
   deltaPct: number | null;
+  previous?: string;
   suffix?: string;
   hint?: string;
 }) {
@@ -223,8 +242,15 @@ function KpiCard({
         {value}
         {suffix}
       </div>
-      <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-        <Delta value={deltaPct} />
+      <div className="mt-1 flex flex-col gap-1">
+        <div className="flex flex-wrap items-center gap-x-1.5">
+          <Delta value={deltaPct} />
+          {previous != null && (
+            <span className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+              · antes {previous}
+            </span>
+          )}
+        </div>
         {hint && (
           <span className="text-[11px] text-[var(--color-neutral-400)]">
             {hint}
@@ -235,75 +261,174 @@ function KpiCard({
   );
 }
 
-function WeekChart({ series }: { series: DashboardData['weekSeries'] }) {
-  const max = useMemo(() => {
-    const m = Math.max(1, ...series.map((d) => d.stamps + d.redeems));
-    return m;
-  }, [series]);
+function slashDay(ymd: string) {
+  const [, month, day] = ymd.split('-');
+  return `${Number(day)}/${Number(month)}`;
+}
+
+function visitBars(series: DashboardData['weekSeries']) {
+  const point = (
+    key: string,
+    label: string,
+    visits: number,
+    prevVisits: number,
+    title: string,
+  ) => ({ key, label, visits, prevVisits, title });
+
+  if (series.length <= 31) {
+    return series.map((d) =>
+      point(
+        d.date,
+        series.length <= 8 ? d.day : slashDay(d.date),
+        d.visits,
+        d.prevVisits ?? 0,
+        `${slashDay(d.date)}: ${d.visits} visitas · período anterior ${d.prevVisits ?? 0}`,
+      ),
+    );
+  }
+
+  const size = series.length <= 92 ? 7 : 30;
+  const buckets = [];
+  for (let i = 0; i < series.length; i += size) {
+    const slice = series.slice(i, i + size);
+    const first = slice[0]!;
+    const last = slice[slice.length - 1]!;
+    const visits = slice.reduce((sum, d) => sum + d.visits, 0);
+    const prevVisits = slice.reduce((sum, d) => sum + (d.prevVisits ?? 0), 0);
+    const span =
+      first.date === last.date
+        ? slashDay(first.date)
+        : `${slashDay(first.date)}–${slashDay(last.date)}`;
+    buckets.push(
+      point(
+        first.date,
+        slashDay(first.date),
+        visits,
+        prevVisits,
+        `${span}: ${visits} visitas · período anterior ${prevVisits}`,
+      ),
+    );
+  }
+  return buckets;
+}
+
+function WeekChart({
+  series,
+  deltaPct,
+  sameWeekday,
+}: {
+  series: DashboardData['weekSeries'];
+  deltaPct: number | null;
+  sameWeekday?: boolean;
+}) {
+  const bars = useMemo(() => visitBars(series), [series]);
+  const prevTotal = series.reduce((sum, d) => sum + (d.prevVisits ?? 0), 0);
+  const max = useMemo(
+    () => Math.max(1, ...bars.map((d) => Math.max(d.visits, d.prevVisits))),
+    [bars],
+  );
+  const dense = bars.length > 14;
+  const sparseAxis = bars.length > 8;
+  const plot = sparseAxis ? 120 : 104;
+  const grouped =
+    series.length > 92
+      ? 'por mês'
+      : series.length > 31
+        ? 'por semana'
+        : series.length === 1
+          ? 'no dia'
+          : 'por dia';
 
   return (
     <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-[15px] font-semibold text-[var(--color-ink)]">
-          Visitas nesta semana
+      <div className="mb-1 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <div className="text-[15px] font-semibold text-[var(--color-ink)]">
+              Visitas no período
+            </div>
+            <Delta value={deltaPct} />
+          </div>
+          <p className="mt-0.5 text-[12px] text-[var(--color-neutral-500)]">
+            {sameWeekday
+              ? `${prevTotal.toLocaleString('pt-BR')} no mesmo dia da semana passada, até agora`
+              : `${prevTotal.toLocaleString('pt-BR')} no período anterior · ${grouped}`}
+          </p>
         </div>
-        <div className="flex gap-3.5 text-[12px] text-[var(--color-neutral-500)]">
+        <div className="flex shrink-0 gap-3.5 text-[12px] text-[var(--color-neutral-500)]">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-[2px]"
+              style={{ background: 'var(--color-neutral-200)' }}
+            />
+            Anterior
+          </span>
           <span className="flex items-center gap-1.5">
             <span
               className="inline-block h-2.5 w-2.5 rounded-[2px]"
               style={{ background: 'var(--color-primary-500)' }}
             />
-            Visitas
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-[2px]"
-              style={{ background: 'var(--color-primary-200)' }}
-            />
-            Resgates
+            Período
           </span>
         </div>
       </div>
-      <div className="flex h-[132px] items-end gap-3">
-        {series.map((d) => {
-          const total = d.stamps + d.redeems;
-              const stampH = Math.round((d.stamps / max) * 104);
-              const redeemH = Math.round((d.redeems / max) * 104);
+      <div className={`mt-3 flex h-[132px] items-end ${dense ? 'gap-px' : 'gap-2'}`}>
+        {bars.map((d) => {
+          const currentH =
+            d.visits === 0 ? 3 : Math.max(6, Math.round((d.visits / max) * plot));
+          const prevH =
+            d.prevVisits === 0
+              ? 3
+              : Math.max(6, Math.round((d.prevVisits / max) * plot));
           return (
             <div
-              key={d.date}
-              className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
-              title={`${d.date}: ${d.stamps} visitas, ${d.redeems} resgates`}
+              key={d.key}
+              className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1.5"
+              title={d.title}
             >
-              <div className="flex w-full max-w-[32px] flex-col gap-0.5">
-                {redeemH > 0 && (
-                  <div
-                    className="rounded-t-[4px]"
-                    style={{
-                      height: Math.max(redeemH, 4),
-                      background: 'var(--color-primary-200)',
-                    }}
-                  />
-                )}
+              <div
+                className={`flex w-full items-end justify-center gap-0.5 ${
+                  dense ? '' : 'max-w-[36px]'
+                }`}
+                style={{ height: plot }}
+              >
                 <div
-                  className={redeemH > 0 ? 'rounded-b-[4px]' : 'rounded-[4px]'}
+                  className="w-1/2 rounded-[3px]"
                   style={{
-                    height: Math.max(stampH, total === 0 ? 4 : 6),
+                    height: prevH,
                     background:
-                      total === 0
+                      d.prevVisits === 0
+                        ? 'var(--color-neutral-100)'
+                        : 'var(--color-neutral-200)',
+                  }}
+                />
+                <div
+                  className="w-1/2 rounded-[3px]"
+                  style={{
+                    height: currentH,
+                    background:
+                      d.visits === 0
                         ? 'var(--color-neutral-100)'
                         : 'var(--color-primary-500)',
-                    opacity: total === 0 ? 1 : undefined,
                   }}
                 />
               </div>
-              <span className="text-[11px] text-[var(--color-neutral-400)]">
-                {d.day}
-              </span>
+              {sparseAxis ? null : (
+                <span className="text-[11px] text-[var(--color-neutral-400)]">
+                  {d.label}
+                </span>
+              )}
             </div>
           );
         })}
       </div>
+      {sparseAxis && bars.length > 0 ? (
+        <div className="mt-2 flex items-end justify-between gap-2 text-[11px] leading-none text-[var(--color-neutral-400)]">
+          <span>{bars[0]?.label}</span>
+          <span>{bars[Math.floor((bars.length - 1) / 2)]?.label}</span>
+          <span>{bars[bars.length - 1]?.label}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -524,19 +649,25 @@ export default function DashboardPage() {
 
             <PainelSection
               title="O estabelecimento"
-              hint="Quem veio, quem voltou e como o clube se mexeu neste período."
+              hint={
+                data.range === 'today'
+                  ? 'Hoje, até agora, contra o mesmo dia da semana passada.'
+                  : 'Quem veio, quem voltou e como o clube se mexeu neste período.'
+              }
             >
               <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <KpiCard
                   label="Clientes ativos"
                   value={data.kpis.customers.value}
                   deltaPct={data.kpis.customers.deltaPct}
+                  previous={formatCount(data.kpis.customers.previous ?? 0)}
                   hint="com visita neste período"
                 />
                 <KpiCard
                   label="Novos clientes"
                   value={data.kpis.newCustomers?.value ?? 0}
                   deltaPct={data.kpis.newCustomers?.deltaPct ?? null}
+                  previous={formatCount(data.kpis.newCustomers?.previous ?? 0)}
                 />
                 <KpiCard
                   label={
@@ -544,6 +675,7 @@ export default function DashboardPage() {
                   }
                   value={data.kpis.repeatRate.value}
                   deltaPct={data.kpis.repeatRate.deltaPct}
+                  previous={`${data.kpis.repeatRate.previous ?? 0}%`}
                   suffix="%"
                   hint="vieram duas vezes ou mais"
                 />
@@ -551,6 +683,7 @@ export default function DashboardPage() {
                   label="Visitas / cliente"
                   value={data.kpis.avgVisits?.value ?? 0}
                   deltaPct={data.kpis.avgVisits?.deltaPct ?? null}
+                  previous={formatAvg(data.kpis.avgVisits?.previous ?? 0)}
                   hint="média no período"
                 />
               </div>
@@ -560,6 +693,7 @@ export default function DashboardPage() {
                     label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
                     value={data.kpis.redeems.value}
                     deltaPct={data.kpis.redeems.deltaPct}
+                    previous={formatCount(data.kpis.redeems.previous ?? 0)}
                     hint="prêmios no app"
                   />
                   {(kinds == null || kinds.includes('stamps')) && (
@@ -567,13 +701,15 @@ export default function DashboardPage() {
                       label="Carimbos"
                       value={data.kpis.stamps.value}
                       deltaPct={data.kpis.stamps.deltaPct}
+                      previous={formatCount(data.kpis.stamps.previous ?? 0)}
                     />
                   )}
                   {(kinds == null || kinds.includes('points')) && (
                     <KpiCard
-                      label="Pontos acumulados"
+                      label="Pontos"
                       value={data.kpis.points?.value ?? 0}
                       deltaPct={data.kpis.points?.deltaPct ?? null}
+                      previous={formatCount(data.kpis.points?.previous ?? 0)}
                     />
                   )}
                   {(kinds == null || kinds.includes('points')) && (
@@ -581,13 +717,35 @@ export default function DashboardPage() {
                       label="Gasto registrado"
                       value={formatMoney(data.kpis.revenueCents?.value ?? 0)}
                       deltaPct={data.kpis.revenueCents?.deltaPct ?? null}
+                      previous={formatMoney(data.kpis.revenueCents?.previous ?? 0)}
                       hint="via pontos no balcão"
+                    />
+                  )}
+                  {(kinds == null || kinds.includes('cashback')) && (
+                    <KpiCard
+                      label="Cashback gerado"
+                      value={formatMoney(data.kpis.cashbackEarnedCents?.value ?? 0)}
+                      deltaPct={data.kpis.cashbackEarnedCents?.deltaPct ?? null}
+                      previous={formatMoney(data.kpis.cashbackEarnedCents?.previous ?? 0)}
+                    />
+                  )}
+                  {(kinds == null || kinds.includes('cashback')) && (
+                    <KpiCard
+                      label="Cashback usado"
+                      value={formatMoney(data.kpis.cashbackSpentCents?.value ?? 0)}
+                      deltaPct={data.kpis.cashbackSpentCents?.deltaPct ?? null}
+                      previous={formatMoney(data.kpis.cashbackSpentCents?.previous ?? 0)}
+                      hint="no caixa"
                     />
                   )}
                 </div>
 
               <div className="grid items-start gap-4 lg:grid-cols-2">
-                <WeekChart series={data.weekSeries} />
+                <WeekChart
+                  series={data.weekSeries}
+                  deltaPct={data.weekDeltaPct ?? null}
+                  sameWeekday={data.range === 'today'}
+                />
 
                 <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
                   <div className="mb-1 text-[15px] font-semibold text-[var(--color-ink)]">
@@ -647,6 +805,7 @@ export default function DashboardPage() {
                 returnDeltaPct={
                   data.kpis.campaignReturnCents?.deltaPct ?? null
                 }
+                redeemsDeltaPct={data.kpis.campaignRedeems?.deltaPct ?? null}
               />
             </PainelSection>
 

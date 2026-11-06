@@ -50,6 +50,7 @@ describe('establishment civil day', () => {
     );
     assert.equal(period.from.toISOString(), '2026-10-14T03:00:00.000Z');
     assert.equal(period.toExclusive.toISOString(), justAfterUtcMidnight.toISOString());
-    assert.equal(period.prevFrom.toISOString(), '2026-10-13T03:00:00.000Z');
+    assert.equal(period.prevFrom.toISOString(), '2026-10-07T03:00:00.000Z');
+    assert.equal(period.prevTo.toISOString(), '2026-10-08T00:30:00.000Z');
   });
 });

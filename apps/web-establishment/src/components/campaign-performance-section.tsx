@@ -20,6 +20,7 @@ export type DashboardCampaign = {
   stampsNeeded: number | null;
   cashbackPercent?: number | null;
   redeems?: number;
+  redeemsDeltaPct?: number | null;
   redeemers?: number;
   fulfillPct?: number;
   openVouchers?: number;
@@ -62,7 +63,7 @@ function Metric({
   info,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   hint?: string | null;
   info?: string;
 }) {
@@ -147,12 +148,14 @@ export function CampaignPerformanceSection({
   weakCampaign,
   returnCents,
   returnDeltaPct,
+  redeemsDeltaPct,
 }: {
   campaigns: DashboardCampaign[];
   topCampaign: Spotlight;
   weakCampaign: Spotlight;
   returnCents: number;
   returnDeltaPct: number | null;
+  redeemsDeltaPct?: number | null;
 }) {
   const ranked = [...campaigns].sort(
     (a, b) => (b.redeems ?? 0) - (a.redeems ?? 0) || a.name.localeCompare(b.name, 'pt-BR'),
@@ -192,6 +195,7 @@ export function CampaignPerformanceSection({
         <KpiCard
           label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
           value={totalRedeems.toLocaleString('pt-BR')}
+          deltaPct={redeemsDeltaPct ?? null}
           hint="inclui usos de cashback no caixa"
         />
         <KpiCard
@@ -368,7 +372,12 @@ export function CampaignPerformanceSection({
                     <Metric
                       label={c.type === 'cashback' ? 'Usos' : 'Resgates'}
                       info={TERM.resgates}
-                      value={(c.redeems ?? 0).toLocaleString('pt-BR')}
+                      value={
+                        <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+                          {(c.redeems ?? 0).toLocaleString('pt-BR')}
+                          <Delta value={c.redeemsDeltaPct ?? null} />
+                        </span>
+                      }
                       hint={
                         (c.redeemers ?? 0) > 0
                           ? `${c.redeemers} pessoa${

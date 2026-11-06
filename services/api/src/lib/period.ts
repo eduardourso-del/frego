@@ -45,7 +45,8 @@ export type PeriodWindow = {
 };
 
 /**
- * Preset `today` = civil today in `timeZone` until now.
+ * Preset `today` = civil today in `timeZone` until now, compared with the
+ * same weekday last week up to the same hour.
  * Numeric presets = last N days including today, until now.
  * `from`+`to` (YYYY-MM-DD) = custom inclusive range, capped at 366 days.
  */
@@ -91,12 +92,14 @@ export function resolvePeriod(
     query.range && query.range in presets ? query.range : defaultRange;
   const spec = presets[range]!;
   if (spec === 'today') {
+    const prevFrom = zonedMidnight(addCivilDays(todayYmd, -7), timeZone);
+    const elapsed = Math.max(0, now.getTime() - todayStart.getTime());
     return {
       key: range,
       from: todayStart,
       toExclusive: now,
-      prevFrom: zonedMidnight(addCivilDays(todayYmd, -1), timeZone),
-      prevTo: todayStart,
+      prevFrom,
+      prevTo: new Date(prevFrom.getTime() + elapsed),
       days: 1,
     };
   }

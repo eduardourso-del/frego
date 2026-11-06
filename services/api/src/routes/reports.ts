@@ -77,13 +77,19 @@ function isPointsEarn(tx: TxLite) {
   );
 }
 
-function summarize(txs: TxLite[], timeZone: string) {
+function summarize(
+  txs: TxLite[],
+  timeZone: string,
+  firstVisitByMember: Map<string, Date>,
+) {
   const activeMembers = new Set<string>();
   const visitDaysByMember = new Map<string, Set<string>>();
   let stamps = 0;
   let points = 0;
   let redeems = 0;
   let revenueCents = 0;
+  let cashbackEarnedCents = 0;
+  let cashbackSpentCents = 0;
   const redeemers = new Set<string>();
 
   for (const tx of txs) {
@@ -97,6 +103,8 @@ function summarize(txs: TxLite[], timeZone: string) {
     days.add(dayKey(tx.createdAt, timeZone));
 
     if (isCashbackUnit(tx.unitKind)) {
+      if (tx.type === 'redeem') cashbackSpentCents += tx.quantity;
+      else cashbackEarnedCents += tx.quantity;
       continue;
     }
     if (tx.type === 'redeem') {
@@ -112,9 +120,17 @@ function summarize(txs: TxLite[], timeZone: string) {
 
   let returning = 0;
   let totalVisitDays = 0;
-  for (const days of visitDaysByMember.values()) {
+  let newCustomers = 0;
+  for (const [membershipId, days] of visitDaysByMember) {
     totalVisitDays += days.size;
     if (days.size >= 2) returning += 1;
+    const first = firstVisitByMember.get(membershipId);
+    if (!first) {
+      newCustomers += 1;
+      continue;
+    }
+    const earliest = [...days].sort()[0];
+    if (earliest && dayKey(first, timeZone) === earliest) newCustomers += 1;
   }
 
   const customers = activeMembers.size;
@@ -131,6 +147,10 @@ function summarize(txs: TxLite[], timeZone: string) {
     points,
     redeems,
     revenueCents,
+    cashbackEarnedCents,
+    cashbackSpentCents,
+    newCustomers,
+    visitDays: totalVisitDays,
     returning,
     redeemers: redeemers.size,
     avgVisits,
@@ -152,7 +172,13 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     const now = new Date();
     const todayYmd = ymdInTimeZone(now, timeZone);
     const { key: range, from, toExclusive, prevFrom, prevTo, days } =
-      resolvePeriod(query, { '7d': 7, '30d': 30, '90d': 90 }, '30d', now, timeZone);
+      resolvePeriod(
+        query,
+        { today: 'today', '7d': 7, '30d': 30, '90d': 90 },
+        '30d',
+        now,
+        timeZone,
+      );
     const inactiveCutoff = zonedMidnight(addCivilDays(todayYmd, -29), timeZone);
 
     const txSelect = {
@@ -178,6 +204,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       memberships,
       activeIn30d,
       lateVoucherTxs,
+      prevLateVoucherTxs,
+      firstVisits,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -239,10 +267,30 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         },
         select: txSelect,
       }),
+      prisma.transaction.findMany({
+        where: {
+          businessId: auth.businessId,
+          type: 'redeem',
+          createdAt: { gte: voucherLookbackStart(prevFrom), lt: prevFrom },
+        },
+        select: txSelect,
+      }),
+      prisma.transaction.groupBy({
+        by: ['membershipId'],
+        where: { businessId: auth.businessId },
+        _min: { createdAt: true },
+      }),
     ]);
 
-    const current = summarize(currentTxs, timeZone);
-    const previous = summarize(previousTxs, timeZone);
+    const firstVisitByMember = new Map<string, Date>();
+    for (const row of firstVisits) {
+      if (row._min.createdAt) {
+        firstVisitByMember.set(row.membershipId, row._min.createdAt);
+      }
+    }
+
+    const current = summarize(currentTxs, timeZone, firstVisitByMember);
+    const previous = summarize(previousTxs, timeZone, firstVisitByMember);
     const periodRange = { from, to: toExclusive };
     const campaignPeriodTxs = [
       ...currentTxs,
@@ -252,31 +300,40 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
     const inactive30d = Math.max(0, totalMembers - active30dCount);
 
     const fromYmd = ymdInTimeZone(from, timeZone);
-    const series = Array.from({ length: days }, (_, i) => {
-      const key = addCivilDays(fromYmd, i);
-      const [, month, dayOfMonth] = key.split('-');
+    const prevFromYmd = ymdInTimeZone(prevFrom, timeZone);
+    function tallyDay(txs: TxLite[], key: string) {
       let stamps = 0;
       let points = 0;
       let redeems = 0;
       const customers = new Set<string>();
-      for (const tx of currentTxs) {
+      for (const tx of txs) {
         if (shouldOmitFromLedger(tx.metadata)) continue;
         if (dayKey(tx.createdAt, timeZone) !== key) continue;
         customers.add(tx.membershipId);
-        if (tx.type === 'redeem') redeems += tx.quantity;
-        else if (isPointsEarn(tx)) points += tx.quantity;
+        if (tx.type === 'redeem') {
+          redeems += isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+        } else if (isCashbackUnit(tx.unitKind)) {
+          continue;
+        } else if (isPointsEarn(tx)) points += tx.quantity;
         else stamps += tx.quantity;
       }
+      return { stamps, points, redeems, customers: customers.size };
+    }
+    const series = Array.from({ length: days }, (_, i) => {
+      const key = addCivilDays(fromYmd, i);
+      const prevKey = addCivilDays(prevFromYmd, i);
+      const [, month, dayOfMonth] = key.split('-');
+      const currentDay = tallyDay(currentTxs, key);
+      const previousDay = tallyDay(previousTxs, prevKey);
       return {
         date: key,
+        prevDate: prevKey,
         label:
           days <= 7
             ? ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'][civilWeekday(key)]
             : `${Number(dayOfMonth)}/${Number(month)}`,
-        stamps,
-        points,
-        redeems,
-        customers: customers.size,
+        ...currentDay,
+        prevCustomers: previousDay.customers,
       };
     });
 
@@ -303,8 +360,11 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       }
       visits.add(visitKey);
 
-      if (tx.type === 'redeem') stats.redeems += tx.quantity;
-      else if (isPointsEarn(tx)) stats.points += tx.quantity;
+      if (tx.type === 'redeem') {
+        stats.redeems += isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+      } else if (isCashbackUnit(tx.unitKind)) {
+        // A cashback earn is a visita, already counted above. Centavos are not carimbos.
+      } else if (isPointsEarn(tx)) stats.points += tx.quantity;
       else stats.stamps += tx.quantity;
     }
     for (const [id, visits] of locVisitDays) {
@@ -335,20 +395,43 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       })
       .sort((a, b) => b.visits - a.visits || b.stamps - a.stamps);
 
+    const prevLocVisits = new Map<string, Set<string>>();
+    for (const tx of previousTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
+      const visitKey = `${dayKey(tx.createdAt, timeZone)}:${tx.membershipId}`;
+      let visits = prevLocVisits.get(tx.locationId);
+      if (!visits) {
+        visits = new Set();
+        prevLocVisits.set(tx.locationId, visits);
+      }
+      visits.add(visitKey);
+    }
+    const locationsCompared = locationsRanking.map((loc) => {
+      const previous = prevLocVisits.get(loc.id)?.size ?? 0;
+      return {
+        ...loc,
+        previous,
+        deltaPct: deltaPct(loc.visits, previous),
+      };
+    });
+
     const teamStats = new Map<
       string,
-      { stamps: number; points: number; redeems: number }
+      { stamps: number; points: number; redeems: number; sales: number }
     >();
     for (const tx of currentTxs) {
       if (shouldOmitFromLedger(tx.metadata)) continue;
       if (!tx.actorTeamMemberId) continue;
       let s = teamStats.get(tx.actorTeamMemberId);
       if (!s) {
-        s = { stamps: 0, points: 0, redeems: 0 };
+        s = { stamps: 0, points: 0, redeems: 0, sales: 0 };
         teamStats.set(tx.actorTeamMemberId, s);
       }
-      if (tx.type === 'redeem') s.redeems += tx.quantity;
-      else if (isPointsEarn(tx)) s.points += tx.quantity;
+      if (tx.type === 'redeem') {
+        s.redeems += isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+      } else if (isCashbackUnit(tx.unitKind)) {
+        s.sales += 1;
+      } else if (isPointsEarn(tx)) s.points += tx.quantity;
       else s.stamps += tx.quantity;
     }
     const teamRanking = teamMembers
@@ -357,6 +440,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           stamps: 0,
           points: 0,
           redeems: 0,
+          sales: 0,
         };
         const name =
           m.displayName?.trim() ||
@@ -369,12 +453,31 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           stamps: s.stamps,
           points: s.points,
           redeems: s.redeems,
-          activity: s.stamps + s.points + s.redeems,
+          sales: s.sales,
+          activity: s.stamps + s.points + s.redeems + s.sales,
         };
       })
       .filter((m) => m.activity > 0)
       .sort((a, b) => b.activity - a.activity)
       .slice(0, 10);
+
+    const prevTeamActivity = new Map<string, number>();
+    for (const tx of previousTxs) {
+      if (shouldOmitFromLedger(tx.metadata) || !tx.actorTeamMemberId) continue;
+      const n = isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+      prevTeamActivity.set(
+        tx.actorTeamMemberId,
+        (prevTeamActivity.get(tx.actorTeamMemberId) ?? 0) + n,
+      );
+    }
+    const teamCompared = teamRanking.map((member) => {
+      const previous = prevTeamActivity.get(member.id) ?? 0;
+      return {
+        ...member,
+        previous,
+        deltaPct: deltaPct(member.activity, previous),
+      };
+    });
 
     const campaignRedeemers = new Map<string, Set<string>>();
     const campaignRedeems = new Map<string, number>();
@@ -426,6 +529,28 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const prevRange = { from: prevFrom, to: prevTo };
+    const prevCampaignTxs = [
+      ...previousTxs,
+      ...prevLateVoucherTxs.filter((tx) => voucherBelongsToPeriod(tx, prevRange)),
+    ];
+    const prevCampaignRedeems = new Map<string, number>();
+    for (const tx of prevCampaignTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
+      if (tx.type !== 'redeem' || !tx.campaignId) continue;
+      if (
+        !isCashbackUnit(tx.unitKind) &&
+        !voucherBelongsToPeriod(tx, prevRange)
+      ) {
+        continue;
+      }
+      const n = isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+      prevCampaignRedeems.set(
+        tx.campaignId,
+        (prevCampaignRedeems.get(tx.campaignId) ?? 0) + n,
+      );
+    }
+
     const campaignsRanking = (
       await Promise.all(
         campaigns.map(async (c) => {
@@ -466,6 +591,11 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
             audienceSegmentId: c.audienceSegmentId,
             audienceName: c.audienceSegment?.name ?? null,
             redeems,
+            previousRedeems: prevCampaignRedeems.get(c.id) ?? 0,
+            redeemsDeltaPct: deltaPct(
+              redeems,
+              prevCampaignRedeems.get(c.id) ?? 0,
+            ),
             redeemers,
             eligible,
             engagePct,
@@ -528,6 +658,7 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       kpis: {
         activeCustomers: {
           value: current.customers,
+          previous: previous.customers,
           ofBasePct:
             totalMembers === 0
               ? 0
@@ -541,37 +672,67 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
               ? 0
               : Math.round((inactive30d / totalMembers) * 100),
         },
+        newCustomers: {
+          value: current.newCustomers,
+          previous: previous.newCustomers,
+          deltaPct: deltaPct(current.newCustomers, previous.newCustomers),
+        },
         avgVisits: {
           value: current.avgVisits,
-          delta:
-            Math.round((current.avgVisits - previous.avgVisits) * 10) / 10,
+          previous: previous.avgVisits,
+          deltaPct: deltaPct(
+            Math.round(current.avgVisits * 10),
+            Math.round(previous.avgVisits * 10),
+          ),
         },
         redeems: {
           value: current.redeems,
+          previous: previous.redeems,
           deltaPct: deltaPct(current.redeems, previous.redeems),
         },
         stamps: {
           value: current.stamps,
+          previous: previous.stamps,
           deltaPct: deltaPct(current.stamps, previous.stamps),
         },
         points: {
           value: current.points,
+          previous: previous.points,
           deltaPct: deltaPct(current.points, previous.points),
         },
         revenueCents: {
           value: current.revenueCents,
+          previous: previous.revenueCents,
           deltaPct: deltaPct(current.revenueCents, previous.revenueCents),
+        },
+        cashbackEarnedCents: {
+          value: current.cashbackEarnedCents,
+          previous: previous.cashbackEarnedCents,
+          deltaPct: deltaPct(
+            current.cashbackEarnedCents,
+            previous.cashbackEarnedCents,
+          ),
+        },
+        cashbackSpentCents: {
+          value: current.cashbackSpentCents,
+          previous: previous.cashbackSpentCents,
+          deltaPct: deltaPct(
+            current.cashbackSpentCents,
+            previous.cashbackSpentCents,
+          ),
         },
         repeatRate: {
           value: current.repeatRate,
+          previous: previous.repeatRate,
           deltaPct: deltaPct(current.repeatRate, previous.repeatRate),
         },
         base: totalMembers,
       },
       series,
+      seriesDeltaPct: deltaPct(current.visitDays, previous.visitDays),
       cohorts,
-      locations: locationsRanking,
-      team: teamRanking,
+      locations: locationsCompared,
+      team: teamCompared,
       campaigns: campaignsRanking,
     };
   });

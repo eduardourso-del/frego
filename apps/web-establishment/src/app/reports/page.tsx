@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Download } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { useAuth } from '@/lib/auth-context';
+import { useBusiness } from '@/lib/business-context';
 import { API_URL } from '@/lib/api';
 import { formatCoverage } from '@/lib/campaign-return';
 import {
@@ -16,9 +17,15 @@ import { CampaignCompareChart } from '@/components/campaign-compare-chart';
 import { TermInfo } from '@/components/term-info';
 import { TERM } from '@/lib/term-copy';
 
-type RangeKey = '7d' | '30d' | '90d' | 'custom';
+type RangeKey = 'today' | '7d' | '30d' | '90d' | 'custom';
 
-type KpiNum = { value: number; deltaPct?: number | null; ofBasePct?: number; delta?: number };
+type KpiNum = {
+  value: number;
+  previous?: number;
+  deltaPct?: number | null;
+  ofBasePct?: number;
+  delta?: number;
+};
 
 type ReportsData = {
   range: RangeKey;
@@ -26,15 +33,19 @@ type ReportsData = {
   to: string;
   kpis: {
     activeCustomers: KpiNum;
-    inactive: KpiNum;
+    inactive?: KpiNum;
+    newCustomers?: KpiNum;
     avgVisits: KpiNum;
     redeems: KpiNum;
     stamps: KpiNum;
     points: KpiNum;
     revenueCents: KpiNum;
+    cashbackEarnedCents?: KpiNum;
+    cashbackSpentCents?: KpiNum;
     repeatRate: KpiNum;
     base: number;
   };
+  seriesDeltaPct?: number | null;
   series: Array<{
     date: string;
     label: string;
@@ -42,6 +53,7 @@ type ReportsData = {
     points: number;
     redeems: number;
     customers: number;
+    prevCustomers?: number;
   }>;
   cohorts: Array<{
     month: string;
@@ -58,6 +70,8 @@ type ReportsData = {
     points: number;
     redeems: number;
     sharePct: number;
+    previous?: number;
+    deltaPct?: number | null;
   }>;
   team: Array<{
     id: string;
@@ -66,7 +80,10 @@ type ReportsData = {
     stamps: number;
     points: number;
     redeems: number;
+    sales?: number;
     activity: number;
+    previous?: number;
+    deltaPct?: number | null;
   }>;
   campaigns: Array<{
     id: string;
@@ -77,6 +94,8 @@ type ReportsData = {
     audienceSegmentId: string | null;
     audienceName: string | null;
     redeems: number;
+    previousRedeems?: number;
+    redeemsDeltaPct?: number | null;
     redeemers: number;
     eligible: number;
     engagePct: number;
@@ -90,6 +109,7 @@ type ReportsData = {
 };
 
 const RANGES: { key: RangeKey; label: string }[] = [
+  { key: 'today', label: 'Hoje' },
   { key: '7d', label: '7 dias' },
   { key: '30d', label: '30 dias' },
   { key: '90d', label: '90 dias' },
@@ -109,6 +129,36 @@ function formatMoney(cents: number) {
     style: 'currency',
     currency: 'BRL',
   });
+}
+
+function formatCount(n: number) {
+  return n.toLocaleString('pt-BR');
+}
+
+function formatAvg(n: number) {
+  return n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
+function teamActivityLabel(
+  member: ReportsData['team'][number],
+  kinds: string[] | null | undefined,
+) {
+  const show = (kind: string) => kinds == null || kinds.includes(kind);
+  const parts: string[] = [];
+  if (show('stamps') && member.stamps > 0) {
+    parts.push(`${member.stamps.toLocaleString('pt-BR')} carimbos`);
+  }
+  if (show('points') && member.points > 0) {
+    parts.push(`${member.points.toLocaleString('pt-BR')} pontos`);
+  }
+  if (show('cashback') && (member.sales ?? 0) > 0) {
+    parts.push(`${(member.sales ?? 0).toLocaleString('pt-BR')} vendas`);
+  }
+  if (member.redeems > 0) {
+    parts.push(`${member.redeems.toLocaleString('pt-BR')} resgates`);
+  }
+  if (parts.length > 0) return parts.join(' · ');
+  return `${member.activity.toLocaleString('pt-BR')} movimentos`;
 }
 
 function peopleHint(redeemers: number, eligible: number) {
@@ -176,11 +226,13 @@ function KpiCard({
   value,
   hint,
   deltaPct,
+  previous,
 }: {
   label: ReactNode;
   value: string | number;
   hint?: string;
   deltaPct?: number | null;
+  previous?: string;
 }) {
   return (
     <div className="rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-[18px] shadow-[var(--shadow-card)]">
@@ -190,8 +242,17 @@ function KpiCard({
       <div className="mt-1.5 text-[28px] font-semibold tracking-[-0.02em] text-[var(--color-ink)]">
         {value}
       </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        {deltaPct !== undefined && <Delta value={deltaPct} />}
+      <div className="mt-1 flex flex-col gap-1">
+        {deltaPct !== undefined && (
+          <div className="flex flex-wrap items-center gap-x-1.5">
+            <Delta value={deltaPct} />
+            {previous != null && (
+              <span className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                · antes {previous}
+              </span>
+            )}
+          </div>
+        )}
         {hint && (
           <span className="text-[12px] font-semibold text-[var(--color-neutral-500)]">
             {hint}
@@ -263,6 +324,8 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       stamps: d.stamps,
       points: d.points,
       redeems: d.redeems,
+      customers: d.customers,
+      prevCustomers: d.prevCustomers ?? 0,
       from: d.date,
       to: d.date,
     }));
@@ -275,6 +338,8 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       stamps: number;
       points: number;
       redeems: number;
+      customers: number;
+      prevCustomers: number;
       from: string;
       to: string;
     }
@@ -289,6 +354,8 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       existing.stamps += d.stamps;
       existing.points += d.points;
       existing.redeems += d.redeems;
+      existing.customers += d.customers;
+      existing.prevCustomers += d.prevCustomers ?? 0;
       existing.to = d.date;
     } else {
       buckets.set(key, {
@@ -296,6 +363,8 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
         stamps: d.stamps,
         points: d.points,
         redeems: d.redeems,
+        customers: d.customers,
+        prevCustomers: d.prevCustomers ?? 0,
         from: d.date,
         to: d.date,
       });
@@ -310,7 +379,15 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
   }));
 }
 
-function ActivityChart({ series }: { series: SeriesRow[] }) {
+function ActivityChart({
+  series,
+  deltaPct,
+  sameWeekday,
+}: {
+  series: SeriesRow[];
+  deltaPct: number | null;
+  sameWeekday?: boolean;
+}) {
   const auto = suggestedGrain(series.length);
   const [grain, setGrain] = useState<ChartGrain>(auto);
 
@@ -322,8 +399,13 @@ function ActivityChart({ series }: { series: SeriesRow[] }) {
     () => aggregateSeries(series, grain),
     [series, grain],
   );
+  const prevTotal = series.reduce((sum, d) => sum + (d.prevCustomers ?? 0), 0);
   const max = useMemo(
-    () => Math.max(1, ...points.map((d) => d.stamps + d.points + d.redeems)),
+    () =>
+      Math.max(
+        1,
+        ...points.map((d) => Math.max(d.customers, d.prevCustomers ?? 0)),
+      ),
     [points],
   );
 
@@ -331,18 +413,20 @@ function ActivityChart({ series }: { series: SeriesRow[] }) {
   const sparseAxis = points.length > 8;
   const grainGap =
     grain === 'month' ? 'gap-3' : grain === 'week' ? 'gap-2' : 'gap-px';
-  const subtitle =
-    grain === 'month'
-      ? 'Carimbos, pontos e resgates por mês'
-      : grain === 'week'
-        ? 'Carimbos, pontos e resgates por semana'
-        : 'Carimbos, pontos e resgates por dia';
+  const subtitle = sameWeekday
+    ? `${prevTotal.toLocaleString('pt-BR')} no mesmo dia da semana passada, até agora`
+    : `${prevTotal.toLocaleString('pt-BR')} no período anterior · ${
+        grain === 'month' ? 'por mês' : grain === 'week' ? 'por semana' : 'por dia'
+      }`;
 
   return (
     <div className="min-w-0 overflow-x-hidden rounded-[14px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-5 shadow-[var(--shadow-card)]">
       <div className="mb-1 flex flex-wrap items-start justify-between gap-3">
-        <div className="text-[15px] font-semibold text-[var(--color-ink)]">
-          Atividade no período
+        <div className="flex items-baseline gap-2">
+          <div className="text-[15px] font-semibold text-[var(--color-ink)]">
+            Atividade no período
+          </div>
+          <Delta value={deltaPct} />
         </div>
         <div
           className="flex shrink-0 rounded-[10px] bg-[var(--color-neutral-100)] p-0.5"
@@ -370,6 +454,22 @@ function ActivityChart({ series }: { series: SeriesRow[] }) {
             </button>
           ))}
         </div>
+        <div className="flex shrink-0 gap-3.5 text-[12px] text-[var(--color-neutral-500)]">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-[2px]"
+              style={{ background: 'var(--color-neutral-200)' }}
+            />
+            Anterior
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="inline-block h-2.5 w-2.5 rounded-[2px]"
+              style={{ background: 'var(--color-primary-500)' }}
+            />
+            Período
+          </span>
+        </div>
       </div>
       <p className="mb-4 text-[12px] text-[var(--color-neutral-400)]">
         {subtitle}
@@ -377,27 +477,58 @@ function ActivityChart({ series }: { series: SeriesRow[] }) {
       <div className="min-w-0">
         <div className={`flex h-[132px] min-w-0 items-end ${grainGap}`}>
           {points.map((d) => {
-            const total = d.stamps + d.points + d.redeems;
-            const h =
-              total === 0
-                ? 0
-                : Math.max(dense ? 4 : 8, Math.round((total / max) * 124));
+            const prev = d.prevCustomers ?? 0;
+            const currentH =
+              d.customers === 0
+                ? 3
+                : Math.max(dense ? 4 : 8, Math.round((d.customers / max) * 120));
+            const prevH =
+              prev === 0 ? 3 : Math.max(dense ? 4 : 8, Math.round((prev / max) * 120));
             const range =
               d.from === d.to
-                ? d.from
+                ? formatDaySlash(d.from)
                 : `${formatDaySlash(d.from)}–${formatDaySlash(d.to)}`;
+            const detail = [
+              `${d.customers} visitas`,
+              `anterior ${prev}`,
+              d.stamps > 0 ? `${d.stamps} carimbos` : null,
+              d.points > 0 ? `${d.points} pontos` : null,
+              d.redeems > 0 ? `${d.redeems} resgates` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return (
               <div
                 key={d.key}
                 className="flex h-full min-w-0 flex-1 items-end justify-center"
-                title={`${range}: ${d.stamps} carimbos · ${d.points} pontos · ${d.redeems} resgates`}
+                title={`${range}: ${detail}`}
               >
                 <div
-                  className={`w-full min-w-0 rounded-[3px] bg-[var(--color-primary-500)] ${
-                    dense ? '' : 'max-w-[36px] rounded-[5px]'
+                  className={`flex h-[120px] w-full items-end justify-center gap-0.5 ${
+                    dense ? '' : 'max-w-[36px]'
                   }`}
-                  style={{ height: h }}
-                />
+                >
+                  <div
+                    className="w-1/2 rounded-[3px]"
+                    style={{
+                      height: prevH,
+                      background:
+                        prev === 0
+                          ? 'var(--color-neutral-100)'
+                          : 'var(--color-neutral-200)',
+                    }}
+                  />
+                  <div
+                    className="w-1/2 rounded-[3px]"
+                    style={{
+                      height: currentH,
+                      background:
+                        d.customers === 0
+                          ? 'var(--color-neutral-100)'
+                          : 'var(--color-primary-500)',
+                    }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -483,49 +614,72 @@ function downloadCsv(data: ReportsData) {
   lines.push('Relatórios Frego');
   lines.push(`Período;${data.range};${data.from};${data.to}`);
   lines.push('');
-  lines.push('Indicador;Valor');
-  lines.push(`Clientes ativos;${data.kpis.activeCustomers.value}`);
-  lines.push(`Inativos 30d+;${data.kpis.inactive.value}`);
-  lines.push(`Média visitas/cliente;${data.kpis.avgVisits.value}`);
-  lines.push(`Resgates;${data.kpis.redeems.value}`);
-  lines.push(`Carimbos;${data.kpis.stamps.value}`);
-  lines.push(`Pontos;${data.kpis.points.value}`);
-  lines.push(`Receita do clube (centavos);${data.kpis.revenueCents.value}`);
-  lines.push(`Taxa de retorno (%);${data.kpis.repeatRate.value}`);
+  lines.push('Indicador;Valor;Variação % vs período anterior');
+  lines.push(
+    `Clientes ativos;${data.kpis.activeCustomers.value};${data.kpis.activeCustomers.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Novos clientes;${data.kpis.newCustomers?.value ?? ''};${data.kpis.newCustomers?.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Visitas/cliente;${data.kpis.avgVisits.value};${data.kpis.avgVisits.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Resgates;${data.kpis.redeems.value};${data.kpis.redeems.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Carimbos;${data.kpis.stamps.value};${data.kpis.stamps.deltaPct ?? ''}`,
+  );
+  lines.push(`Pontos;${data.kpis.points.value};${data.kpis.points.deltaPct ?? ''}`);
+  lines.push(
+    `Gasto registrado (centavos);${data.kpis.revenueCents.value};${data.kpis.revenueCents.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Cashback gerado (centavos);${data.kpis.cashbackEarnedCents?.value ?? ''};${data.kpis.cashbackEarnedCents?.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Cashback usado (centavos);${data.kpis.cashbackSpentCents?.value ?? ''};${data.kpis.cashbackSpentCents?.deltaPct ?? ''}`,
+  );
+  lines.push(
+    `Taxa de retorno (%);${data.kpis.repeatRate.value};${data.kpis.repeatRate.deltaPct ?? ''}`,
+  );
   lines.push(`Base total;${data.kpis.base}`);
   lines.push('');
-  lines.push('Data;Carimbos;Pontos;Resgates;Clientes');
+  lines.push('Data;Carimbos;Pontos;Resgates;Clientes;Clientes período anterior');
   for (const row of data.series) {
     lines.push(
-      [row.date, row.stamps, row.points, row.redeems, row.customers]
+      [row.date, row.stamps, row.points, row.redeems, row.customers, row.prevCustomers ?? '']
         .map(csvEscape)
         .join(';'),
     );
   }
   lines.push('');
-  lines.push('Unidade;Visitas;Carimbos;Pontos;Resgates');
+  lines.push('Unidade;Visitas;Variação %;Carimbos;Pontos;Resgates');
   for (const loc of data.locations) {
     lines.push(
-      [loc.name, loc.visits, loc.stamps, loc.points, loc.redeems]
+      [loc.name, loc.visits, loc.deltaPct ?? '', loc.stamps, loc.points, loc.redeems]
         .map(csvEscape)
         .join(';'),
     );
   }
   lines.push('');
-  lines.push('Colaborador;Carimbos;Pontos;Resgates');
+  lines.push('Colaborador;Carimbos;Pontos;Vendas;Resgates;Variação %');
   for (const m of data.team) {
     lines.push(
-      [m.displayName, m.stamps, m.points, m.redeems].map(csvEscape).join(';'),
+      [m.displayName, m.stamps, m.points, m.sales ?? '', m.redeems, m.deltaPct ?? '']
+        .map(csvEscape)
+        .join(';'),
     );
   }
   lines.push('');
-  lines.push('Campanha;Tipo;Resgates;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados');
+  lines.push('Campanha;Tipo;Resgates;Variação %;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados');
   for (const c of data.campaigns) {
     lines.push(
       [
         c.name,
         c.type,
         c.redeems,
+        c.redeemsDeltaPct ?? '',
         c.redeemers,
         c.eligible,
         c.engagePct,
@@ -557,6 +711,8 @@ function downloadCsv(data: ReportsData) {
 
 export default function ReportsPage() {
   const { getToken, user, loading: authLoading } = useAuth();
+  const { business } = useBusiness();
+  const kinds = business?.activeEarnKinds;
   const [period, setPeriod] = useState<PeriodValue>({
     mode: 'preset',
     key: '30d',
@@ -654,69 +810,101 @@ export default function ReportsPage() {
           </div>
         ) : !data || !kpis ? null : (
           <div className="flex flex-col gap-4">
+            {data.range === 'today' && (
+              <p className="text-[13px] text-[var(--color-neutral-500)]">
+                Hoje, até agora, contra o mesmo dia da semana passada.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
               <KpiCard
                 label="Clientes ativos"
-                value={kpis.activeCustomers.value.toLocaleString('pt-BR')}
+                value={formatCount(kpis.activeCustomers.value)}
                 hint={`${kpis.activeCustomers.ofBasePct ?? 0}% dos cadastrados`}
-                deltaPct={kpis.activeCustomers.deltaPct}
+                deltaPct={kpis.activeCustomers.deltaPct ?? null}
+                previous={formatCount(kpis.activeCustomers.previous ?? 0)}
               />
               <KpiCard
-                label="Inativos (30 dias ou mais)"
-                value={kpis.inactive.value.toLocaleString('pt-BR')}
-                hint={
-                  kpis.inactive.value > 0
-                    ? 'prontos para uma campanha de volta'
-                    : 'todos ativos recentemente'
-                }
-              />
-              <KpiCard
-                label="Média de visitas por cliente"
-                value={kpis.avgVisits.value.toLocaleString('pt-BR', {
-                  minimumFractionDigits: 0,
-                  maximumFractionDigits: 1,
-                })}
-                hint={
-                  kpis.avgVisits.delta != null && kpis.avgVisits.delta !== 0
-                    ? `${kpis.avgVisits.delta > 0 ? '▲' : '▼'} ${Math.abs(kpis.avgVisits.delta)}`
-                    : undefined
-                }
-                deltaPct={undefined}
-              />
-              <KpiCard
-                label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
-                value={kpis.redeems.value.toLocaleString('pt-BR')}
-                deltaPct={kpis.redeems.deltaPct}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
-              <KpiCard
-                label="Carimbos"
-                value={kpis.stamps.value.toLocaleString('pt-BR')}
-                deltaPct={kpis.stamps.deltaPct}
-              />
-              <KpiCard
-                label="Pontos"
-                value={kpis.points.value.toLocaleString('pt-BR')}
-                deltaPct={kpis.points.deltaPct}
-              />
-              <KpiCard
-                label="Gasto no programa"
-                value={formatMoney(kpis.revenueCents.value)}
-                deltaPct={kpis.revenueCents.deltaPct}
+                label="Novos clientes"
+                value={formatCount(kpis.newCustomers?.value ?? 0)}
+                deltaPct={kpis.newCustomers?.deltaPct ?? null}
+                previous={formatCount(kpis.newCustomers?.previous ?? 0)}
               />
               <KpiCard
                 label={
                   <TermInfo info={TERM.taxaRetorno}>Taxa de retorno</TermInfo>
                 }
                 value={`${kpis.repeatRate.value}%`}
-                deltaPct={kpis.repeatRate.deltaPct}
+                hint="vieram duas vezes ou mais"
+                deltaPct={kpis.repeatRate.deltaPct ?? null}
+                previous={`${kpis.repeatRate.previous ?? 0}%`}
+              />
+              <KpiCard
+                label="Visitas / cliente"
+                value={formatAvg(kpis.avgVisits.value)}
+                hint="média no período"
+                deltaPct={kpis.avgVisits.deltaPct ?? null}
+                previous={formatAvg(kpis.avgVisits.previous ?? 0)}
               />
             </div>
 
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+              <KpiCard
+                label={<TermInfo info={TERM.resgates}>Resgates</TermInfo>}
+                value={formatCount(kpis.redeems.value)}
+                hint="prêmios no app"
+                deltaPct={kpis.redeems.deltaPct ?? null}
+                previous={formatCount(kpis.redeems.previous ?? 0)}
+              />
+              {(kinds == null || kinds.includes('stamps')) && (
+                <KpiCard
+                  label="Carimbos"
+                  value={formatCount(kpis.stamps.value)}
+                  deltaPct={kpis.stamps.deltaPct ?? null}
+                  previous={formatCount(kpis.stamps.previous ?? 0)}
+                />
+              )}
+              {(kinds == null || kinds.includes('points')) && (
+                <KpiCard
+                  label="Pontos"
+                  value={formatCount(kpis.points.value)}
+                  deltaPct={kpis.points.deltaPct ?? null}
+                  previous={formatCount(kpis.points.previous ?? 0)}
+                />
+              )}
+              {(kinds == null || kinds.includes('points')) && (
+                <KpiCard
+                  label="Gasto registrado"
+                  value={formatMoney(kpis.revenueCents.value)}
+                  hint="via pontos no balcão"
+                  deltaPct={kpis.revenueCents.deltaPct ?? null}
+                  previous={formatMoney(kpis.revenueCents.previous ?? 0)}
+                />
+              )}
+              {(kinds == null || kinds.includes('cashback')) && (
+                <KpiCard
+                  label="Cashback gerado"
+                  value={formatMoney(kpis.cashbackEarnedCents?.value ?? 0)}
+                  deltaPct={kpis.cashbackEarnedCents?.deltaPct ?? null}
+                  previous={formatMoney(kpis.cashbackEarnedCents?.previous ?? 0)}
+                />
+              )}
+              {(kinds == null || kinds.includes('cashback')) && (
+                <KpiCard
+                  label="Cashback usado"
+                  value={formatMoney(kpis.cashbackSpentCents?.value ?? 0)}
+                  hint="no caixa"
+                  deltaPct={kpis.cashbackSpentCents?.deltaPct ?? null}
+                  previous={formatMoney(kpis.cashbackSpentCents?.previous ?? 0)}
+                />
+              )}
+            </div>
+
             <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              <ActivityChart series={data.series} />
+              <ActivityChart
+                series={data.series}
+                deltaPct={data.seriesDeltaPct ?? null}
+                sameWeekday={data.range === 'today'}
+              />
               <CohortChart cohorts={data.cohorts} />
             </div>
 
@@ -753,8 +941,12 @@ export default function ReportsPage() {
                             />
                           </div>
                         </div>
-                        <span className="shrink-0 text-[12px] text-[var(--color-neutral-500)]">
-                          {loc.visits.toLocaleString('pt-BR')}
+                        <span className="flex shrink-0 flex-wrap items-center justify-end gap-x-1.5 text-[12px] text-[var(--color-neutral-500)]">
+                          {loc.visits.toLocaleString('pt-BR')} visitas
+                          <Delta value={loc.deltaPct ?? null} />
+                          <span className="font-medium">
+                            · antes {formatCount(loc.previous ?? 0)}
+                          </span>
                         </span>
                       </li>
                     ))}
@@ -786,12 +978,12 @@ export default function ReportsPage() {
                         <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-[var(--color-ink)]">
                           {m.displayName}
                         </div>
-                        <span className="shrink-0 text-[12px] text-[var(--color-neutral-500)]">
-                          {m.stamps > 0
-                            ? `${m.stamps} carimbos`
-                            : m.points > 0
-                              ? `${m.points} pontos`
-                              : `${m.redeems} resgates`}
+                        <span className="flex shrink-0 flex-wrap items-center justify-end gap-x-1.5 text-[12px] text-[var(--color-neutral-500)]">
+                          {teamActivityLabel(m, kinds)}
+                          <Delta value={m.deltaPct ?? null} />
+                          <span className="font-medium">
+                            · antes {formatCount(m.previous ?? 0)}
+                          </span>
                         </span>
                       </li>
                     ))}
@@ -871,7 +1063,15 @@ export default function ReportsPage() {
                       <CampaignMetric
                         label="Resgates"
                         info={TERM.resgates}
-                        value={c.redeems.toLocaleString('pt-BR')}
+                        value={
+                          <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+                            {c.redeems.toLocaleString('pt-BR')}
+                            <Delta value={c.redeemsDeltaPct ?? null} />
+                            <span className="text-[12px] font-medium text-[var(--color-neutral-500)]">
+                              · antes {formatCount(c.previousRedeems ?? 0)}
+                            </span>
+                          </span>
+                        }
                         hint={peopleHint(c.redeemers, c.eligible)}
                       />
                       <CampaignMetric

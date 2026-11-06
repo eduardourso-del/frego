@@ -15,7 +15,7 @@ import {
 import { foldCampaignReturn, foldStoreCampaignReturn, voucherBelongsToPeriod, voucherLookbackStart } from '../lib/campaign-return.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
-import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { saleIdFromMeta, shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { DEFAULT_FUSO } from '../lib/br-fuso.js';
 import {
   periodQuerySchema,
@@ -61,6 +61,7 @@ type MemberAgg = {
 
 function buildMemberAggs(txs: TxRow[], timeZone: string) {
   const map = new Map<string, MemberAgg>();
+  const spendSales = new Set<string>();
   for (const tx of txs) {
     if (shouldOmitFromLedger(tx.metadata)) continue;
     let agg = map.get(tx.membershipId);
@@ -79,9 +80,7 @@ function buildMemberAggs(txs: TxRow[], timeZone: string) {
     agg.visitDays.add(dayKey(tx.createdAt, timeZone));
     if (tx.createdAt > agg.lastVisitAt) agg.lastVisitAt = tx.createdAt;
 
-    if (isCashbackUnit(tx.unitKind)) {
-      continue;
-    }
+    if (isCashbackUnit(tx.unitKind)) continue;
 
     if (tx.type === 'redeem') {
       agg.redeems += tx.quantity;
@@ -92,11 +91,30 @@ function buildMemberAggs(txs: TxRow[], timeZone: string) {
           : 'stamps';
       if (kind === 'points') {
         agg.points += tx.quantity;
-        if (tx.amountCents) agg.spendCents += tx.amountCents;
+        if (tx.amountCents) {
+          agg.spendCents += tx.amountCents;
+          const sale = saleIdFromMeta(tx.metadata);
+          if (sale) spendSales.add(`${tx.membershipId}:${sale}`);
+        }
       } else {
         agg.stamps += tx.quantity;
       }
     }
+  }
+
+  // Cashback-only compra: the bill lives on the cashback line. When the same
+  // venda already recorded pontos, that amount wins and this line is skipped.
+  for (const tx of txs) {
+    if (shouldOmitFromLedger(tx.metadata)) continue;
+    if (!isCashbackUnit(tx.unitKind) || tx.type === 'redeem') continue;
+    if (!tx.amountCents || tx.amountCents <= 0) continue;
+    const agg = map.get(tx.membershipId);
+    if (!agg) continue;
+    const sale = saleIdFromMeta(tx.metadata);
+    const key = sale ? `${tx.membershipId}:${sale}` : null;
+    if (key && spendSales.has(key)) continue;
+    agg.spendCents += tx.amountCents;
+    if (key) spendSales.add(key);
   }
   return map;
 }
@@ -111,6 +129,8 @@ function summarizePeriod(
   let points = 0;
   let redeems = 0;
   let revenueCents = 0;
+  let cashbackEarnedCents = 0;
+  let cashbackSpentCents = 0;
   let returning = 0;
   let newCustomers = 0;
   let redeemers = 0;
@@ -118,6 +138,8 @@ function summarizePeriod(
   for (const tx of txs) {
     if (shouldOmitFromLedger(tx.metadata)) continue;
     if (isCashbackUnit(tx.unitKind)) {
+      if (tx.type === 'redeem') cashbackSpentCents += tx.quantity;
+      else cashbackEarnedCents += tx.quantity;
       continue;
     }
     if (tx.type === 'redeem') redeems += tx.quantity;
@@ -165,6 +187,8 @@ function summarizePeriod(
     points,
     redeems,
     revenueCents,
+    cashbackEarnedCents,
+    cashbackSpentCents,
     returning,
     newCustomers,
     redeemers,
@@ -213,10 +237,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const timeZone = business.timeZone ?? DEFAULT_FUSO;
     const now = new Date();
     const todayYmd = ymdInTimeZone(now, timeZone);
-    const { key: range, from, toExclusive, prevFrom, prevTo } =
+    const { key: range, from, toExclusive, prevFrom, prevTo, days } =
       resolvePeriod(
         query,
-        { today: 'today', '7d': 7, '30d': 30 },
+        { today: 'today', '7d': 7, '30d': 30, '90d': 90 },
         'today',
         now,
         timeZone,
@@ -237,12 +261,9 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       addCivilDays(todayYmd, -(INTEL_LOOKBACK_DAYS - 1)),
       timeZone,
     );
-    const weekFrom = zonedMidnight(addCivilDays(todayYmd, -6), timeZone);
-
     const [
       currentTxs,
       previousTxs,
-      weekTxs,
       liveTxs,
       activeCampaigns,
       firstVisits,
@@ -271,22 +292,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           createdAt: true,
           amountCents: true,
           unitKind: true,
-          metadata: true,
-        },
-      }),
-      prisma.transaction.findMany({
-        where: {
-          businessId: auth.businessId,
-          createdAt: {
-            gte: weekFrom,
-            lt: now,
-          },
-        },
-        select: {
-          type: true,
-          quantity: true,
-          createdAt: true,
-          unitKind: true,
+          campaignId: true,
           metadata: true,
         },
       }),
@@ -457,24 +463,59 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    const weekSeries = Array.from({ length: 7 }, (_, i) => {
-      const key = addCivilDays(todayYmd, -6 + i);
-      let stamps = 0;
-      let redeems = 0;
-      for (const tx of weekTxs) {
-        if (shouldOmitFromLedger(tx.metadata)) continue;
-        if (dayKey(tx.createdAt, timeZone) !== key) continue;
-        if (isCashbackUnit(tx.unitKind)) continue;
-        if (tx.type === 'stamp') stamps += tx.quantity;
-        else redeems += tx.quantity;
-      }
-      return {
-        date: key,
-        day: WEEKDAY_LABELS[civilWeekday(key)],
-        stamps,
-        redeems,
-      };
-    });
+    function visitsByDay(
+      txs: Array<{
+        type: string;
+        quantity: number;
+        membershipId: string;
+        createdAt: Date;
+        unitKind: string | null;
+        metadata: unknown;
+      }>,
+      fromYmd: string,
+      dayCount: number,
+    ) {
+      return Array.from({ length: dayCount }, (_, i) => {
+        const key = addCivilDays(fromYmd, i);
+        const members = new Set<string>();
+        let redeems = 0;
+        for (const tx of txs) {
+          if (shouldOmitFromLedger(tx.metadata)) continue;
+          if (dayKey(tx.createdAt, timeZone) !== key) continue;
+          members.add(tx.membershipId);
+          if (tx.type === 'redeem') {
+            redeems += isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+          }
+        }
+        return {
+          date: key,
+          day: WEEKDAY_LABELS[civilWeekday(key)],
+          visits: members.size,
+          redeems,
+        };
+      });
+    }
+
+    const currentDays = visitsByDay(
+      currentTxs,
+      ymdInTimeZone(from, timeZone),
+      days,
+    );
+    const previousDays = visitsByDay(
+      previousTxs,
+      ymdInTimeZone(prevFrom, timeZone),
+      days,
+    );
+    const weekSeries = currentDays.map((d, i) => ({
+      ...d,
+      prevDate: previousDays[i]?.date ?? d.date,
+      prevVisits: previousDays[i]?.visits ?? 0,
+      prevRedeems: previousDays[i]?.redeems ?? 0,
+    }));
+    const weekDeltaPct = deltaPct(
+      currentDays.reduce((sum, d) => sum + d.visits, 0),
+      previousDays.reduce((sum, d) => sum + d.visits, 0),
+    );
 
     const live = liveTxs
       .filter((tx) => !shouldOmitFromLedger(tx.metadata))
@@ -515,7 +556,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    const inactiveBase = Math.max(0, totalMembers - current.customers);
+    let inactiveBase = 0;
+    for (const id of firstVisitByMember.keys()) {
+      if (!current.byMember.has(id)) inactiveBase += 1;
+    }
 
     // Campaign performance strip for dashboard
     const campaignStats = new Map<
@@ -576,6 +620,23 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
+    const prevRedeemsByCampaign = new Map<string, number>();
+    for (const tx of prevCampaignPeriodTxs) {
+      if (shouldOmitFromLedger(tx.metadata)) continue;
+      if (tx.type !== 'redeem' || !tx.campaignId) continue;
+      if (
+        !isCashbackUnit(tx.unitKind) &&
+        !voucherBelongsToPeriod(tx, prevRange)
+      ) {
+        continue;
+      }
+      const n = isCashbackUnit(tx.unitKind) ? 1 : tx.quantity;
+      prevRedeemsByCampaign.set(
+        tx.campaignId,
+        (prevRedeemsByCampaign.get(tx.campaignId) ?? 0) + n,
+      );
+    }
+
     const campaignPerf = activeCampaigns.map((c) => {
       const s = campaignStats.get(c.id);
       const fulfillPct =
@@ -596,6 +657,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         cashbackPercent: c.cashbackPercent,
         audienceSegmentId: c.audienceSegmentId,
         redeems: s?.redeems ?? 0,
+        redeemsDeltaPct: deltaPct(
+          s?.redeems ?? 0,
+          prevRedeemsByCampaign.get(c.id) ?? 0,
+        ),
         redeemers: s?.redeemers.size ?? 0,
         fulfillPct,
         openVouchers: s?.open ?? 0,
@@ -711,26 +776,32 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       kpis: {
         customers: {
           value: current.customers,
+          previous: previous.customers,
           deltaPct: deltaPct(current.customers, previous.customers),
         },
         stamps: {
           value: current.stamps,
+          previous: previous.stamps,
           deltaPct: deltaPct(current.stamps, previous.stamps),
         },
         points: {
           value: current.points,
+          previous: previous.points,
           deltaPct: deltaPct(current.points, previous.points),
         },
         redeems: {
           value: current.redeems,
+          previous: previous.redeems,
           deltaPct: deltaPct(current.redeems, previous.redeems),
         },
         repeatRate: {
           value: current.repeatRate,
+          previous: previous.repeatRate,
           deltaPct: deltaPct(current.repeatRate, previous.repeatRate),
         },
         avgVisits: {
           value: current.avgVisitsPerCustomer,
+          previous: previous.avgVisitsPerCustomer,
           deltaPct: deltaPct(
             Math.round(current.avgVisitsPerCustomer * 10),
             Math.round(previous.avgVisitsPerCustomer * 10),
@@ -738,10 +809,28 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         },
         revenueCents: {
           value: current.revenueCents,
+          previous: previous.revenueCents,
           deltaPct: deltaPct(current.revenueCents, previous.revenueCents),
+        },
+        cashbackEarnedCents: {
+          value: current.cashbackEarnedCents,
+          previous: previous.cashbackEarnedCents,
+          deltaPct: deltaPct(
+            current.cashbackEarnedCents,
+            previous.cashbackEarnedCents,
+          ),
+        },
+        cashbackSpentCents: {
+          value: current.cashbackSpentCents,
+          previous: previous.cashbackSpentCents,
+          deltaPct: deltaPct(
+            current.cashbackSpentCents,
+            previous.cashbackSpentCents,
+          ),
         },
         newCustomers: {
           value: current.newCustomers,
+          previous: previous.newCustomers,
           deltaPct: deltaPct(current.newCustomers, previous.newCustomers),
         },
         campaignReturnCents: {
@@ -749,6 +838,16 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           deltaPct: deltaPct(
             campaignReturn.revenueCents,
             previousCampaignReturn.revenueCents,
+          ),
+        },
+        campaignRedeems: {
+          value: campaignPerf.reduce((sum, c) => sum + c.redeems, 0),
+          deltaPct: deltaPct(
+            campaignPerf.reduce((sum, c) => sum + c.redeems, 0),
+            activeCampaigns.reduce(
+              (sum, c) => sum + (prevRedeemsByCampaign.get(c.id) ?? 0),
+              0,
+            ),
           ),
         },
       },
@@ -773,6 +872,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       campaignPerf,
       topCustomers,
       weekSeries,
+      weekDeltaPct,
       live,
       activeCampaigns: campaignPerf,
       activeCampaign: topCampaign

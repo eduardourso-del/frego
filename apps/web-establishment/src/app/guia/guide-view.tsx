@@ -227,7 +227,7 @@ export function GuideView() {
               icon={LayoutDashboard}
               title="Painel"
               href="/dashboard"
-              lede="Hoje, 7 dias, 30 dias ou um intervalo que você escolhe. O percentual ao lado de cada número compara com o período anterior, da mesma duração. “Sem comparação” aparece quando ainda não dá para comparar."
+              lede="Hoje, 7 dias, 30 dias ou um intervalo que você escolhe. Hoje compara com o mesmo dia da semana passada, até a mesma hora. Os outros recortes comparam com o período anterior, da mesma duração. “Sem comparação” aparece quando ainda não dá para comparar."
             >
               <Block title="O que fazer agora">
                 <p>
@@ -263,6 +263,10 @@ export function GuideView() {
               </Block>
 
               <Block title="Quem veio">
+                <p className="mb-3 text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+                  A linha de cada cartão mostra a variação e o número do
+                  período anterior, do mesmo tamanho.
+                </p>
                 <Defs
                   items={[
                     ['Clientes ativos', 'Pessoas com visita neste período.'],
@@ -280,8 +284,9 @@ export function GuideView() {
                   ]}
                 />
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <Callout title="Visitas nesta semana">
-                    Os últimos 7 dias, até hoje.
+                  <Callout title="Visitas no período">
+                    O recorte escolhido no topo. A barra clara é o período
+                    anterior, do mesmo tamanho.
                   </Callout>
                   <Callout title="Funil do clube">
                     Mostra a base de clientes, quem esteve ativo, quem voltou
