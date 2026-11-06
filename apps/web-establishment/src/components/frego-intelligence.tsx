@@ -8,6 +8,7 @@ import {
   Sparkles,
   TrendingUp,
   UserMinus,
+  UserPlus,
   type LucideIcon,
 } from 'lucide-react';
 import {
@@ -25,6 +26,7 @@ export type IntelligenceTone =
 export type IntelligenceAction = {
   key: string;
   tone: IntelligenceTone;
+  aim?: string;
   title: string;
   body: string;
   metric: {
@@ -33,11 +35,16 @@ export type IntelligenceAction = {
     label?: string;
   };
   audience?: { name: string; rules: Record<string, unknown> };
-  campaign?: { suggestedName: string; suggestedRewardTitle?: string };
+  campaign?: {
+    suggestedName: string;
+    suggestedRewardTitle?: string;
+    suggestedType?: 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo';
+  };
 };
 
 export type IntelligencePayload = {
   periodLabel: string;
+  intro?: string;
   actions: IntelligenceAction[];
 };
 
@@ -47,23 +54,23 @@ const TONE: Record<
 > = {
   missing: {
     Icon: UserMinus,
-    iconWrap: 'bg-[var(--color-danger-fill)] text-white',
+    iconWrap: 'bg-[#9A3D62] text-white',
   },
   near_reward: {
     Icon: Gift,
-    iconWrap: 'bg-[var(--color-primary-500)] text-white',
+    iconWrap: 'bg-[var(--color-mostarda)] text-[var(--color-grafite)]',
   },
   high_value: {
     Icon: TrendingUp,
-    iconWrap: 'bg-[var(--color-success-fill)] text-white',
+    iconWrap: 'bg-[var(--color-mostarda)] text-[var(--color-grafite)]',
   },
   quiet_hours: {
     Icon: Clock,
-    iconWrap: 'bg-[var(--color-intel-fill)] text-white',
+    iconWrap: 'bg-[#D4537E] text-white',
   },
   celebrate: {
     Icon: Heart,
-    iconWrap: 'bg-[var(--color-intel-fill)] text-white',
+    iconWrap: 'bg-[#F4A0B8] text-[#9A3D62]',
   },
 };
 
@@ -86,6 +93,7 @@ function actionHref(action: IntelligenceAction) {
   return campaignCreateHref(action.audience?.rules, action.audience?.name, {
     campaignName: action.campaign?.suggestedName,
     rewardTitle: action.campaign?.suggestedRewardTitle,
+    campaignType: action.campaign?.suggestedType,
   });
 }
 
@@ -109,12 +117,16 @@ export function FregoIntelligence({
 
   return (
     <section
-      className="mb-8 overflow-hidden rounded-[20px] border border-[var(--color-intel)]/30 bg-[var(--color-intel-bg)]"
+      className="relative mb-8 overflow-hidden rounded-[20px] border border-[#F6C2DE] bg-[linear-gradient(135deg,#9A3D62_0%,#D4537E_52%,#F4A0B8_100%)]"
       aria-labelledby="frego-intelligence-heading"
     >
-      <header className="flex items-center gap-3 bg-[var(--color-intel-fill)] px-5 py-4 text-white">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -right-10 -top-16 h-44 w-44 rounded-full bg-[var(--color-mostarda)] opacity-50 blur-3xl"
+      />
+      <header className="relative flex items-center gap-3 px-5 py-4 text-white">
         <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-white/15"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-[var(--color-mostarda)] text-[var(--color-grafite)]"
           aria-hidden
         >
           <Sparkles size={20} strokeWidth={2.25} />
@@ -126,20 +138,26 @@ export function FregoIntelligence({
           >
             Frego Inteligência
           </h2>
-          <p className="mt-0.5 text-[12px] leading-snug text-white/80 md:text-[13px]">
-            Ações para reter quem já veio e trazer de volta quem sumiu.
+          <p className="mt-0.5 text-[12px] leading-snug text-white/85 md:text-[13px]">
+            {data.intro ??
+              'O que criar agora para subir o ticket e gerar a próxima visita.'}
           </p>
         </div>
       </header>
 
       <div
-        className={`grid gap-3 p-4 ${
+        className={`relative grid gap-3 px-4 pb-4 ${
           actions.length === 1 ? '' : 'sm:grid-cols-2'
         }`}
       >
         {actions.map((action) => {
           const theme = TONE[action.tone] ?? TONE.celebrate;
-          const Icon = action.key === 'empty' ? Sparkles : theme.Icon;
+          const Icon =
+            action.key === 'empty'
+              ? Sparkles
+              : action.key === 'one_visit'
+                ? UserPlus
+                : theme.Icon;
           const showMetric = action.key !== 'empty';
           const canCampaign = Boolean(action.campaign);
           const canPeek = Boolean(action.audience?.rules);
@@ -165,7 +183,14 @@ export function FregoIntelligence({
                   </span>
                 )}
               </div>
-              <h3 className="mt-3 text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)]">
+              {action.aim ? (
+                <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#A33B62]">
+                  {action.aim}
+                </p>
+              ) : null}
+              <h3
+                className={`${action.aim ? 'mt-1' : 'mt-3'} text-[15px] font-semibold leading-snug tracking-[-0.02em] text-[var(--color-ink)]`}
+              >
                 {action.title}
               </h3>
               <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
@@ -174,14 +199,14 @@ export function FregoIntelligence({
               <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
                 <Link
                   href={primaryHref}
-                  className="inline-flex min-h-10 items-center justify-center rounded-[12px] bg-[var(--color-intel-fill)] px-3.5 text-[13px] font-semibold text-white"
+                  className="inline-flex min-h-10 items-center justify-center rounded-[12px] bg-[var(--color-mostarda)] px-3.5 text-[13px] font-semibold text-[var(--color-grafite)]"
                 >
                   {primaryLabel}
                 </Link>
                 {canPeek && (
                   <Link
                     href={`/customers?${audienceRulesQuery(action.audience!.rules)}`}
-                    className="text-[13px] font-semibold text-[var(--color-intel)] hover:underline"
+                    className="text-[13px] font-semibold text-[#A33B62] hover:underline"
                   >
                     Ver quem são
                   </Link>

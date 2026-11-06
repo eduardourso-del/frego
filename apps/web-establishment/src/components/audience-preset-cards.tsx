@@ -97,6 +97,7 @@ export function campaignCreateHref(
   extras?: {
     campaignName?: string;
     rewardTitle?: string;
+    campaignType?: string;
   },
 ) {
   const params = new URLSearchParams();
@@ -119,6 +120,7 @@ export function campaignCreateHref(
   }
   if (extras?.campaignName) params.set('campaignName', extras.campaignName);
   if (extras?.rewardTitle) params.set('rewardTitle', extras.rewardTitle);
+  if (extras?.campaignType) params.set('campaignType', extras.campaignType);
   return `/campaigns?${params.toString()}`;
 }
 

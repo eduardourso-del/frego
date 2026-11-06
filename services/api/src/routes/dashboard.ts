@@ -5,7 +5,13 @@ import {
   AUDIENCE_PRESETS,
   countMembershipsByRules,
 } from '../lib/audience.js';
-import { buildIntelligence, INTEL_INACTIVE_DAYS, INTEL_LOOKBACK_DAYS } from '../lib/intelligence.js';
+import { activeEarnKindsForBusiness } from '../lib/earn-kinds.js';
+import {
+  buildIntelligence,
+  collectPurchases,
+  INTEL_INACTIVE_DAYS,
+  INTEL_LOOKBACK_DAYS,
+} from '../lib/intelligence.js';
 import { foldCampaignReturn, foldStoreCampaignReturn, voucherBelongsToPeriod, voucherLookbackStart } from '../lib/campaign-return.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
@@ -244,6 +250,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       intelTxs,
       lateVoucherTxs,
       prevLateVoucherTxs,
+      earnKinds,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -359,6 +366,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           metadata: true,
         },
       }),
+      activeEarnKindsForBusiness(auth.businessId),
     ]);
 
     const firstVisitByMember = new Map<string, Date>();
@@ -635,30 +643,21 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       (c) => c.type === 'stamps' || c.type === 'spend',
     );
 
-    const inactiveFrom = zonedMidnight(
-      addCivilDays(todayYmd, -(INTEL_INACTIVE_DAYS - 1)),
-      timeZone,
-    );
-    const activeRecently = new Set<string>();
-    for (const tx of intelTxs) {
-      if (shouldOmitFromLedger(tx.metadata)) continue;
-      if (tx.createdAt >= inactiveFrom) activeRecently.add(tx.membershipId);
-    }
-    const intelInactiveCount = Math.max(0, totalMembers - activeRecently.size);
-
-    const vipQuietCount = await prisma.membership.count({
-      where: {
-        businessId: auth.businessId,
+    const [inactiveCount, vipQuietCount] = await Promise.all([
+      countMembershipsByRules(auth.businessId, {
+        version: 1,
+        inactiveDaysMin: INTEL_INACTIVE_DAYS,
+      }),
+      countMembershipsByRules(auth.businessId, {
+        version: 1,
         isVip: true,
-        ...(activeRecently.size > 0
-          ? { id: { notIn: [...activeRecently] } }
-          : {}),
-      },
-    });
+        inactiveDaysMin: INTEL_INACTIVE_DAYS,
+      }),
+    ]);
 
     const intelligence = buildIntelligence({
       totalMembers,
-      inactiveCount: intelInactiveCount,
+      inactiveCount,
       current: {
         customers: intelLookback.customers,
         returning: intelLookback.returning,
@@ -668,6 +667,12 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       hasRewardCampaign,
       vipQuietCount,
       txs: intelTxs,
+      members: [...intelLookback.byMember.values()].map((agg) => ({
+        membershipId: agg.membershipId,
+        visitDays: agg.visitDays.size,
+      })),
+      purchases: collectPurchases(intelTxs),
+      earnKinds,
       timeZone,
     });
 

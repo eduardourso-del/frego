@@ -97,6 +97,19 @@ const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'promo', label: 'Promoção' },
 ];
 
+function parseCampaignType(raw: string | null): CampaignType | null {
+  if (
+    raw === 'stamps' ||
+    raw === 'spend' ||
+    raw === 'birthday' ||
+    raw === 'cashback' ||
+    raw === 'promo'
+  ) {
+    return raw;
+  }
+  return null;
+}
+
 function parseStatusFilter(raw: string | null): StatusFilter {
   if (raw === 'active' || raw === 'inactive' || raw === 'all') return raw;
   return 'all';
@@ -134,10 +147,11 @@ function composeQueryKeys() {
     'fromAudience',
     'audienceId',
     'audienceName',
-    'campaignName',
-    'rewardTitle',
-    ...RULE_KEYS,
-  ];
+  'campaignName',
+  'rewardTitle',
+  'campaignType',
+  ...RULE_KEYS,
+];
 }
 
 function parseRulesFromSearch(searchParams: URLSearchParams) {
@@ -178,13 +192,15 @@ function badgeTitleForAudience(name: string, rules: Record<string, unknown>) {
   if (
     n === 'alto valor' ||
     n === 'quem mais gastou' ||
-    n === 'quem voltou'
+    n === 'quem voltou' ||
+    n === 'quem mais volta'
   ) {
     return 'Cliente do estabelecimento';
   }
   if (n === 'em risco' || n === 'quem sumiu') return 'De volta ao estabelecimento';
   if (n === 'quase prêmio' || n === 'quase premio') return 'Quase lá';
   if (n === 'vip' || n === 'vips quietos') return 'VIP do estabelecimento';
+  if (n === 'veio uma vez') return 'Sua próxima visita';
   if (name.trim()) return name.trim();
   return typeof rules.spendCentsMin === 'number' ? 'Cliente do estabelecimento' : name;
 }
@@ -243,6 +259,7 @@ function CampaignsPageContent() {
   const compose = searchParams.get('compose') === '1';
   const urlCampaignName = searchParams.get('campaignName');
   const urlRewardTitle = searchParams.get('rewardTitle');
+  const urlCampaignType = parseCampaignType(searchParams.get('campaignType'));
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [audiences, setAudiences] = useState<AudienceOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -254,6 +271,8 @@ function CampaignsPageContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() => ({
     ...emptyForm,
+    type: urlCampaignType ?? emptyForm.type,
+    stampsNeeded: urlCampaignType === 'promo' ? 1 : emptyForm.stampsNeeded,
     audienceSegmentId: urlAudienceId ?? '',
     name:
       urlCampaignName?.trim() ||
@@ -270,7 +289,7 @@ function CampaignsPageContent() {
   );
   const [perfOpenId, setPerfOpenId] = useState<string | null>(null);
   const formSectionRef = useRef<HTMLDivElement | null>(null);
-  const audienceBootstrapKey = `${urlAudienceId ?? ''}|${fromAudience ?? ''}|${urlAudienceName ?? ''}|${compose ? '1' : ''}|${urlCampaignName ?? ''}|${urlRewardTitle ?? ''}`;
+  const audienceBootstrapKey = `${urlAudienceId ?? ''}|${fromAudience ?? ''}|${urlAudienceName ?? ''}|${compose ? '1' : ''}|${urlCampaignName ?? ''}|${urlRewardTitle ?? ''}|${urlCampaignType ?? ''}`;
   const audienceBootstrapped = useRef<string | null>(null);
 
   const filteredCampaigns = useMemo(
@@ -454,6 +473,8 @@ function CampaignsPageContent() {
     setEditingId(null);
     setForm({
       ...emptyForm,
+      type: urlCampaignType ?? emptyForm.type,
+      stampsNeeded: urlCampaignType === 'promo' ? 1 : emptyForm.stampsNeeded,
       audienceSegmentId: urlAudienceId ?? '',
       name: seededName,
       rewardTitle: seededReward,
@@ -559,6 +580,7 @@ function CampaignsPageContent() {
     compose,
     urlCampaignName,
     urlRewardTitle,
+    urlCampaignType,
     searchParams,
     authHeaders,
   ]);

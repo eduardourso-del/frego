@@ -101,6 +101,40 @@ describe('evaluateAudience tags', () => {
   });
 });
 
+describe('evaluateAudience inactive', () => {
+  const rules = parseAudienceRules({ version: 1, inactiveDaysMin: 30 });
+  const now = new Date('2026-11-06T15:00:00.000Z');
+
+  it('does not treat a cadastro sem visita as sumido', () => {
+    assert.equal(
+      evaluateAudience({ ...baseStats, visits: 0, lastVisitAt: null }, rules, now),
+      false,
+    );
+  });
+
+  it('matches quem visitou e está há 30 dias ou mais sem voltar', () => {
+    assert.equal(
+      evaluateAudience(
+        { ...baseStats, lastVisitAt: new Date('2026-10-01T15:00:00.000Z') },
+        rules,
+        now,
+      ),
+      true,
+    );
+  });
+
+  it('leaves out quem voltou dentro da janela', () => {
+    assert.equal(
+      evaluateAudience(
+        { ...baseStats, lastVisitAt: new Date('2026-10-20T15:00:00.000Z') },
+        rules,
+        now,
+      ),
+      false,
+    );
+  });
+});
+
 describe('queryRulesFromParams tags', () => {
   it('reads tagIds from the query string', () => {
     const rules = queryRulesFromParams({ tagIds: 'a,b', tagMatch: 'all' });

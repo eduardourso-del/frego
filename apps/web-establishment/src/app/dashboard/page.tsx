@@ -506,7 +506,7 @@ export default function DashboardPage() {
 
         {loading && !data ? (
           <div className="grid gap-4">
-            <div className="h-[220px] animate-pulse rounded-[20px] bg-[var(--color-intel-bg)]" />
+            <div className="h-[220px] animate-pulse rounded-[20px] bg-[linear-gradient(135deg,#9A3D62_0%,#D4537E_52%,#F4A0B8_100%)]" />
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div

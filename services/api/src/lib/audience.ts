@@ -116,11 +116,8 @@ export function evaluateAudience(
   }
 
   if (rules.inactiveDaysMin != null) {
-    if (!stats.lastVisitAt) {
-      // Never visited — treat as infinitely inactive
-      if (rules.inactiveDaysMin > 0) return true;
-      return false;
-    }
+    // Sem visita não sumiu: o cadastro ainda não virou ida ao estabelecimento.
+    if (!stats.lastVisitAt) return false;
     const cutoff = addDays(startOfDay(now), -rules.inactiveDaysMin);
     if (stats.lastVisitAt > cutoff) return false;
   }
@@ -144,6 +141,7 @@ type TxLite = {
   unitKind: string | null;
   amountCents: number | null;
   createdAt: Date;
+  metadata?: unknown;
 };
 
 function aggregateFromTxs(
@@ -160,6 +158,7 @@ function aggregateFromTxs(
 
   for (const tx of txs) {
     if (tx.membershipId !== membershipId) continue;
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     if (from && tx.createdAt < from) {
       // still track last visit for inactivity across lifetime
       continue;
@@ -194,6 +193,7 @@ function aggregateFromTxs(
   let lifetimeLast: Date | null = null;
   for (const tx of txs) {
     if (tx.membershipId !== membershipId) continue;
+    if (shouldOmitFromLedger(tx.metadata)) continue;
     if (!lifetimeLast || tx.createdAt > lifetimeLast) {
       lifetimeLast = tx.createdAt;
     }
@@ -268,6 +268,7 @@ export async function loadMembershipAudienceStats(
   const memberships = await prisma.membership.findMany({
     where: {
       businessId,
+      customer: { deletedAt: null },
       ...(membershipIdFilter ? { id: { in: membershipIdFilter } } : {}),
     },
     select: {
@@ -298,6 +299,7 @@ export async function loadMembershipAudienceStats(
       unitKind: true,
       amountCents: true,
       createdAt: true,
+      metadata: true,
     },
   });
 
