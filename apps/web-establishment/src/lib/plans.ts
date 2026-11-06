@@ -4,6 +4,8 @@ export type PlanFeature =
   | 'audiences'
   | 'pesquisas'
   | 'whatsapp'
+  | 'saipos'
+  | 'equipe'
   | 'intelligence'
   | 'reports'
   | 'extraLocations';
@@ -13,6 +15,8 @@ export type BillingView = {
   tier: PlanTier | null;
   source: 'trial' | 'cortesia' | 'paid' | 'grace' | null;
   features: Record<PlanFeature, boolean>;
+  /** Extra people besides the Dono. Null means no cap. */
+  equipeSeats: number | null;
   publicPage: boolean;
   trialEndsAt: string | null;
   periodEndsAt: string | null;
@@ -38,6 +42,8 @@ export const FEATURE_LABEL: Record<PlanFeature, string> = {
   audiences: 'Audiências',
   pesquisas: 'Pesquisa',
   whatsapp: 'WhatsApp',
+  saipos: 'Saipos',
+  equipe: 'Equipe',
   intelligence: 'Frego Inteligência',
   reports: 'Relatórios',
   extraLocations: 'Mais unidades',
@@ -96,7 +102,7 @@ export const LANDING_PLANS: Array<{
     tier: 'growth',
     priceCents: 15900,
     summary: 'Fala com o Cliente além do caixa.',
-    points: ['Tudo do Starter', 'Audiências', 'WhatsApp'],
+    points: ['Tudo do Starter', 'Audiências', 'Até 2 na Equipe', 'WhatsApp e Saipos'],
   },
   {
     tier: 'enterprise',
@@ -104,6 +110,7 @@ export const LANDING_PLANS: Array<{
     summary: 'Enxerga o negócio e ouve o Cliente.',
     points: [
       'Tudo do Growth',
+      'Equipe sem limite',
       'Pesquisa',
       'Frego Inteligência',
       'Relatórios',

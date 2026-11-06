@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react';
 import { INTEGRATIONS } from '@/components/integrations/catalog';
 import { FeatureLocked } from '@/components/plan-lock';
 import { useBusiness } from '@/lib/business-context';
+import type { PlanFeature } from '@/lib/plans';
 
 function integrationIdFromHash(hash: string): string | null {
   if (hash === '#whatsapp') return 'whatsapp';
@@ -83,11 +84,11 @@ export function IntegrationsTab() {
             </button>
             {open ? (
               <div className="border-t border-[var(--color-hairline)] px-5 py-4">
-                {item.id === 'whatsapp' &&
-                business?.billing &&
-                !business.billing.features.whatsapp ? (
+                {business?.billing &&
+                (item.id === 'whatsapp' || item.id === 'saipos') &&
+                !business.billing.features[item.id as PlanFeature] ? (
                   <FeatureLocked
-                    feature="whatsapp"
+                    feature={item.id as PlanFeature}
                     owner={business.role === 'owner'}
                     currentTier={business.billing.tier}
                   >

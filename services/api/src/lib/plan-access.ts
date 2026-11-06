@@ -5,6 +5,8 @@ export type Feature =
   | 'audiences'
   | 'pesquisas'
   | 'whatsapp'
+  | 'saipos'
+  | 'equipe'
   | 'intelligence'
   | 'reports'
   | 'extraLocations';
@@ -13,6 +15,8 @@ export const FEATURES: Feature[] = [
   'audiences',
   'pesquisas',
   'whatsapp',
+  'saipos',
+  'equipe',
   'intelligence',
   'reports',
   'extraLocations',
@@ -33,7 +37,7 @@ export const PLAN_RANK: Record<SubscriptionTier, number> = {
 export const TRIAL_MS = 7 * 24 * 60 * 60 * 1000;
 export const GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
-const GROWTH_FEATURES: Feature[] = ['audiences', 'whatsapp'];
+const GROWTH_FEATURES: Feature[] = ['audiences', 'whatsapp', 'saipos', 'equipe'];
 const ENTERPRISE_FEATURES: Feature[] = [
   ...GROWTH_FEATURES,
   'pesquisas',
@@ -56,6 +60,13 @@ export function featuresFor(
       feature === 'extraLocations' ? tier != null : on.includes(feature),
     ]),
   ) as Record<Feature, boolean>;
+}
+
+/** Extra Membros besides the Dono. Null means the Equipe has no cap. */
+export function equipeSeatLimit(tier: SubscriptionTier | null): number | null {
+  if (tier === 'enterprise') return null;
+  if (tier === 'growth') return 2;
+  return 0;
 }
 
 export function planName(tier: SubscriptionTier): string {
@@ -99,6 +110,8 @@ export type Access = {
   tier: SubscriptionTier | null;
   source: AccessSource | null;
   features: Record<Feature, boolean>;
+  /** Extra Membros besides the Dono. Null means no cap. */
+  equipeSeats: number | null;
   publicPage: boolean;
 };
 
@@ -108,6 +121,7 @@ function closed(mode: 'pending' | 'suspended' | 'locked'): Access {
     tier: null,
     source: null,
     features: featuresFor(null),
+    equipeSeats: 0,
     publicPage: false,
   };
 }
@@ -121,6 +135,7 @@ function open(
     tier,
     source,
     features: featuresFor(tier),
+    equipeSeats: equipeSeatLimit(tier),
     publicPage: true,
   };
 }

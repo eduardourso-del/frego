@@ -5,6 +5,7 @@ import { Users } from 'lucide-react';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { Alert, Button } from '@/components/ui';
+import Link from 'next/link';
 
 type EquipeMember = {
   id: string;
@@ -36,7 +37,13 @@ function addError(code: string) {
   if (code === 'NAME_REQUIRED') return 'Informe o nome.';
   if (code === 'INVALID_EMAIL') return 'E-mail inválido.';
   if (code === 'BUSINESS_UNAVAILABLE') {
-    return 'A equipe fica disponível quando o estabelecimento está no ar.';
+    return 'A Equipe fica disponível quando o estabelecimento está no ar.';
+  }
+  if (code === 'EQUIPE_LIMIT') {
+    return 'O Growth chega a 2 pessoas na Equipe.';
+  }
+  if (code === 'PLAN_REQUIRED') {
+    return 'A Equipe faz parte do Growth.';
   }
   if (code === 'LOGIN_UNAVAILABLE' || code === 'MAIL_LINK_FAILED') {
     return 'Não foi possível preparar o acesso agora. Tente de novo.';
@@ -44,9 +51,12 @@ function addError(code: string) {
   return 'Não foi possível adicionar.';
 }
 
+type EquipeSeats = { limit: number | null; taken: number };
+
 export function EquipePanel() {
-  const { authHeaders } = useBusiness();
+  const { authHeaders, business } = useBusiness();
   const [members, setMembers] = useState<EquipeMember[]>([]);
+  const [seats, setSeats] = useState<EquipeSeats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -64,9 +74,11 @@ export function EquipePanel() {
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         members?: EquipeMember[];
+        seats?: EquipeSeats;
       };
       if (!res.ok) throw new Error(json.error ?? 'LOAD');
       setMembers(json.members ?? []);
+      setSeats(json.seats ?? null);
     } catch {
       setError('Não foi possível carregar a equipe.');
     } finally {
@@ -130,7 +142,8 @@ export function EquipePanel() {
       body: body ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
-      setError('Não foi possível atualizar a equipe.');
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      setError(addError(json.error ?? ''));
       return;
     }
     const json = (await res.json().catch(() => ({}))) as { mail?: string };
@@ -140,6 +153,16 @@ export function EquipePanel() {
     setEditingId(null);
     await load();
   }
+
+  const limit = seats?.limit ?? business?.billing?.equipeSeats ?? null;
+  const taken = seats?.taken ?? 0;
+  const full = limit != null && taken >= limit;
+  const seatNote =
+    limit == null
+      ? ' A Equipe não tem limite.'
+      : limit > 0
+        ? ` O Growth inclui até ${limit} pessoas, além de você.`
+        : '';
 
   return (
     <section className="rounded-[16px] border border-[var(--color-hairline)] bg-[var(--color-card)] p-4 md:p-5">
@@ -153,10 +176,24 @@ export function EquipePanel() {
           </h2>
           <p className="mt-0.5 text-[12px] leading-snug text-[var(--color-neutral-500)]">
             Quem você adiciona entra como Balcão: o caixa e os clientes, no painel e no PDV.
+            {seatNote}
           </p>
         </div>
       </div>
 
+      {full ? (
+        <p className="text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
+          O Growth chega a 2 pessoas na Equipe. No Enterprise ela não tem limite.
+          {business?.role === 'owner' ? (
+            <>
+              {' '}
+              <Link href="/settings#plano" className="font-semibold text-[var(--color-ink)]">
+                Atualizar Plano
+              </Link>
+            </>
+          ) : null}
+        </p>
+      ) : (
       <form onSubmit={onAdd} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
         <label className="block text-[13px] font-semibold text-[var(--color-neutral-500)]">
           Nome
@@ -183,6 +220,7 @@ export function EquipePanel() {
           {busy ? 'Adicionando…' : 'Adicionar'}
         </Button>
       </form>
+      )}
 
       {error ? (
         <div className="mt-4">

@@ -2,12 +2,30 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   equipeCanChange,
+  equipeHasRoom,
+  equipeOccupiesSeat,
   normalizeEquipeEmail,
   normalizeEquipeName,
   planEquipeAdd,
   shouldDeleteInvitedLogin,
 } from './equipe.js';
 import { equipeAddedMail } from './mail/equipe.js';
+
+describe('equipe seats', () => {
+  it('counts pending and active Membros, not the Dono or a Desativado', () => {
+    assert.equal(equipeOccupiesSeat({ role: 'owner', status: 'active' }), false);
+    assert.equal(equipeOccupiesSeat({ role: 'employee', status: 'disabled' }), false);
+    assert.equal(equipeOccupiesSeat({ role: 'employee', status: 'pending' }), true);
+    assert.equal(equipeOccupiesSeat({ role: 'manager', status: 'active' }), true);
+  });
+
+  it('stops at the Growth cap and leaves Enterprise open', () => {
+    assert.equal(equipeHasRoom(2, 2), false);
+    assert.equal(equipeHasRoom(2, 1), true);
+    assert.equal(equipeHasRoom(0, 0), false);
+    assert.equal(equipeHasRoom(null, 40), true);
+  });
+});
 
 describe('equipe add', () => {
   const actor = 'ana@padaria.test';

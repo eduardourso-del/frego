@@ -1,4 +1,5 @@
 import { Prisma, prisma } from '@frego/db';
+import { accessFor } from '../billing.js';
 import { decryptToken } from '../whatsapp/crypto.js';
 import { openClube } from '../open-clube.js';
 import { recordSaleEarn } from '../record-sale.js';
@@ -143,6 +144,10 @@ export async function syncSaiposConnection(
     connection.business.status === 'pending' ||
     connection.business.status === 'suspended'
   ) {
+    return { ok: false, sales: 0 };
+  }
+  const access = await accessFor(connection.businessId);
+  if (!access?.features.saipos) {
     return { ok: false, sales: 0 };
   }
 

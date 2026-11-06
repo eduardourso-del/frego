@@ -26,6 +26,17 @@ export function normalizeEquipeName(value: string): string | null {
   return name;
 }
 
+/** Pending and active Membros besides the Dono fill a seat. Desativado does not. */
+export function equipeOccupiesSeat(member: { role: string; status: string }): boolean {
+  return member.role !== 'owner' && member.status !== 'disabled';
+}
+
+/** Null limit is Enterprise. Zero is a Plano without Equipe. */
+export function equipeHasRoom(limit: number | null, taken: number): boolean {
+  if (limit == null) return true;
+  return taken < limit;
+}
+
 /** The Dono can change the Equipe while she can use the Painel. */
 export function equipeCanChange(status: string): boolean {
   return status !== 'pending' && status !== 'suspended';

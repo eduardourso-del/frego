@@ -141,12 +141,17 @@ describe('resolveAccess', () => {
     const starter = resolveAccess(snap({ paidTier: 'starter' }));
     assert.equal(starter.features.audiences, false);
     assert.equal(starter.features.pesquisas, false);
+    assert.equal(starter.features.equipe, false);
+    assert.equal(starter.equipeSeats, 0);
     assert.equal(starter.features.extraLocations, true);
 
     const growth = resolveAccess(snap({ paidTier: 'growth' }));
     assert.equal(growth.features.audiences, true);
     assert.equal(growth.features.pesquisas, false);
     assert.equal(growth.features.whatsapp, true);
+    assert.equal(growth.features.saipos, true);
+    assert.equal(growth.features.equipe, true);
+    assert.equal(growth.equipeSeats, 2);
     assert.equal(growth.features.intelligence, false);
     assert.equal(growth.features.reports, false);
     assert.equal(growth.features.extraLocations, true);
@@ -155,6 +160,9 @@ describe('resolveAccess', () => {
     assert.equal(enterprise.features.pesquisas, true);
     assert.equal(enterprise.features.intelligence, true);
     assert.equal(enterprise.features.reports, true);
+    assert.equal(enterprise.features.saipos, true);
+    assert.equal(enterprise.features.equipe, true);
+    assert.equal(enterprise.equipeSeats, null);
     assert.equal(enterprise.features.extraLocations, true);
   });
 });

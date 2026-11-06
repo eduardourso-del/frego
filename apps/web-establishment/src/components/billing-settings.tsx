@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { BarChart3, Check, Layers, MessageCircle, Stamp, type LucideIcon } from 'lucide-react';
 import { API_URL } from '@/lib/api';
+import { cnpjFieldError, formatCnpj } from '@/lib/cnpj';
 import { useBusiness } from '@/lib/business-context';
 import {
   formatPlanPrice,
@@ -210,6 +211,8 @@ export function BillingSettings() {
             })}
           </div>
 
+          {!business?.cnpj && needsCharge ? <TaxIdSave onSaved={() => setNote('CPF ou CNPJ salvo. O pagamento já pode abrir.')} /> : null}
+
           <div className="flex flex-col items-start gap-2">
             <button
               type="button"
@@ -229,20 +232,11 @@ export function BillingSettings() {
                   ? `${PLAN_LABEL[inForce]} segue até ${changeOn ?? 'o fim deste período'}. A mudança começa só depois que você confirmar.`
                   : 'A mudança começa só depois que você confirmar.'}
               </p>
-            ) : (
+            ) : business?.cnpj ? (
               <p className="text-[12px] leading-snug text-[var(--color-neutral-500)]">
                 {upgrading
                   ? 'Agora você paga só a diferença. No pagamento, escolha Pix, boleto ou cartão.'
                   : 'No pagamento, escolha Pix, boleto ou cartão.'}
-              </p>
-            )}
-            {!business?.cnpj && needsCharge ? (
-              <p className="text-[13px] text-[var(--color-neutral-600)]">
-                O pagamento precisa do CPF ou CNPJ.{' '}
-                <a href="#cnpj" className="font-semibold text-[var(--color-ink)]">
-                  Informe o CPF ou CNPJ
-                </a>{' '}
-                e salve o perfil.
               </p>
             ) : null}
           </div>
@@ -275,6 +269,78 @@ export function BillingSettings() {
         </p>
       )}
     </section>
+  );
+}
+
+function taxIdSaveError(code: string) {
+  if (code === 'INVALID_TAX_ID' || code === 'INVALID_CNPJ') return 'CPF ou CNPJ inválido.';
+  if (code === 'TAX_ID_TAKEN' || code === 'CNPJ_TAKEN') return 'Este CPF ou CNPJ já está cadastrado.';
+  if (code === 'CNPJ_ALREADY_SET') return 'O CPF ou CNPJ já foi informado.';
+  return 'Não foi possível salvar o CPF ou CNPJ.';
+}
+
+function TaxIdSave({ onSaved }: { onSaved: () => void }) {
+  const { updateBusiness } = useBusiness();
+  const [value, setValue] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fieldError = cnpjFieldError(value, true);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    setTried(true);
+    if (fieldError) {
+      setError(fieldError);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await updateBusiness({ cnpj: value });
+      onSaved();
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      setError(taxIdSaveError(code));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void onSubmit(event)} className="max-w-sm">
+      <label htmlFor="cnpj" className="block text-[13px] font-semibold text-[var(--color-ink)]">
+        CPF ou CNPJ
+        <input
+          id="cnpj"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="000.000.000-00"
+          value={value}
+          onChange={(event) => {
+            setValue(formatCnpj(event.target.value));
+            setError(null);
+          }}
+          aria-invalid={tried && fieldError ? true : undefined}
+          className="mt-1.5 min-h-11 w-full rounded-[12px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-3 text-[15px] font-normal text-[var(--color-ink)] outline-none focus:border-[var(--color-primary-500)]"
+        />
+      </label>
+      <p className="mt-1.5 text-[12px] leading-snug text-[var(--color-neutral-500)]">
+        O pagamento precisa dele. Depois de salvar, não dá para alterar por aqui.
+      </p>
+      <button
+        type="submit"
+        disabled={busy}
+        className="mt-3 min-h-10 rounded-[12px] border border-[var(--color-hairline)] px-3.5 text-[13px] font-semibold text-[var(--color-ink)] disabled:opacity-60"
+      >
+        {busy ? 'Salvando…' : 'Salvar'}
+      </button>
+      {tried && error ? (
+        <p className="mt-2 text-[13px] text-[var(--color-danger)]" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </form>
   );
 }
 

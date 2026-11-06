@@ -202,6 +202,7 @@ export type BillingView = {
   tier: Access['tier'];
   source: Access['source'];
   features: Access['features'];
+  equipeSeats: number | null;
   publicPage: boolean;
   trialEndsAt: string | null;
   periodEndsAt: string | null;
@@ -224,6 +225,7 @@ export function presentBilling(
     tier: access.tier,
     source: access.source,
     features: access.features,
+    equipeSeats: access.equipeSeats,
     publicPage: access.publicPage,
     trialEndsAt: account?.trialEndsAt?.toISOString() ?? null,
     periodEndsAt: account?.periodEndsAt?.toISOString() ?? null,

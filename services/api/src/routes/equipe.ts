@@ -2,8 +2,11 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { prisma, type TeamRole } from '@frego/db';
 import { requireAuth } from '../plugins/auth.js';
+import { accessFor } from '../lib/billing.js';
 import {
   equipeCanChange,
+  equipeHasRoom,
+  equipeOccupiesSeat,
   normalizeEquipeEmail,
   normalizeEquipeName,
   planEquipeAdd,
@@ -83,7 +86,8 @@ export const equipeRoutes: FastifyPluginAsync = async (app) => {
       if (b.role === 'owner') return 1;
       return (a.displayName ?? '').localeCompare(b.displayName ?? '', 'pt');
     });
-    return { members: members.map(memberJson) };
+    const seats = await equipeSeats(auth.businessId);
+    return { members: members.map(memberJson), seats };
   });
 
   app.post('/equipe', async (request, reply) => {
@@ -141,6 +145,11 @@ export const equipeRoutes: FastifyPluginAsync = async (app) => {
 
     if (decision.action === 'refuse') {
       return reply.code(409).send({ error: decision.error });
+    }
+
+    if (decision.action === 'add' || decision.action === 'enable') {
+      const blocked = await equipeSeatBlock(auth.businessId);
+      if (blocked) return reply.code(blocked.status).send(blocked.body);
     }
 
     if (decision.action === 'enable' && existing) {
@@ -355,6 +364,34 @@ export const equipeRoutes: FastifyPluginAsync = async (app) => {
   });
 };
 
+async function equipeSeats(businessId: string) {
+  const [access, members] = await Promise.all([
+    accessFor(businessId),
+    prisma.teamMember.findMany({
+      where: { businessId },
+      select: { role: true, status: true },
+    }),
+  ]);
+  const limit = access?.equipeSeats ?? 0;
+  const taken = members.filter(equipeOccupiesSeat).length;
+  return { limit, taken };
+}
+
+async function equipeSeatBlock(businessId: string) {
+  const seats = await equipeSeats(businessId);
+  if (equipeHasRoom(seats.limit, seats.taken)) return null;
+  if (seats.limit === 0) {
+    return {
+      status: 403,
+      body: { error: 'PLAN_REQUIRED', feature: 'equipe' },
+    };
+  }
+  return {
+    status: 409,
+    body: { error: 'EQUIPE_LIMIT', limit: seats.limit },
+  };
+}
+
 async function sendEquipeNotice(input: {
   to: string;
   name: string;
@@ -400,6 +437,10 @@ async function setStatus(
   }
   if (existing.status !== from) {
     return reply.code(409).send({ error: 'NOT_WAITING' });
+  }
+  if (next === 'active') {
+    const blocked = await equipeSeatBlock(auth.businessId);
+    if (blocked) return reply.code(blocked.status).send(blocked.body);
   }
   const member = await prisma.teamMember.update({
     where: { id },

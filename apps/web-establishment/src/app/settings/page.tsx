@@ -12,6 +12,7 @@ import { IntegrationsTab } from '@/components/integrations/integrations-tab';
 import { EquipePanel } from '@/components/equipe-panel';
 import { TagManager } from '@/components/tag-manager';
 import { BillingSettings } from '@/components/billing-settings';
+import { FeatureLocked } from '@/components/plan-lock';
 import { API_URL } from '@/lib/api';
 import { useBusiness } from '@/lib/business-context';
 import { uploadBusinessHero, uploadBusinessLogo } from '@/lib/firebase';
@@ -571,7 +572,17 @@ export default function SettingsPage() {
             ) : tab === 'integracoes' ? (
               <IntegrationsTab />
             ) : tab === 'equipe' ? (
-              isDono ? <EquipePanel /> : (
+              isDono && business?.billing && !business.billing.features.equipe ? (
+                <FeatureLocked
+                  feature="equipe"
+                  owner
+                  currentTier={business.billing.tier}
+                >
+                  <EquipePanel />
+                </FeatureLocked>
+              ) : isDono ? (
+                <EquipePanel />
+              ) : (
                 <div className="h-40 animate-pulse rounded-[14px] bg-[var(--color-neutral-100)]" />
               )
             ) : (

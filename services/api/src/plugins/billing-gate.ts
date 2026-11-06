@@ -8,13 +8,23 @@ const FEATURE_PREFIXES: Array<[string, Feature]> = [
   ['/pesquisas', 'pesquisas'],
   ['/reports', 'reports'],
   ['/whatsapp', 'whatsapp'],
+  ['/saipos', 'saipos'],
 ];
 
-function allowedWhenLocked(method: string, path: string) {
+function cnpjOnlyPatch(body: unknown) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const record = body as Record<string, unknown>;
+  const keys = Object.keys(record);
+  return keys.length === 1 && keys[0] === 'cnpj' && typeof record.cnpj === 'string';
+}
+
+function allowedWhenLocked(method: string, path: string, body: unknown) {
   if (path === '/me/businesses' || path.startsWith('/billing')) return true;
   if (method === 'GET' && (path === '/business' || path === '/business/locations')) {
     return true;
   }
+  // The charge needs the document. The rest of the profile stays closed.
+  if (method === 'PATCH' && path === '/business' && cnpjOnlyPatch(body)) return true;
   return false;
 }
 
@@ -29,7 +39,7 @@ const billingGateImpl: FastifyPluginAsync = async (app) => {
       return;
     }
 
-    if (loaded.access.mode === 'locked' && !allowedWhenLocked(request.method, path)) {
+    if (loaded.access.mode === 'locked' && !allowedWhenLocked(request.method, path, request.body)) {
       return reply.code(403).send({ error: 'BILLING_LOCKED' });
     }
 
