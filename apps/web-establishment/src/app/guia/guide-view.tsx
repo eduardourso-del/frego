@@ -237,7 +237,7 @@ export function GuideView() {
                 </p>
                 <ul className="mt-3 grid gap-2 sm:grid-cols-2">
                   <Signal icon={UserMinus} tone="danger">
-                    Clientes sem visita há 30 dias ou mais.
+                    Já visitaram, e a última visita foi há 30 dias ou mais.
                   </Signal>
                   <Signal icon={Crown} tone="danger">
                     VIPs sem visita há 30 dias ou mais.
@@ -484,7 +484,7 @@ export function GuideView() {
                   <AudienceCard
                     title="Quase prêmio"
                     tone="primary"
-                    body="Chegaram a 80% ou mais da campanha principal."
+                    body="Passaram de 80% do prêmio e ainda não podem resgatar."
                   />
                   <AudienceCard
                     title="VIP"
@@ -541,7 +541,7 @@ export function GuideView() {
               icon={Users}
               title="Clientes"
               href="/customers"
-              lede="A base de clientes do estabelecimento. A busca usa nome ou telefone."
+              lede="A base de clientes do estabelecimento. Cada coluna filtra a lista, e a seta ordena."
             >
               <p className="text-[13px] font-semibold text-[var(--color-ink)]">
                 Atalhos
@@ -550,8 +550,8 @@ export function GuideView() {
                 {[
                   ['Todos', 'A base inteira'],
                   ['VIP', 'Marcados na ficha'],
-                  ['Sumidos', 'Sem visita há 30 dias ou mais'],
-                  ['Quase prêmio', 'Perto de ganhar o prêmio'],
+                  ['Sumidos', 'Já visitaram e a última visita foi há 30 dias ou mais'],
+                  ['Quase prêmio', 'Passaram de 80% e ainda não podem resgatar'],
                 ].map(([label, hint]) => (
                   <li
                     key={label}

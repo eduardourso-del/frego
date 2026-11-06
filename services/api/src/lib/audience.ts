@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '@frego/db';
 import {
+  campaignSpendableUnits,
   deriveWallet,
   isNearRewardCampaign,
   presentCustomerCampaigns,
@@ -213,7 +214,16 @@ function isNearRewardFromCampaigns(
   campaigns: CampaignWalletEntry[],
   pools: { stamps: number; points: number },
 ): boolean {
-  return campaigns.some((c) => isNearRewardCampaign(c, pools));
+  const loyalty = campaigns.filter(
+    (c) => c.type === 'stamps' || c.type === 'spend',
+  );
+  const ready = loyalty.some(
+    (c) =>
+      c.unitsNeeded > 0 &&
+      campaignSpendableUnits(c, pools) >= c.unitsNeeded,
+  );
+  if (ready) return false;
+  return loyalty.some((c) => isNearRewardCampaign(c, pools));
 }
 
 /**
@@ -391,7 +401,7 @@ export const AUDIENCE_PRESETS = [
   {
     key: 'near_reward',
     name: 'Quase prêmio',
-    description: 'Chegaram a 80% ou mais da campanha principal',
+    description: 'Passaram de 80% do prêmio e ainda não podem resgatar',
     rules: {
       version: 1 as const,
       nearReward: true,

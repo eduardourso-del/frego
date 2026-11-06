@@ -167,7 +167,7 @@ export function campaignSpendableUnits(
   return pools.stamps;
 }
 
-/** Perto do prêmio: 80% of the way on the balance that Campanha spends. */
+/** Perto do prêmio: 80% of the way, and the prêmio is not ready yet. */
 export function isNearRewardCampaign(
   campaign: {
     type: string;
@@ -180,10 +180,8 @@ export function isNearRewardCampaign(
   if (campaign.type !== 'stamps' && campaign.type !== 'spend') return false;
   if (campaign.unitsNeeded <= 0) return false;
   const current = campaignSpendableUnits(campaign, pools);
-  const inCycle = current % campaign.unitsNeeded;
-  const progress =
-    inCycle === 0 && current > 0 ? 1 : inCycle / campaign.unitsNeeded;
-  return progress >= 0.8 || current >= campaign.unitsNeeded;
+  if (current <= 0 || current >= campaign.unitsNeeded) return false;
+  return current / campaign.unitsNeeded >= 0.8;
 }
 
 export type { CampaignMeta as CampaignKindMeta };

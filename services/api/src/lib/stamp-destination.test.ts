@@ -209,5 +209,12 @@ describe('isNearRewardCampaign', () => {
       ),
       false,
     );
+    assert.equal(
+      isNearRewardCampaign(
+        { type: 'stamps', unitsNeeded: 10, cartela: true, balance: 10 },
+        pools,
+      ),
+      false,
+    );
   });
 });

@@ -20,6 +20,8 @@ import { queueEarnNotify } from '../lib/whatsapp/earn-notify-hold.js';
 import { queueWelcomeWhatsAppForBusiness } from '../lib/whatsapp/welcome-notify.js';
 import { voucherFromMetadata } from '../lib/voucher.js';
 import { isPesquisaCredit, shouldOmitFromLedger } from '../lib/ledger-meta.js';
+import { DEFAULT_FUSO } from '../lib/br-fuso.js';
+import { addCivilDays, ymdInTimeZone } from '../lib/zoned-day.js';
 import { groupCounterSales, newSaleId } from '../lib/tx-reverse.js';
 import {
   filterMembershipsByRules,
@@ -36,6 +38,55 @@ import {
   CorrectCustomerError,
   correctCustomerIdentity,
 } from '../lib/correct-customer.js';
+
+const LIST_SORTS = new Set(['name', 'phone', 'visits', 'lastVisit', 'progress']);
+const LAST_VISIT_FILTERS = new Set([
+  'today',
+  '7d',
+  '30d',
+  '90d',
+  'never',
+  'inactive30',
+]);
+const PROGRESS_FILTERS = new Set(['redeem', 'going', 'none']);
+
+function lastVisitMatches(
+  last: Date | null,
+  filter: string,
+  todayYmd: string,
+  timeZone: string,
+) {
+  if (!filter) return true;
+  if (filter === 'never') return last == null;
+  if (last == null) return false;
+  const ymd = ymdInTimeZone(last, timeZone);
+  if (filter === 'today') return ymd === todayYmd;
+  if (filter === 'inactive30') return ymd <= addCivilDays(todayYmd, -30);
+  const span = filter === '7d' ? 6 : filter === '30d' ? 29 : filter === '90d' ? 89 : null;
+  if (span == null) return true;
+  return ymd >= addCivilDays(todayYmd, -span);
+}
+
+function progressBucket(progress: {
+  canRedeem: boolean;
+  current: number;
+} | null) {
+  if (!progress) return 'none';
+  if (progress.canRedeem) return 'redeem';
+  if (progress.current > 0) return 'going';
+  return 'none';
+}
+
+function progressRank(progress: {
+  canRedeem: boolean;
+  current: number;
+  needed: number;
+} | null) {
+  if (!progress) return -1;
+  if (progress.canRedeem) return 2 + progress.current;
+  if (progress.needed > 0) return progress.current / progress.needed;
+  return progress.current > 0 ? 1 : 0;
+}
 
 const lookupBody = z
   .object({
@@ -229,7 +280,8 @@ async function serializeCustomerLookup(
 export const customerRoutes: FastifyPluginAsync = async (app) => {
   /**
    * Lista clientes associados a este negócio, com estatísticas locais.
-   * Query: `q` (nome / telefone / last4), `limit` (default 100, max 200),
+   * Query: `q` (nome / telefone / last4), `page`, `pageSize`,
+   * `colName`, `colPhone`, `colVisits`, `colLast`, `colProgress`, `sort`, `dir`,
    * `audienceId` ou regras (spendCentsMin, windowDays, inactiveDaysMin, …).
    */
   app.get('/customers', async (request, reply) => {
@@ -243,10 +295,33 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     }
     const rawQ = (query.q ?? '').trim();
     const digits = rawQ.replace(/\D/g, '');
-    const limit = Math.min(
-      Math.max(Number.parseInt(query.limit ?? '100', 10) || 100, 1),
-      200,
+    const pageSize = Math.min(
+      Math.max(Number.parseInt(query.pageSize ?? '25', 10) || 25, 1),
+      100,
     );
+    const requestedPage = Math.max(
+      Number.parseInt(query.page ?? '1', 10) || 1,
+      1,
+    );
+    const sort = LIST_SORTS.has(query.sort ?? '') ? query.sort! : 'lastVisit';
+    const sortDir = query.dir === 'asc' ? 1 : -1;
+    const colName = (query.colName ?? '').trim();
+    const colPhone = (query.colPhone ?? '').replace(/\D/g, '');
+    const visitsParsed = Number.parseInt(query.colVisits ?? '', 10);
+    const visitsMin =
+      Number.isFinite(visitsParsed) && visitsParsed > 0 ? visitsParsed : null;
+    const lastVisitFilter = LAST_VISIT_FILTERS.has(query.colLast ?? '')
+      ? query.colLast!
+      : '';
+    const progressFilter = PROGRESS_FILTERS.has(query.colProgress ?? '')
+      ? query.colProgress!
+      : '';
+    const business = await prisma.business.findUnique({
+      where: { id: auth.businessId },
+      select: { timeZone: true },
+    });
+    const timeZone = business?.timeZone ?? DEFAULT_FUSO;
+    const todayYmd = ymdInTimeZone(new Date(), timeZone);
 
     let audienceMembershipIds: string[] | null = null;
     let appliedAudience: {
@@ -302,6 +377,11 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       return {
         totalCount,
         vipCount,
+        filteredCount: 0,
+        page: 1,
+        pageSize,
+        pageCount: 1,
+        avgVisits: 0,
         audience: appliedAudience,
         customers: [],
       };
@@ -310,7 +390,15 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     const memberships = await prisma.membership.findMany({
       where: {
         businessId: auth.businessId,
-        customer: activeCustomer,
+        customer: {
+          ...activeCustomer,
+          ...(colName
+            ? {
+                displayName: { contains: colName, mode: 'insensitive' as const },
+              }
+            : {}),
+          ...(colPhone ? { phoneE164: { contains: colPhone } } : {}),
+        },
         ...(audienceMembershipIds
           ? { id: { in: audienceMembershipIds } }
           : {}),
@@ -361,7 +449,6 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
         },
       },
       orderBy: { associatedAt: 'desc' },
-      take: limit,
     });
 
     const membershipIds = memberships.map((m) => m.id);
@@ -425,38 +512,56 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
       foldLedgerTx(agg, tx);
     }
 
-    // Pools atuais (earn − redeem) via deriveWallet seria N queries;
-    // recalcula com ledger + campanhas ativas uma vez.
-    const wallets = await Promise.all(
-      memberships.map(async (m) => {
-        const wallet = await deriveWallet(m.id, auth.businessId);
-        return [m.id, wallet] as const;
-      }),
-    );
-    const walletById = new Map(wallets);
-
-    const customers = memberships.map((m) => {
+    const matched = memberships.filter((m) => {
       const agg = byMember.get(m.id)!;
-      const wallet = walletById.get(m.id)!;
-      const redeemable = wallet.campaigns.filter((c) => c.canRedeem).length;
-      const primary =
-        wallet.campaigns.find(
-          (c) =>
-            c.type !== 'birthday' &&
-            c.type !== 'cashback' &&
-            c.type !== 'promo' &&
-            c.canRedeem,
-        ) ??
-        wallet.campaigns.find(
-          (c) =>
-            c.type !== 'birthday' &&
-            c.type !== 'cashback' &&
-            c.type !== 'promo',
-        ) ??
-        wallet.campaigns.find((c) => c.canRedeem) ??
-        wallet.campaigns[0] ??
-        null;
-      const progress = primary
+      if (visitsMin != null && agg.visitDays.size < visitsMin) return false;
+      return lastVisitMatches(
+        agg.lastVisitAt,
+        lastVisitFilter,
+        todayYmd,
+        timeZone,
+      );
+    });
+
+    const needsProgress = progressFilter !== '' || sort === 'progress';
+    // Name, phone, visits and last visit already narrowed `matched`.
+    // Progress needs a wallet for every remaining client before the page cut.
+    const walletById = new Map<string, Awaited<ReturnType<typeof deriveWallet>>>();
+    if (needsProgress) {
+      const wallets = await Promise.all(
+        matched.map(async (m) => {
+          const wallet = await deriveWallet(m.id, auth.businessId);
+          return [m.id, wallet] as const;
+        }),
+      );
+      for (const [id, wallet] of wallets) walletById.set(id, wallet);
+    }
+
+    const toCustomer = (m: (typeof matched)[number]) => {
+      const agg = byMember.get(m.id)!;
+      const wallet = walletById.get(m.id);
+      const redeemable = wallet
+        ? wallet.campaigns.filter((c) => c.canRedeem).length
+        : 0;
+      const primary = !wallet
+        ? null
+        : (wallet.campaigns.find(
+            (c) =>
+              c.type !== 'birthday' &&
+              c.type !== 'cashback' &&
+              c.type !== 'promo' &&
+              c.canRedeem,
+          ) ??
+          wallet.campaigns.find(
+            (c) =>
+              c.type !== 'birthday' &&
+              c.type !== 'cashback' &&
+              c.type !== 'promo',
+          ) ??
+          wallet.campaigns.find((c) => c.canRedeem) ??
+          wallet.campaigns[0] ??
+          null);
+      const progress = wallet && primary
         ? {
             campaignId: primary.campaignId,
             campaignName: primary.campaignName,
@@ -499,19 +604,73 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
           cashbackEarnedCents: agg.cashbackEarnedCents,
           cashbackSpentCents: agg.cashbackSpentCents,
         },
-        pools: wallet.pools,
+        pools: wallet?.pools ?? { stamps: 0, points: 0, cashbackCents: 0 },
         progress,
         redeemableCampaigns: redeemable,
       };
+    };
+
+    let rows = matched.map(toCustomer);
+    if (progressFilter) {
+      rows = rows.filter((row) => progressBucket(row.progress) === progressFilter);
+    }
+    rows.sort((a, b) => {
+      if (sort === 'progress') {
+        return sortDir * (progressRank(a.progress) - progressRank(b.progress));
+      }
+      if (sort === 'name') {
+        const an = a.displayName?.trim() || '\uffff';
+        const bn = b.displayName?.trim() || '\uffff';
+        return sortDir * an.localeCompare(bn, 'pt-BR');
+      }
+      if (sort === 'phone') {
+        return sortDir * a.phoneE164.localeCompare(b.phoneE164);
+      }
+      if (sort === 'visits') {
+        return sortDir * (a.stats.visits - b.stats.visits);
+      }
+      const aT = a.stats.lastVisitAt?.getTime() ?? null;
+      const bT = b.stats.lastVisitAt?.getTime() ?? null;
+      if (aT == null && bT == null) return 0;
+      if (aT == null) return 1;
+      if (bT == null) return -1;
+      return sortDir * (aT - bT);
     });
 
-    // Mais ativos / recentes no topo da lista filtrada
-    customers.sort((a, b) => {
-      const aT = a.stats.lastVisitAt?.getTime() ?? 0;
-      const bT = b.stats.lastVisitAt?.getTime() ?? 0;
-      if (bT !== aT) return bT - aT;
-      return b.stats.visits - a.stats.visits;
-    });
+    const filteredCount = rows.length;
+    const pageCount = Math.max(1, Math.ceil(filteredCount / pageSize));
+    const page = Math.min(requestedPage, pageCount);
+    const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+    const matchedById = new Map(matched.map((m) => [m.id, m]));
+    let customers = pageRows;
+    if (!needsProgress && pageRows.length > 0) {
+      const wallets = await Promise.all(
+        pageRows.map(async (row) => {
+          const wallet = await deriveWallet(row.membershipId, auth.businessId);
+          return [row.membershipId, wallet] as const;
+        }),
+      );
+      for (const [id, wallet] of wallets) walletById.set(id, wallet);
+      customers = pageRows.map((row) =>
+        toCustomer(matchedById.get(row.membershipId)!),
+      );
+    }
+    const avgSource = needsProgress ? rows : matched;
+    const avgVisits =
+      avgSource.length === 0
+        ? 0
+        : Math.round(
+            (avgSource.reduce(
+              (sum, row) =>
+                sum +
+                ('stats' in row
+                  ? row.stats.visits
+                  : byMember.get(row.id)!.visitDays.size),
+              0,
+            ) /
+              avgSource.length) *
+              10,
+          ) / 10;
 
     const totalCount = await prisma.membership.count({
       where: { businessId: auth.businessId, customer: activeCustomer },
@@ -527,6 +686,11 @@ export const customerRoutes: FastifyPluginAsync = async (app) => {
     return {
       totalCount,
       vipCount,
+      filteredCount,
+      page,
+      pageSize,
+      pageCount,
+      avgVisits,
       audience: appliedAudience,
       customers,
     };

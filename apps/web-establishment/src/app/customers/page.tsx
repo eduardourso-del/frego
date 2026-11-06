@@ -4,14 +4,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   Suspense,
-  type FormEvent,
   type ReactNode,
 } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Banknote, Crown, Gift, Link2, Plus, Search, Stamp, X } from 'lucide-react';
+import { Banknote, ChevronDown, ChevronUp, Crown, Gift, Link2, Plus, Stamp, X } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import { campaignCreateHref } from '@/components/audience-preset-cards';
 import { TagChipRow } from '@/components/tag-chips';
@@ -66,6 +66,11 @@ type CustomerListItem = {
 type ListResponse = {
   totalCount: number;
   vipCount: number;
+  filteredCount?: number;
+  page?: number;
+  pageSize?: number;
+  pageCount?: number;
+  avgVisits?: number;
   audience?: {
     id?: string;
     name?: string;
@@ -560,6 +565,168 @@ function filterLabel(
   return 'Filtro de audiência';
 }
 
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  dir,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  sort: string;
+  dir: 'asc' | 'desc';
+  onSort: (key: string) => void;
+}) {
+  const active = sort === sortKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`inline-flex items-center gap-1 text-left text-[11px] font-semibold uppercase tracking-[0.04em] ${
+        active ? 'text-[var(--color-ink)]' : 'text-[var(--color-neutral-400)]'
+      }`}
+    >
+      {label}
+      {active && dir === 'asc' ? (
+        <ChevronUp className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+      ) : (
+        <ChevronDown className="h-3 w-3 shrink-0" strokeWidth={2.5} aria-hidden />
+      )}
+    </button>
+  );
+}
+
+const columnInputClass =
+  'min-h-9 w-full rounded-[10px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] px-2.5 text-[13px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]';
+
+function CustomerColumnSearch({
+  className,
+  sort,
+  sortDir,
+  onSort,
+  nameDraft,
+  onName,
+  phoneDraft,
+  onPhone,
+  visitsDraft,
+  onVisits,
+  colProgress,
+  colLast,
+  onColumn,
+}: {
+  className: string;
+  sort: string;
+  sortDir: 'asc' | 'desc';
+  onSort: (key: string) => void;
+  nameDraft: string;
+  onName: (value: string) => void;
+  phoneDraft: string;
+  onPhone: (value: string) => void;
+  visitsDraft: string;
+  onVisits: (value: string) => void;
+  colProgress: string;
+  colLast: string;
+  onColumn: (key: string, value: string) => void;
+}) {
+  return (
+    <div className={className}>
+      <div className="min-w-0">
+        <SortHeader
+          label="Cliente"
+          sortKey="name"
+          sort={sort}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <input
+          value={nameDraft}
+          onChange={(e) => onName(e.target.value)}
+          placeholder="Nome"
+          className={`${columnInputClass} mt-1.5`}
+          autoComplete="off"
+        />
+      </div>
+      <div className="min-w-0">
+        <SortHeader
+          label="Telefone"
+          sortKey="phone"
+          sort={sort}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <input
+          value={phoneDraft}
+          onChange={(e) => onPhone(e.target.value)}
+          placeholder="Número"
+          inputMode="tel"
+          className={`${columnInputClass} mt-1.5`}
+          autoComplete="off"
+        />
+      </div>
+      <div className="min-w-0">
+        <SortHeader
+          label="Progresso"
+          sortKey="progress"
+          sort={sort}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <select
+          value={colProgress}
+          onChange={(e) => onColumn('colProgress', e.target.value)}
+          className={`${columnInputClass} mt-1.5`}
+          aria-label="Filtrar progresso"
+        >
+          <option value="">Qualquer</option>
+          <option value="redeem">Pode resgatar</option>
+          <option value="going">Em andamento</option>
+          <option value="none">Sem progresso</option>
+        </select>
+      </div>
+      <div className="min-w-0">
+        <SortHeader
+          label="Visitas"
+          sortKey="visits"
+          sort={sort}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <input
+          value={visitsDraft}
+          onChange={(e) => onVisits(e.target.value.replace(/\D/g, ''))}
+          placeholder="Mínimo"
+          inputMode="numeric"
+          className={`${columnInputClass} mt-1.5`}
+        />
+      </div>
+      <div className="col-span-2 min-w-0 md:col-span-1">
+        <SortHeader
+          label="Última visita"
+          sortKey="lastVisit"
+          sort={sort}
+          dir={sortDir}
+          onSort={onSort}
+        />
+        <select
+          value={colLast}
+          onChange={(e) => onColumn('colLast', e.target.value)}
+          className={`${columnInputClass} mt-1.5`}
+          aria-label="Filtrar última visita"
+        >
+          <option value="">Qualquer</option>
+          <option value="today">Hoje</option>
+          <option value="7d">7 dias</option>
+          <option value="30d">30 dias</option>
+          <option value="90d">90 dias</option>
+          <option value="inactive30">Há 30 dias ou mais</option>
+          <option value="never">Sem visita</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function CustomersPageContent() {
   const { loading: authLoading } = useAuth();
   const {
@@ -602,8 +769,17 @@ function CustomersPageContent() {
   const activeQuick = resolveQuickFilter(audienceFilter);
   const selectedAudienceId = searchParams.get('audienceId') ?? '';
 
-  const [q, setQ] = useState('');
-  const [debouncedQ, setDebouncedQ] = useState('');
+  const colName = searchParams.get('colName') ?? '';
+  const colPhone = searchParams.get('colPhone') ?? '';
+  const colVisits = searchParams.get('colVisits') ?? '';
+  const colProgress = searchParams.get('colProgress') ?? '';
+  const colLast = searchParams.get('colLast') ?? '';
+  const sort = searchParams.get('sort') ?? 'lastVisit';
+  const sortDir = searchParams.get('dir') === 'asc' ? 'asc' : 'desc';
+  const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
+  const [nameDraft, setNameDraft] = useState(colName);
+  const [phoneDraft, setPhoneDraft] = useState(colPhone);
+  const [visitsDraft, setVisitsDraft] = useState(colVisits);
   const [list, setList] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -618,20 +794,60 @@ function CustomersPageContent() {
   const [vipError, setVipError] = useState<string | null>(null);
   const [tagBusy, setTagBusy] = useState(false);
 
+  useEffect(() => setNameDraft(colName), [colName]);
+  useEffect(() => setPhoneDraft(colPhone), [colPhone]);
+  useEffect(() => setVisitsDraft(colVisits), [colVisits]);
+
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q.trim()), 280);
+    const name = nameDraft.trim();
+    const phone = phoneDraft.replace(/\D/g, '');
+    const visits =
+      visitsDraft.trim() && Number(visitsDraft) > 0 ? visitsDraft.trim() : '';
+    if (name === colName && phone === colPhone && visits === colVisits) return;
+    const t = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (name) params.set('colName', name);
+      else params.delete('colName');
+      if (phone) params.set('colPhone', phone);
+      else params.delete('colPhone');
+      if (visits) params.set('colVisits', visits);
+      else params.delete('colVisits');
+      params.delete('page');
+      params.delete('q');
+      const qs = params.toString();
+      router.replace(qs ? `/customers?${qs}` : '/customers', { scroll: false });
+    }, 300);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [
+    nameDraft,
+    phoneDraft,
+    visitsDraft,
+    colName,
+    colPhone,
+    colVisits,
+    searchParams,
+    router,
+  ]);
+
+  const listRequest = useRef(0);
 
   const loadList = useCallback(async () => {
     if (!businessId) return;
+    const requestId = ++listRequest.current;
     setLoading(true);
     setError(null);
     try {
       const headers = await authHeaders();
       const params = new URLSearchParams();
-      if (debouncedQ) params.set('q', debouncedQ);
-      params.set('limit', '100');
+      params.set('page', String(page));
+      params.set('pageSize', '25');
+      if (colName) params.set('colName', colName);
+      if (colPhone) params.set('colPhone', colPhone);
+      if (colVisits) params.set('colVisits', colVisits);
+      if (colProgress) params.set('colProgress', colProgress);
+      if (colLast) params.set('colLast', colLast);
+      if (sort !== 'lastVisit') params.set('sort', sort);
+      if (sortDir === 'asc') params.set('dir', 'asc');
       if (audienceFilter) {
         for (const [k, v] of Object.entries(audienceFilter)) {
           params.set(k, v);
@@ -639,15 +855,29 @@ function CustomersPageContent() {
       }
       const res = await fetch(`${API_URL}/customers?${params}`, { headers });
       const json = await res.json();
+      if (requestId !== listRequest.current) return;
       if (!res.ok) throw new Error(json.error ?? 'Não foi possível carregar os clientes.');
       setList(json as ListResponse);
     } catch (err) {
+      if (requestId !== listRequest.current) return;
       setError(err instanceof Error ? err.message : 'Não foi possível carregar.');
       setList(null);
     } finally {
-      setLoading(false);
+      if (requestId === listRequest.current) setLoading(false);
     }
-  }, [authHeaders, businessId, debouncedQ, audienceFilter]);
+  }, [
+    authHeaders,
+    businessId,
+    audienceFilter,
+    page,
+    colName,
+    colPhone,
+    colVisits,
+    colProgress,
+    colLast,
+    sort,
+    sortDir,
+  ]);
 
   useEffect(() => {
     if (authLoading || businessLoading) return;
@@ -734,13 +964,49 @@ function CustomersPageContent() {
   }
 
   function setQuickFilter(key: QuickFilter) {
-    replaceCustomersQuery((params) => applyQuickFilterParams(params, key));
+    replaceCustomersQuery((params) => {
+      applyQuickFilterParams(params, key);
+      params.delete('page');
+    });
+  }
+
+  function setColumn(key: string, value: string) {
+    replaceCustomersQuery((params) => {
+      if (value) params.set(key, value);
+      else params.delete(key);
+      params.delete('page');
+      params.delete('q');
+    });
+  }
+
+  function toggleSort(key: string) {
+    replaceCustomersQuery((params) => {
+      const current = params.get('sort') ?? 'lastVisit';
+      const currentDir = params.get('dir') === 'asc' ? 'asc' : 'desc';
+      if (current === key) {
+        if (currentDir === 'desc') params.set('dir', 'asc');
+        else params.delete('dir');
+      } else {
+        params.set('sort', key);
+        if (key === 'name' || key === 'phone') params.set('dir', 'asc');
+        else params.delete('dir');
+      }
+      params.delete('page');
+    });
+  }
+
+  function goToPage(next: number) {
+    replaceCustomersQuery((params) => {
+      if (next <= 1) params.delete('page');
+      else params.set('page', String(next));
+    });
   }
 
   function setAudienceId(id: string) {
     replaceCustomersQuery((params) => {
       clearAudienceParams(params);
       if (id) params.set('audienceId', id);
+      params.delete('page');
     });
   }
 
@@ -760,6 +1026,7 @@ function CustomersPageContent() {
       } else {
         params.set('tagIds', next.join(','));
       }
+      params.delete('page');
     });
   }
 
@@ -807,11 +1074,13 @@ function CustomersPageContent() {
   }, [selectedId, loadProfile]);
 
   const customers = list?.customers ?? [];
-  const avgVisits = useMemo(() => {
-    if (customers.length === 0) return 0;
-    const sum = customers.reduce((acc, c) => acc + c.stats.visits, 0);
-    return Math.round((sum / customers.length) * 10) / 10;
-  }, [customers]);
+  const filteredCount = list?.filteredCount ?? customers.length;
+  const pageCount = list?.pageCount ?? 1;
+  const currentPage = list?.page ?? page;
+  const avgVisits = list?.avgVisits ?? 0;
+  const columnFilterOn = Boolean(
+    colName || colPhone || colVisits || colProgress || colLast,
+  );
 
   function openCustomer(id: string) {
     setSelectedId(id);
@@ -932,17 +1201,29 @@ function CustomersPageContent() {
     }
   }
 
-  function onSearchSubmit(e: FormEvent) {
-    e.preventDefault();
-    setDebouncedQ(q.trim());
-  }
-
   const countHint = list
-    ? audienceFilter && list.audience?.memberCount != null
-      ? `${list.audience.memberCount.toLocaleString('pt-BR')} neste filtro · ${list.totalCount.toLocaleString('pt-BR')} no total`
+    ? columnFilterOn || audienceFilter
+      ? `${filteredCount.toLocaleString('pt-BR')} neste recorte · ${list.totalCount.toLocaleString('pt-BR')} no total`
       : `${list.totalCount.toLocaleString('pt-BR')} no total`
     : null;
   const activeFilterName = filterLabel(audienceFilter, list?.audience?.name);
+  const columnSearch = (className: string) => (
+    <CustomerColumnSearch
+      className={className}
+      sort={sort}
+      sortDir={sortDir}
+      onSort={toggleSort}
+      nameDraft={nameDraft}
+      onName={setNameDraft}
+      phoneDraft={phoneDraft}
+      onPhone={setPhoneDraft}
+      visitsDraft={visitsDraft}
+      onVisits={setVisitsDraft}
+      colProgress={colProgress}
+      colLast={colLast}
+      onColumn={setColumn}
+    />
+  );
 
   const topbar = (
     <header className="flex h-[60px] shrink-0 items-center gap-4 border-b border-[var(--color-hairline)] bg-[var(--color-card)] px-5 md:px-7">
@@ -986,23 +1267,6 @@ function CustomersPageContent() {
             Adicionar
           </Link>
         </div>
-
-        <form onSubmit={onSearchSubmit} className="mb-3">
-          <label className="relative block">
-            <Search
-              className="pointer-events-none absolute left-4 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-[var(--color-primary-500)]"
-              strokeWidth={2}
-            />
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por nome ou telefone"
-              className="min-h-12 w-full rounded-[13px] border border-[var(--color-neutral-200)] bg-[var(--color-card)] py-3 pl-11 pr-4 text-[16px] text-[var(--color-ink)] outline-none transition-[border,box-shadow] placeholder:text-[var(--color-neutral-400)] focus:border-[var(--color-primary-500)] focus:shadow-[var(--shadow-focus)]"
-              autoComplete="off"
-            />
-          </label>
-        </form>
 
         {balcao ? null : (
         <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1109,6 +1373,15 @@ function CustomersPageContent() {
             <span className="font-semibold text-[var(--color-ink)]">
               {activeFilterName}
             </span>
+            {activeQuick === 'missing' ? (
+              <span className="text-[var(--color-neutral-600)]">
+                Já visitaram, e a última visita foi há 30 dias ou mais.
+              </span>
+            ) : activeQuick === 'near_reward' ? (
+              <span className="text-[var(--color-neutral-600)]">
+                Passaram de 80% do prêmio e ainda não podem resgatar.
+              </span>
+            ) : null}
             {list?.audience?.memberCount != null && (
               <span className="text-[var(--color-neutral-600)]">
                 {list.audience.memberCount} cliente
@@ -1146,54 +1419,114 @@ function CustomersPageContent() {
           </Alert>
         ) : null}
 
+        {columnSearch('mb-3 grid grid-cols-2 gap-3 md:hidden')}
+
         {loading ? (
-          <div className="space-y-3">
+          <div className="space-y-3 md:hidden">
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />
           </div>
         ) : null}
 
+        <Card padding="none" className="hidden overflow-hidden md:block">
+          {columnSearch(
+            'grid grid-cols-[2fr_1.4fr_1.6fr_0.8fr_1fr] gap-x-3 border-b border-[var(--color-hairline)] px-5 py-3',
+          )}
+          {loading ? (
+            <div className="space-y-3 p-5">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : customers.length > 0 ? (
+            <ul>
+              {customers.map((c) => (
+                <li key={c.customerId}>
+                  <button
+                    type="button"
+                    onClick={() => openCustomer(c.customerId)}
+                    className="grid w-full grid-cols-[2fr_1.4fr_1.6fr_0.8fr_1fr] items-center gap-x-3 border-b border-[var(--color-neutral-100)] px-5 py-3.5 text-left text-[14px] transition-colors last:border-b-0 hover:bg-[var(--color-bg)]"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-50)] text-[13px] font-bold text-[var(--color-primary-500)]">
+                        {initials(c.displayName, c.phoneE164)}
+                      </span>
+                      <span className="truncate font-semibold text-[var(--color-ink)]">
+                        {c.displayName?.trim() || 'Sem nome'}
+                        {c.isVip ? (
+                          <span className="ml-2 inline-flex rounded-full bg-[var(--color-primary-50)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-primary-500)]">
+                            VIP
+                          </span>
+                        ) : null}
+                        {c.tags && c.tags.length > 0 ? (
+                          <span className="mt-1 block">
+                            <TagChipRow tags={c.tags} />
+                          </span>
+                        ) : null}
+                      </span>
+                    </span>
+                    <span className="text-[var(--color-neutral-500)]">
+                      {displayPhone(c.phoneE164)}
+                    </span>
+                    <span>
+                      <ProgressCell progress={c.progress} />
+                    </span>
+                    <span className="tabular-nums text-[var(--color-neutral-500)]">
+                      {c.stats.visits}
+                    </span>
+                    <span className="text-[var(--color-neutral-500)]">
+                      {formatRelativeVisit(c.stats.lastVisitAt)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </Card>
+
         {!loading && !error && customers.length === 0 ? (
-          <EmptyState
-            title={
-              debouncedQ
-                ? 'Nenhum cliente encontrado'
-                : audienceFilter
-                  ? 'Ninguém neste filtro'
-                  : 'Ainda sem clientes'
-            }
-            description={
-              debouncedQ
-                ? 'Tente outro nome ou telefone, ou cadastre no balcão.'
-                : audienceFilter
-                  ? 'Nenhum cliente combina com este recorte. Troque o filtro ou veja todos.'
-                  : 'Cadastre o primeiro cliente no balcão. O telefone é o que identifica a pessoa no Frego.'
-            }
-            action={
-              audienceFilter ? (
-                <Button
-                  variant="ghost"
-                  onClick={() => setQuickFilter('all')}
-                >
-                  Ver todos
-                </Button>
-              ) : (
-                <Link
-                  href="/counter"
-                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)]"
-                >
-                  Ir para o balcão
-                </Link>
-              )
-            }
-          />
+          <div className="mt-4">
+            <EmptyState
+              title={
+                columnFilterOn
+                  ? 'Nenhum cliente encontrado'
+                  : audienceFilter
+                    ? 'Ninguém neste filtro'
+                    : 'Ainda sem clientes'
+              }
+              description={
+                activeQuick === 'missing'
+                  ? 'Sumidos são quem já visitou e não volta há 30 dias ou mais. Quem nunca veio fica de fora.'
+                  : columnFilterOn
+                    ? 'Ajuste o nome, o telefone, o progresso, as visitas ou a última visita.'
+                    : audienceFilter
+                      ? 'Nenhum cliente combina com este recorte. Troque o filtro ou veja todos.'
+                      : 'Cadastre o primeiro cliente no balcão. O telefone é o que identifica a pessoa no Frego.'
+              }
+              action={
+                audienceFilter ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => setQuickFilter('all')}
+                  >
+                    Ver todos
+                  </Button>
+                ) : columnFilterOn ? undefined : (
+                  <Link
+                    href="/counter"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[14px] font-semibold text-white shadow-[var(--shadow-cta)]"
+                  >
+                    Ir para o balcão
+                  </Link>
+                )
+              }
+            />
+          </div>
         ) : null}
 
         {!loading && customers.length > 0 ? (
-          <>
-            {/* Mobile cards */}
-            <div className="space-y-2 md:hidden">
+          <div className="mt-3 space-y-2 md:hidden">
               {customers.map((c) => (
                 <button
                   key={c.customerId}
@@ -1229,61 +1562,39 @@ function CustomersPageContent() {
                   </span>
                 </button>
               ))}
-            </div>
+          </div>
+        ) : null}
 
-            {/* Desktop table */}
-            <Card padding="none" className="hidden overflow-hidden md:block">
-              <div className="grid grid-cols-[2fr_1.4fr_1.6fr_0.8fr_1fr] border-b border-[var(--color-hairline)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.04em] text-[var(--color-neutral-400)]">
-                <span>Cliente</span>
-                <span>Telefone</span>
-                <span>Progresso</span>
-                <span>Visitas</span>
-                <span>Última visita</span>
-              </div>
-              <ul>
-                {customers.map((c) => (
-                  <li key={c.customerId}>
-                    <button
-                      type="button"
-                      onClick={() => openCustomer(c.customerId)}
-                      className="grid w-full grid-cols-[2fr_1.4fr_1.6fr_0.8fr_1fr] items-center border-b border-[var(--color-neutral-100)] px-5 py-3.5 text-left text-[14px] transition-colors last:border-b-0 hover:bg-[var(--color-bg)]"
-                    >
-                      <span className="flex min-w-0 items-center gap-3">
-                        <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-[var(--color-primary-50)] text-[13px] font-bold text-[var(--color-primary-500)]">
-                          {initials(c.displayName, c.phoneE164)}
-                        </span>
-                        <span className="truncate font-semibold text-[var(--color-ink)]">
-                          {c.displayName?.trim() || 'Sem nome'}
-                          {c.isVip ? (
-                            <span className="ml-2 inline-flex rounded-full bg-[var(--color-primary-50)] px-2 py-0.5 text-[10px] font-semibold text-[var(--color-primary-500)]">
-                              VIP
-                            </span>
-                          ) : null}
-                          {c.tags && c.tags.length > 0 ? (
-                            <span className="mt-1 block">
-                              <TagChipRow tags={c.tags} />
-                            </span>
-                          ) : null}
-                        </span>
-                      </span>
-                      <span className="text-[var(--color-neutral-500)]">
-                        {displayPhone(c.phoneE164)}
-                      </span>
-                      <span>
-                        <ProgressCell progress={c.progress} />
-                      </span>
-                      <span className="tabular-nums text-[var(--color-neutral-500)]">
-                        {c.stats.visits}
-                      </span>
-                      <span className="text-[var(--color-neutral-500)]">
-                        {formatRelativeVisit(c.stats.lastVisitAt)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          </>
+        {!loading && filteredCount > 0 ? (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[13px] text-[var(--color-neutral-500)]">
+              {(currentPage - 1) * (list?.pageSize ?? 25) + 1}
+              –
+              {Math.min(currentPage * (list?.pageSize ?? 25), filteredCount)} de{' '}
+              {filteredCount.toLocaleString('pt-BR')}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                className="min-h-9 text-[13px]"
+                disabled={currentPage <= 1}
+                onClick={() => goToPage(currentPage - 1)}
+              >
+                Anterior
+              </Button>
+              <span className="text-[13px] font-semibold tabular-nums text-[var(--color-ink)]">
+                {currentPage} / {pageCount}
+              </span>
+              <Button
+                variant="ghost"
+                className="min-h-9 text-[13px]"
+                disabled={currentPage >= pageCount}
+                onClick={() => goToPage(currentPage + 1)}
+              >
+                Próxima
+              </Button>
+            </div>
+          </div>
         ) : null}
       </div>
 
