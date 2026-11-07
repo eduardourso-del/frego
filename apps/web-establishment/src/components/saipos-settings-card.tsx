@@ -38,12 +38,12 @@ export function SaiposStatus() {
         };
         if (cancelled || !res.ok) return;
         if (!data.connected || !data.connection) {
-          setLabel('Desligada');
+          setLabel('Desligado');
           setBroken(false);
           return;
         }
         setBroken(data.connection.status === 'error');
-        setLabel(data.connection.status === 'error' ? 'Token recusado' : 'Conectada');
+        setLabel(data.connection.status === 'error' ? 'Token recusado' : 'Conectado');
       } catch {
         if (!cancelled) setLabel(null);
       }
@@ -59,7 +59,7 @@ export function SaiposStatus() {
       className={`rounded-full px-2.5 py-1 text-[12px] font-semibold ${
         broken
           ? 'bg-[var(--color-danger)]/10 text-[var(--color-danger)]'
-          : label === 'Conectada'
+          : label === 'Conectado'
             ? 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
             : 'bg-[var(--color-neutral-100)] text-[var(--color-neutral-500)]'
       }`}
@@ -164,10 +164,8 @@ export function SaiposSettingsCard({ embedded = false }: { embedded?: boolean })
             <img src="/integrations/saipos.svg" alt="" className="h-8 w-auto" />
             <h2 className="sr-only">Saipos</h2>
             <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-[var(--color-neutral-500)]">
-                Vendas fechadas na Saipos creditam pontos e cashback neste clube. O token é da
-                API de dados da Saipos, pedido por eles, e custa R$ 59,90 por loja por mês —
-                pago à Saipos, não ao Frego. O token precisa ser só deste estabelecimento.
-              </p>
+              Vendas fechadas na Saipos creditam pontos e cashback neste estabelecimento.
+            </p>
           </div>
           {connection ? (
             <span
@@ -177,18 +175,27 @@ export function SaiposSettingsCard({ embedded = false }: { embedded?: boolean })
                   : 'bg-[var(--color-success)]/10 text-[var(--color-success)]'
               }`}
             >
-              {broken ? 'Token recusado' : 'Conectada'}
+              {broken ? 'Token recusado' : 'Conectado'}
             </span>
           ) : null}
         </div>
       )}
 
-      <p className={`max-w-xl text-[13px] leading-relaxed text-[var(--color-neutral-500)] ${embedded ? '' : 'mt-3'}`}>
-        Peça o token à Saipos. Custa R$ 59,90 por loja por mês, pago a eles, e vale só
-        para este estabelecimento. Cada venda fechada credita as campanhas de pontos e
-        de cashback que estiverem abertas. O crédito pode levar até o dia seguinte. O
-        cashback desta venda não é descontado na Saipos. Carimbos continuam no balcão.
-      </p>
+      <div className={`max-w-xl space-y-2 text-[13px] leading-relaxed text-[var(--color-neutral-500)] ${embedded ? '' : 'mt-3'}`}>
+        <p>
+          Cada venda fechada credita as campanhas de pontos e de cashback que
+          estiverem abertas. Carimbos não entram por aqui: a equipe marca no balcão.
+        </p>
+        <p>
+          As vendas são atualizadas às 5h, às 13h e às 21h. Uma venda fechada
+          depois das 21h entra às 5h.
+        </p>
+        <p>
+          O token é pedido à Saipos. Custa R$ 59,90 por loja por mês, pago à
+          Saipos, e vale só para este estabelecimento. O cashback creditado não
+          reduz o valor da venda na Saipos.
+        </p>
+      </div>
       <div
         className="mt-3 max-w-xl rounded-[12px] border border-[var(--color-warning)]/30 bg-[var(--color-warning-bg)] px-4 py-3"
         role="note"
@@ -197,9 +204,9 @@ export function SaiposSettingsCard({ embedded = false }: { embedded?: boolean })
           Pontos e cashback abertos juntos: a mesma venda credita os dois.
         </p>
         <p className="mt-1 text-[13px] leading-relaxed text-[var(--color-neutral-700)]">
-          Na mesma compra o cliente recebe os pontos e o cashback vira saldo. A
-          Saipos não escolhe um dos dois. Para creditar só pontos, pause a campanha
-          de cashback. Para creditar só cashback, pause a campanha de pontos.
+          O cliente ganha os pontos e o cashback na mesma compra. Pause o
+          cashback para creditar só pontos. Pause os pontos para creditar só
+          cashback.
         </p>
       </div>
 
@@ -209,11 +216,18 @@ export function SaiposSettingsCard({ embedded = false }: { embedded?: boolean })
         <div className="mt-4 flex flex-col gap-3">
           <p className="text-[13px] text-[var(--color-neutral-500)]">
             {connection.lastSyncAt
-              ? `Última sincronização ${formatWhen(connection.lastSyncAt)}.`
-              : 'A primeira sincronização ainda não aconteceu.'}
+              ? `Última atualização das vendas em ${formatWhen(connection.lastSyncAt)}.`
+              : 'As vendas ainda não foram atualizadas.'}
           </p>
           {connection.lastError ? (
-            <p className="text-[13px] text-[var(--color-danger)]" role="alert">
+            <p
+              className={`text-[13px] leading-relaxed ${
+                broken
+                  ? 'text-[var(--color-danger)]'
+                  : 'text-[var(--color-neutral-700)]'
+              }`}
+              role="status"
+            >
               {connection.lastError}
             </p>
           ) : null}

@@ -33,7 +33,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     id: 'saipos',
     name: 'Saipos',
     logo: '/integrations/saipos.svg',
-    summary: 'Vendas fechadas creditam pontos e cashback. Liga se o caixa já é a Saipos.',
+    summary:
+      'Vendas fechadas creditam pontos e cashback. Carimbos continuam no balcão.',
     Panel: SaiposSettingsCard,
     Status: SaiposStatus,
   },

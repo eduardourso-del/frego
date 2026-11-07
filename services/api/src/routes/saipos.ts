@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@frego/db';
 import { requireAuth, rejectBalcao } from '../plugins/auth.js';
 import { fetchSaiposSales } from '../lib/saipos/client.js';
+import { saiposErrorForHouse } from '../lib/saipos/house-error.js';
 import {
   currentTokenKeyVersion,
   encryptToken,
@@ -26,7 +27,7 @@ export function saiposConnectionPublic(row: {
     status: row.status,
     connectedAt: row.connectedAt.toISOString(),
     lastSyncAt: row.lastSyncAt?.toISOString() ?? null,
-    lastError: row.lastError,
+    lastError: saiposErrorForHouse(row.lastError, row.status),
   };
 }
 

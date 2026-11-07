@@ -5,6 +5,7 @@ import { recordSaleEarn } from '../record-sale.js';
 import { reverseLedgerSale } from '../reverse-sale.js';
 import { applySaiposSale, type SaiposImportRow, type SaiposSave } from './apply.js';
 import { fetchSaiposSales } from './client.js';
+import { saiposErrorForHouse } from './house-error.js';
 import { saiposSaleId } from './sale.js';
 
 const OVERLAP_MS = 6 * 60 * 60 * 1000;
@@ -188,7 +189,7 @@ export async function syncSaiposConnection(
       where: { id: connection.id },
       data: {
         status: authFailed ? 'error' : connection.status,
-        lastError: pulled.message.slice(0, 400),
+        lastError: saiposErrorForHouse(pulled.message.slice(0, 400), connection.status),
         lastSyncAt: new Date(),
       },
     });
