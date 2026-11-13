@@ -11,6 +11,7 @@ import '../../ui/header_straddle.dart';
 import '../../ui/ready_rewards_card.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
+import '../explore/device_location.dart';
 import 'campaign_detail_page.dart';
 import 'shop_detail_page.dart';
 
@@ -97,7 +98,11 @@ class _ShopsPageState extends State<ShopsPage> {
       }
     });
     try {
-      final membershipsRes = await fetchMyMemberships();
+      final fix = await DeviceLocation.currentIfAllowed();
+      final membershipsRes = await fetchMyMemberships(
+        latitude: fix?.latitude,
+        longitude: fix?.longitude,
+      );
       final memberships =
           (membershipsRes['memberships'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
@@ -863,7 +868,7 @@ class _ShopsPageState extends State<ShopsPage> {
                                           progress != null &&
                                           !canRedeemProgress)
                                         _Pill(
-                                          label: _progressLabel(
+                                          label: loyaltyChipLabel(
                                             remaining: remaining,
                                             type: progressType,
                                             rewardTitle: rewardTitle,
@@ -882,7 +887,8 @@ class _ShopsPageState extends State<ShopsPage> {
                                                   ),
                                         )
                                       else ...[
-                                        ..._stampPills(m, stampLabel),
+                                        if (showsStampChip(m))
+                                          ..._stampPills(m, stampLabel),
                                         if (points > 0)
                                           _Pill(
                                             label: '$points pts',
@@ -967,20 +973,6 @@ class _ShopsPageState extends State<ShopsPage> {
           tone: _PillTone.stamps,
         ),
     ];
-  }
-
-  String _progressLabel({
-    required int remaining,
-    required String? type,
-    required String? rewardTitle,
-  }) {
-    final reward = (rewardTitle != null && rewardTitle.trim().isNotEmpty)
-        ? rewardTitle.trim()
-        : 'prêmio';
-    if (type == 'promo') return reward;
-    if (type == 'birthday') return reward;
-    final unit = type == 'spend' ? 'pts' : 'carimbos';
-    return 'Faltam $remaining $unit · $reward';
   }
 }
 

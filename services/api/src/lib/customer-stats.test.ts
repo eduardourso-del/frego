@@ -121,4 +121,21 @@ describe('progressFromWallet', () => {
     assert.equal(progress?.current, 9);
     assert.equal(progress?.remaining, 1);
   });
+
+  it('does not turn cashback into a stamp cycle', () => {
+    const progress = progressFromWallet(
+      snap([
+        entry({
+          campaignId: 'cash',
+          type: 'cashback',
+          unitsNeeded: 0,
+          stampsNeeded: 0,
+          canRedeem: false,
+          rewardTitle: '10% de cashback',
+        }),
+      ]),
+    );
+    assert.equal(progress?.type, 'cashback');
+    assert.equal(progress?.rewardTitle, '10% de cashback');
+  });
 });

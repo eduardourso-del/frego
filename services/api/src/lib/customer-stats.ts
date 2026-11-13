@@ -232,7 +232,7 @@ export async function aggregateCustomerStats(
       businessId,
       businessName,
     });
-    if (!progress) continue;
+    if (!progress || progress.type === 'cashback') continue;
 
     if (!nextReward) {
       nextReward = progress;

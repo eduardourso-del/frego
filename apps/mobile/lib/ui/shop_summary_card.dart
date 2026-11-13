@@ -153,9 +153,21 @@ class ShopSummaryCard extends StatelessWidget {
               locations.length > 1
           ? '$locName · $address'
           : address;
-      return closed ? '$base · fechado' : base;
+      final phrase = _distancePhrase(
+        city: loc['city'] as String?,
+        km: (loc['distanceKm'] as num?)?.toInt(),
+      );
+      final withDistance = phrase == null ? base : '$base · $phrase';
+      return closed ? '$withDistance · fechado' : withDistance;
     }
     return null;
+  }
+
+  static String? _distancePhrase({required String? city, required int? km}) {
+    if (km == null || km < 1) return null;
+    final name = city?.trim();
+    if (name == null || name.isEmpty) return '$km km';
+    return '$name · $km km';
   }
 
   static int? _parseHex(String? hex) {

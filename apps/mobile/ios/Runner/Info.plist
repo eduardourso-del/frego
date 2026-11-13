@@ -82,6 +82,8 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Para mostrar a distância até os estabelecimentos. Sem ela, você escolhe a cidade.</string>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
 	</dict>

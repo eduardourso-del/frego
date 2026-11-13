@@ -82,21 +82,40 @@ Future<List<Map<String, dynamic>>> fetchHomeCities() async {
       .cast<Map<String, dynamic>>();
 }
 
-Future<List<Map<String, dynamic>>> fetchExplorationCities() async {
+Future<Map<String, dynamic>> locateCity({
+  required double latitude,
+  required double longitude,
+}) async {
   final headers = await customerAuthHeaders();
   final res = await http.get(
-    Uri.parse('$apiBaseUrl/me/exploration/cities'),
+    Uri.parse('$apiBaseUrl/me/exploration/locate').replace(
+      queryParameters: {
+        'lat': latitude.toString(),
+        'lng': longitude.toString(),
+      },
+    ),
     headers: headers,
   );
-  final body = _decode(res);
-  return (body['cities'] as List<dynamic>? ?? [])
-      .cast<Map<String, dynamic>>();
+  return _decode(res);
 }
 
-Future<Map<String, dynamic>> fetchExploration() async {
+Map<String, String>? _positionQuery(double? latitude, double? longitude) {
+  if (latitude == null || longitude == null) return null;
+  return {
+    'lat': latitude.toString(),
+    'lng': longitude.toString(),
+  };
+}
+
+Future<Map<String, dynamic>> fetchExploration({
+  double? latitude,
+  double? longitude,
+}) async {
   final headers = await customerAuthHeaders();
   final res = await http.get(
-    Uri.parse('$apiBaseUrl/me/exploration'),
+    Uri.parse('$apiBaseUrl/me/exploration').replace(
+      queryParameters: _positionQuery(latitude, longitude),
+    ),
     headers: headers,
   );
   return _decode(res);
@@ -119,11 +138,17 @@ Future<Map<String, dynamic>> fetchExplorationPlace({
   required String businessId,
   required String city,
   required String state,
+  double? latitude,
+  double? longitude,
 }) async {
   final headers = await customerAuthHeaders();
   final res = await http.get(
     Uri.parse('$apiBaseUrl/me/exploration/businesses/$businessId').replace(
-      queryParameters: {'city': city, 'state': state},
+      queryParameters: {
+        'city': city,
+        'state': state,
+        ...?_positionQuery(latitude, longitude),
+      },
     ),
     headers: headers,
   );
@@ -143,22 +168,33 @@ Future<Map<String, dynamic>> setFavorite({
   return _decode(res);
 }
 
-Future<Map<String, dynamic>> fetchMyMemberships() async {
+Future<Map<String, dynamic>> fetchMyMemberships({
+  double? latitude,
+  double? longitude,
+}) async {
   final headers = await customerAuthHeaders();
   final res = await http.get(
-    Uri.parse('$apiBaseUrl/me/memberships'),
+    Uri.parse('$apiBaseUrl/me/memberships').replace(
+      queryParameters: _positionQuery(latitude, longitude),
+    ),
     headers: headers,
   );
   return _decode(res);
 }
 
-Future<Map<String, dynamic>> fetchMyWallet({String? businessId}) async {
+Future<Map<String, dynamic>> fetchMyWallet({
+  String? businessId,
+  double? latitude,
+  double? longitude,
+}) async {
   final headers = await customerAuthHeaders();
-  final uri = businessId == null
+  final query = <String, String>{
+    ...?_positionQuery(latitude, longitude),
+  };
+  if (businessId != null) query['businessId'] = businessId;
+  final uri = query.isEmpty
       ? Uri.parse('$apiBaseUrl/me/wallet')
-      : Uri.parse('$apiBaseUrl/me/wallet').replace(
-          queryParameters: {'businessId': businessId},
-        );
+      : Uri.parse('$apiBaseUrl/me/wallet').replace(queryParameters: query);
   final res = await http.get(uri, headers: headers);
   return _decode(res);
 }

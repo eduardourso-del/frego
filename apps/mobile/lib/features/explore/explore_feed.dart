@@ -33,6 +33,8 @@ class ExplorePlace {
     required this.isFavorite,
     required this.hasMembership,
     required this.business,
+    this.distanceCity,
+    this.distanceKm,
   });
 
   final String businessId;
@@ -40,14 +42,44 @@ class ExplorePlace {
   final bool hasMembership;
   final ExploreBusiness business;
 
+  /// City of the nearest unidade when it is outside the browsed city.
+  final String? distanceCity;
+  final int? distanceKm;
+
+  String? get distanceLabel =>
+      distancePhrase(city: distanceCity, km: distanceKm);
+
   ExplorePlace copyWith({bool? isFavorite}) {
     return ExplorePlace(
       businessId: businessId,
       isFavorite: isFavorite ?? this.isFavorite,
       hasMembership: hasMembership,
       business: business,
+      distanceCity: distanceCity,
+      distanceKm: distanceKm,
     );
   }
+}
+
+/// "Americana · 7 km", or "4 km" when her location is the origin and the
+/// unidade is in the city she is browsing.
+String? distancePhrase({required String? city, required int? km}) {
+  if (km == null || km < 1) return null;
+  final name = city?.trim();
+  if (name == null || name.isEmpty) return '$km km';
+  return '$name · $km km';
+}
+
+String explorationCityLine({
+  required String? cityLabel,
+  required int placeCount,
+  required bool anyOutsideCity,
+}) {
+  if (cityLabel == null) return 'Escolha uma cidade';
+  if (placeCount == 0) return cityLabel;
+  final where = anyOutsideCity ? 'perto de' : 'em';
+  if (placeCount == 1) return '1 lugar $where $cityLabel';
+  return '$placeCount lugares $where $cityLabel';
 }
 
 class ExploreCampaign {
@@ -362,6 +394,8 @@ ExplorePlace _place(Map<String, dynamic> raw) {
     businessId: raw['businessId'] as String? ?? '',
     isFavorite: raw['isFavorite'] == true,
     hasMembership: raw['hasMembership'] == true,
+    distanceCity: raw['distanceCity'] as String?,
+    distanceKm: (raw['distanceKm'] as num?)?.toInt(),
     business: ExploreBusiness(
       id: business['id'] as String? ?? raw['businessId'] as String? ?? '',
       name: business['name'] as String? ?? 'Estabelecimento',

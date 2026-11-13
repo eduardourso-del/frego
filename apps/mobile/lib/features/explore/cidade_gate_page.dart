@@ -4,12 +4,17 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
 import 'city_picker.dart';
+import 'device_location.dart';
+import 'use_location_button.dart';
 
 /// Half-screen sheet. The Cliente has to set Cidade before using the app.
 class CidadeGatePage extends StatefulWidget {
-  const CidadeGatePage({super.key, required this.onPicked});
+  const CidadeGatePage({super.key, required this.onPicked, this.initialCity});
 
   final VoidCallback onPicked;
+
+  /// Set when she already has a Cidade and is only being asked about location.
+  final CityChoice? initialCity;
 
   @override
   State<CidadeGatePage> createState() => _CidadeGatePageState();
@@ -31,6 +36,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
   void initState() {
     super.initState();
     _search.addListener(_onSearch);
+    _selected = widget.initialCity;
     _enter = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 280),
@@ -94,6 +100,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
     });
     try {
       await updateMyCustomer(city: city.city, state: city.state);
+      await DeviceLocation.markOffered();
       if (!mounted) return;
       // Drop the field only after the text input connection has closed.
       await WidgetsBinding.instance.endOfFrame;
@@ -173,12 +180,19 @@ class _CidadeGatePageState extends State<CidadeGatePage>
                     const Padding(
                       padding: EdgeInsets.fromLTRB(20, 6, 20, 0),
                       child: Text(
-                        'Para encontrar os estabelecimentos da sua cidade.',
+                        'Use sua localização para ver a distância. Sem ela, escolha a cidade.',
                         style: TextStyle(
                           fontSize: 15,
                           height: 1.4,
                           color: FregoColors.neutral500,
                         ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                      child: UseMyLocationButton(
+                        enabled: !_saving,
+                        onResolved: _pick,
                       ),
                     ),
                     Padding(

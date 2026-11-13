@@ -1,4 +1,5 @@
 import { Prisma, prisma } from '@frego/db';
+import { storeLocationPoint } from './geocode.js';
 import {
   locationAddressData,
   parseOperatingAddress,
@@ -262,7 +263,12 @@ export async function openCadastro(
   }
   if (block) return { ok: false, ...block };
 
-  return prisma.$transaction((tx) => openInside(tx, user, input));
+  return rememberPoint(await prisma.$transaction((tx) => openInside(tx, user, input)));
+}
+
+async function rememberPoint<T extends Ok | Fail>(result: T): Promise<T> {
+  if (result.ok) await storeLocationPoint(result.body.location.id);
+  return result;
 }
 
 function isMissingRow(err: unknown) {
@@ -289,7 +295,7 @@ export async function confirmCadastro(user: {
   if (block) return { ok: false, ...block };
 
   try {
-    return await prisma.$transaction(async (tx) => {
+    return rememberPoint(await prisma.$transaction(async (tx) => {
       const application = await tx.businessApplication.findUnique({
         where: { firebaseUid: user.uid },
       });
@@ -330,7 +336,7 @@ export async function confirmCadastro(user: {
       await tx.businessApplication.delete({ where: { id: application.id } });
       const body = await insertEstablishment(tx, user, input, trialPlan.id);
       return { ok: true, status: 201, body };
-    });
+    }));
   } catch (err) {
     if (!isMissingRow(err)) throw err;
     const again = await registrationBlock(user);

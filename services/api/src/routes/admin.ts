@@ -8,6 +8,7 @@ import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { civilYmd } from '../lib/promo.js';
 import { loadTagsByMembershipIds } from '../lib/tags.js';
 import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
+import { storeLocationPoint } from '../lib/geocode.js';
 import { patchBusinessCampaign } from './campaigns.js';
 import {
   emailOwnerIfApproved,
@@ -969,6 +970,9 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           name: body.name,
           address: body.address === undefined ? undefined : body.address,
           isOpen: body.isOpen,
+          ...(body.address !== undefined
+            ? { latitude: null, longitude: null }
+            : {}),
         },
         select: {
           id: true,
@@ -977,6 +981,10 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
           isOpen: true,
         },
       });
+
+      if (typeof body.address === 'string' && body.address.trim()) {
+        await storeLocationPoint(location.id);
+      }
 
       return { location };
     },

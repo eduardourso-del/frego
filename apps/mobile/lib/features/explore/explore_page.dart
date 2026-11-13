@@ -12,6 +12,7 @@ import '../../ui/ready_rewards_card.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/shop_detail_page.dart';
 import 'city_picker.dart';
+import 'device_location.dart';
 import 'explore_all_page.dart';
 import 'explore_cards.dart';
 import 'explore_feed.dart';
@@ -72,7 +73,11 @@ class _ExplorePageState extends State<ExplorePage> {
     });
     final membershipsFuture = fetchMyMemberships();
     try {
-      final body = await fetchExploration();
+      final fix = await DeviceLocation.currentIfAllowed();
+      final body = await fetchExploration(
+        latitude: fix?.latitude,
+        longitude: fix?.longitude,
+      );
       final ready = await _readyLinesFrom(membershipsFuture);
       if (!mounted) return;
       setState(() {
@@ -225,13 +230,17 @@ class _ExplorePageState extends State<ExplorePage> {
       relation: _relation,
     );
     final placeCount = _feed.placeCount;
-    final cityLine = browsing == null
-        ? 'Escolha uma cidade'
-        : placeCount == 0
-            ? browsing.label
-            : placeCount == 1
-                ? '1 lugar em ${browsing.label}'
-                : '$placeCount lugares em ${browsing.label}';
+    final anyOutsideCity = _feed.sections.any(
+      (section) => section.places.any((place) {
+        final city = place.distanceCity?.trim();
+        return city != null && city.isNotEmpty;
+      }),
+    );
+    final cityLine = explorationCityLine(
+      cityLabel: browsing?.label,
+      placeCount: placeCount,
+      anyOutsideCity: anyOutsideCity,
+    );
     final showTools = !initialLoad &&
         _error == null &&
         browsing != null &&

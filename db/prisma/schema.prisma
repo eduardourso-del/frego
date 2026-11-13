@@ -207,6 +207,9 @@ model Location {
   city         String?
   /// UF (2 letters). The oldest unidade with a UF sets Business.timeZone.
   state        String?
+  /// Address point. Distância uses the city center until a geocode fills this.
+  latitude     Float?
+  longitude    Float?
   isOpen     Boolean  @default(true) @map("is_open")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")

@@ -22,7 +22,54 @@ import {
 import { deleteCustomerAccount } from '../lib/delete-customer.js';
 import { setCustomerFavorite } from '../lib/favorite.js';
 import { findCity } from '../lib/city.js';
+import { displayKmFrom } from '../lib/exploration.js';
+import { parseOrigin, type LatLng } from '../lib/geo.js';
 import { listMunicipalities } from '../lib/municipalities.js';
+
+const locationSelect = {
+  id: true,
+  name: true,
+  address: true,
+  city: true,
+  state: true,
+  latitude: true,
+  longitude: true,
+  isOpen: true,
+} as const;
+
+function presentLocations<
+  T extends {
+    id: string;
+    name: string;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    isOpen: boolean;
+  },
+>(locations: T[], origin: LatLng | null) {
+  return locations.map((location) => {
+    const distanceKm = origin ? displayKmFrom(location, origin) : null;
+    return {
+      id: location.id,
+      name: location.name,
+      address: location.address,
+      isOpen: location.isOpen,
+      ...(distanceKm == null ? {} : { city: location.city, distanceKm }),
+    };
+  });
+}
+
+function presentBusiness<T extends { locations: Parameters<typeof presentLocations>[0] }>(
+  business: T,
+  origin: LatLng | null,
+) {
+  return {
+    ...business,
+    locations: presentLocations(business.locations, origin),
+  };
+}
 
 const redeemBody = z.object({
   businessId: z.string().min(1),
@@ -268,6 +315,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
   /** Memberships do cliente (lojas) + pools de carimbos/pontos. */
   app.get('/me/memberships', async (request) => {
     const auth = requireCustomerAuth(request);
+    const query = request.query as { lat?: unknown; lng?: unknown };
+    const origin = parseOrigin(query.lat, query.lng);
     const memberships = await prisma.membership.findMany({
       where: { customerId: auth.customerId },
       include: {
@@ -287,12 +336,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             status: true,
             type: true,
             locations: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                isOpen: true,
-              },
+              select: locationSelect,
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -319,7 +363,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           isVip: m.isVip,
           isFavorite: m.isFavorite,
           associatedAt: m.associatedAt,
-          business: m.business,
+          business: presentBusiness(m.business, origin),
           pools: wallet.pools,
           stampDestinations: wallet.stampDestinations,
           stampsExpireDays: wallet.stampsExpireDays,
@@ -413,7 +457,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
    */
   app.get('/me/wallet', async (request, reply) => {
     const auth = requireCustomerAuth(request);
-    const query = request.query as { businessId?: string };
+    const query = request.query as { businessId?: string; lat?: unknown; lng?: unknown };
+    const origin = parseOrigin(query.lat, query.lng);
 
     const memberships = await prisma.membership.findMany({
       where: { customerId: auth.customerId },
@@ -433,12 +478,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             pointsExpireDays: true,
             type: true,
             locations: {
-              select: {
-                id: true,
-                name: true,
-                address: true,
-                isOpen: true,
-              },
+              select: locationSelect,
               orderBy: { createdAt: 'asc' },
             },
           },
@@ -468,7 +508,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     const wallet = { ...baseWallet, campaigns };
 
     return {
-      business: membership.business,
+      business: presentBusiness(membership.business, origin),
       membership: {
         id: membership.id,
         isVip: membership.isVip,

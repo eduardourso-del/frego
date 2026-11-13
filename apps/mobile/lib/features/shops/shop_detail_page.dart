@@ -13,6 +13,8 @@ import '../../ui/promo_copy.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
+import '../explore/device_location.dart';
+import '../explore/explore_feed.dart';
 import 'campaign_detail_page.dart';
 import 'earn_detail_page.dart';
 import 'pesquisa_page.dart';
@@ -62,13 +64,20 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     try {
       final exploring = widget.explorationCity != null &&
           widget.explorationState != null;
+      final fix = await DeviceLocation.currentIfAllowed();
       final data = exploring
           ? await fetchExplorationPlace(
               businessId: widget.businessId,
               city: widget.explorationCity!,
               state: widget.explorationState!,
+              latitude: fix?.latitude,
+              longitude: fix?.longitude,
             )
-          : await fetchMyWallet(businessId: widget.businessId);
+          : await fetchMyWallet(
+              businessId: widget.businessId,
+              latitude: fix?.latitude,
+              longitude: fix?.longitude,
+            );
       Map<String, dynamic>? convite;
       try {
         convite = await fetchMyConvite(widget.businessId);
@@ -835,6 +844,14 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     );
   }
 
+  String? _distanceCity(Map<String, dynamic> loc) {
+    final name = (loc['city'] as String?)?.trim();
+    final browsing = widget.explorationCity?.trim().toLowerCase();
+    if (name == null || name.isEmpty) return null;
+    if (browsing != null && name.toLowerCase() == browsing) return null;
+    return name;
+  }
+
   String? _primaryAddressLine(List<Map<String, dynamic>> locations) {
     final lines = <String>[];
     for (final loc in locations) {
@@ -847,7 +864,12 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
               locations.length > 1
           ? '$locName · $address'
           : address;
-      lines.add(closed ? '$base · fechado' : base);
+      final phrase = distancePhrase(
+        city: _distanceCity(loc),
+        km: (loc['distanceKm'] as num?)?.toInt(),
+      );
+      final withDistance = phrase == null ? base : '$base · $phrase';
+      lines.add(closed ? '$withDistance · fechado' : withDistance);
     }
     if (lines.isEmpty) return null;
     return lines.join('\n');

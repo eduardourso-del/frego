@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -5,6 +7,8 @@ import '../../api/frego_api.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
 import '../../ui/adaptive.dart';
+import 'device_location.dart';
+import 'use_location_button.dart';
 
 class CityChoice {
   const CityChoice({required this.city, required this.state});
@@ -31,10 +35,6 @@ List<CityChoice> _choicesFrom(List<Map<String, dynamic>> rows) {
   ];
 }
 
-Future<List<CityChoice>> loadCityChoices() async {
-  return _choicesFrom(await fetchExplorationCities());
-}
-
 List<CityChoice>? _homeCities;
 
 /// Where she lives. Every municipality, not the cities that already have a place.
@@ -50,12 +50,12 @@ Future<CityChoice?> pickCity(
   BuildContext context, {
   CityChoice? selected,
 }) async {
-  final cities = await loadCityChoices();
+  final cities = await loadHomeCities();
   if (!context.mounted) return null;
   if (cities.isEmpty) {
     FregoAdaptive.showMessage(
       context,
-      'Ainda não há cidades com estabelecimentos.',
+      'Não foi possível carregar as cidades. Tente de novo.',
     );
     return null;
   }
@@ -65,7 +65,8 @@ Future<CityChoice?> pickCity(
       cities: cities,
       selected: selected,
       title: 'Cidade',
-      subtitle: 'A lista mostra cidades com lugares visíveis.',
+      subtitle: 'Qualquer cidade. Os lugares ficam a até 15 km do centro.',
+      requireQuery: true,
     ),
   );
 }
@@ -181,6 +182,7 @@ class _CityPickerPageState extends State<CityPickerPage> {
   /// Close the keyboard before the route goes away. Popping a focused field
   /// deadlocks the text input connection and the app stops responding.
   void _choose(CityChoice city) {
+    unawaited(DeviceLocation.markOffered());
     FocusManager.instance.primaryFocus?.unfocus();
     final navigator = Navigator.of(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -202,6 +204,10 @@ class _CityPickerPageState extends State<CityPickerPage> {
         },
         child: Column(
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: UseMyLocationButton(onResolved: (city) async => _choose(city)),
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
               child: FregoTextField(

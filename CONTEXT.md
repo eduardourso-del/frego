@@ -17,7 +17,7 @@ The kind of an Estabelecimento: Padaria, Café, Restaurante, Pizzaria, Hamburgue
 _Avoid_: categoria, grupo, Alimentação, Beleza, Comércio, Serviços
 
 **Unidade**:
-An address where an Estabelecimento operates. Its city and UF decide which Exploração lists that Estabelecimento.
+An address where an Estabelecimento operates. Exploração lists it for its own city, and for another city when the address is within 15 km of that city's center.
 _Avoid_: loja, filial, location
 
 **Fuso**:
@@ -171,12 +171,16 @@ _Avoid_: seguir, membership, clube
 ## Exploração
 
 **Cidade**:
-The city and UF where the Cliente lives, kept on her profile. Only she sets it. It does not have to be a city with a Visível Estabelecimento.
-_Avoid_: endereço, GPS, localização
+The city and UF where the Cliente lives, kept on her profile. Only she sets it, by name or from her location when she allows it. It does not have to be a city with a Visível Estabelecimento. Her location is not read unless she allows it.
+_Avoid_: endereço
 
 **Exploração**:
-The city and UF a Cliente is browsing, the Visível Estabelecimentos there (including ones where she already has a Clube), and the Campanhas that apply there. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
+The city and UF a Cliente is browsing, the Visível Estabelecimentos in that city or within 15 km of its center (including ones where she already has a Clube), and the Campanhas that apply at those unidades. It starts as her Cidade until she picks another city to browse. That choice is remembered and is not her Cidade.
 _Avoid_: lojas, descoberta, catálogo
+
+**Distância**:
+How far a unidade is from the Cliente when she allows her location. Otherwise, how far it is from the center of the city she is browsing. A unidade in the browsed city has no Distância unless her location is the origin.
+_Avoid_: raio
 
 **Visível**:
 An Estabelecimento an operator has chosen to include in Exploração. It stays out until that choice is made. The public page is not Exploração.

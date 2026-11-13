@@ -124,6 +124,21 @@ class ExplorePlaceCard extends StatelessWidget {
                         color: FregoColors.ink,
                       ),
                     ),
+                    if (place.distanceLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          place.distanceLabel!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            height: 1.3,
+                            fontWeight: FontWeight.w600,
+                            color: FregoColors.ink,
+                          ),
+                        ),
+                      ),
                     if (slogan != null && slogan.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),

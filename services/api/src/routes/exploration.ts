@@ -6,15 +6,20 @@ import { deriveWallet } from '../lib/wallet.js';
 import { resolveMembershipRecognition } from '../lib/audience.js';
 import { civilYmd } from '../lib/promo.js';
 import { findCity, type CityRef } from '../lib/city.js';
+import { nearestMunicipality } from '../lib/centroids.js';
+import { parseOrigin, type LatLng } from '../lib/geo.js';
+import { listMunicipalities } from '../lib/municipalities.js';
 import { setCustomerFavorite } from '../lib/favorite.js';
 import {
   EXPLORATION_STATUSES,
   browsingCity,
   buildExplorationFeed,
   campaignAppliesToCity,
+  explorationDistanceLabel,
   leadLine,
   listCatalogCities,
-  locationInCity,
+  locationDistanceLabelKm,
+  locationInExploration,
   orderLocationsForCity,
 } from '../lib/exploration.js';
 
@@ -26,6 +31,8 @@ const cityBody = z.object({
 const placeQuery = z.object({
   city: z.string().trim().min(1).max(80),
   state: z.string().trim().min(2).max(2),
+  lat: z.union([z.string(), z.number()]).optional(),
+  lng: z.union([z.string(), z.number()]).optional(),
 });
 
 const listedBusinessSelect = {
@@ -49,6 +56,8 @@ const listedBusinessSelect = {
       address: true,
       city: true,
       state: true,
+      latitude: true,
+      longitude: true,
       isOpen: true,
     },
   },
@@ -156,7 +165,11 @@ function publicCampaignEntry(
   };
 }
 
-function publicBusiness(business: ListedBusiness, city: CityRef) {
+function publicBusiness(
+  business: ListedBusiness,
+  city: CityRef,
+  origin?: LatLng | null,
+) {
   return {
     id: business.id,
     name: business.name,
@@ -169,20 +182,31 @@ function publicBusiness(business: ListedBusiness, city: CityRef) {
     pointsPerReal: business.pointsPerReal,
     stampsExpireDays: business.stampsExpireDays,
     pointsExpireDays: business.pointsExpireDays,
-    locations: orderLocationsForCity(business.locations, city).map(
-      (location) => ({
+    locations: orderLocationsForCity(business.locations, city)
+      .filter((location) => locationInExploration(location, city))
+      .map((location) => ({
         id: location.id,
         name: location.name,
         address: location.address,
         city: location.city,
         state: location.state,
         isOpen: location.isOpen,
-      }),
-    ),
+        distanceKm: locationDistanceLabelKm(location, city, origin),
+      })),
   };
 }
 
 export const explorationRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/me/exploration/locate', async (request, reply) => {
+    requireCustomerAuth(request);
+    const query = request.query as { lat?: unknown; lng?: unknown };
+    const origin = parseOrigin(query.lat, query.lng);
+    if (!origin) return reply.code(400).send({ error: 'LOCATION_INVALID' });
+    const city = nearestMunicipality(origin);
+    if (!city) return reply.code(404).send({ error: 'CITY_UNAVAILABLE' });
+    return city;
+  });
+
   app.get('/me/exploration/cities', async (request) => {
     requireCustomerAuth(request);
     return { cities: await listCatalogCities() };
@@ -200,6 +224,8 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
         browseCityChosen: true,
       },
     });
+    const query = request.query as { lat?: unknown; lng?: unknown };
+    const origin = parseOrigin(query.lat, query.lng);
     const browsing = browsingCity(customer);
     const cidade =
       customer.city && customer.state
@@ -216,11 +242,17 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const businesses = await loadListedBusinesses();
-    const inCity = businesses.filter((business) =>
-      business.locations.some((location) => locationInCity(location, browsing)),
+    const inRange = businesses.filter((business) =>
+      business.locations.some((location) => locationInExploration(location, browsing)),
+    );
+    const distanceByBusiness = new Map(
+      inRange.map((business) => [
+        business.id,
+        explorationDistanceLabel(business.locations, browsing, origin),
+      ]),
     );
 
-    const ids = inCity.map((business) => business.id);
+    const ids = inRange.map((business) => business.id);
     const [memberships, favorites] = await Promise.all([
       prisma.membership.findMany({
         where: { customerId: auth.customerId, businessId: { in: ids } },
@@ -243,7 +275,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     >();
     await Promise.all(
       memberships.map(async (membership) => {
-        const business = inCity.find((item) => item.id === membership.businessId);
+        const business = inRange.find((item) => item.id === membership.businessId);
         if (!business) return;
         const applicable = new Set(
           applicableCampaigns(business, browsing).map((campaign) => campaign.id),
@@ -268,7 +300,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
       }),
     );
 
-    const places = inCity.map((business) => {
+    const places = inRange.map((business) => {
       const membership = membershipByBusiness.get(business.id);
       const isFavorite =
         favoriteIds.has(business.id) || membership?.isFavorite === true;
@@ -291,7 +323,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
       };
     });
 
-    const campaigns = inCity.flatMap((business) => {
+    const campaigns = inRange.flatMap((business) => {
       const place = places.find((item) => item.businessId === business.id);
       return applicableCampaigns(business, browsing).map((campaign) => ({
         campaignId: campaign.id,
@@ -327,6 +359,8 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
         businessId: place.businessId,
         isFavorite: place.isFavorite,
         hasMembership: place.hasMembership,
+        distanceCity: distanceByBusiness.get(place.businessId)?.city ?? null,
+        distanceKm: distanceByBusiness.get(place.businessId)?.distanceKm ?? null,
         business: place.business,
       })),
       campaigns: section.campaigns.map((campaign) => ({
@@ -358,7 +392,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
         return a.name.localeCompare(b.name, 'pt-BR');
       })
       .map((place) => {
-        const business = inCity.find((item) => item.id === place.businessId);
+        const business = inRange.find((item) => item.id === place.businessId);
         const applicable = business
           ? applicableCampaigns(business, browsing)
           : [];
@@ -366,6 +400,8 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
           businessId: place.businessId,
           isFavorite: place.isFavorite,
           hasMembership: place.hasMembership,
+          distanceCity: distanceByBusiness.get(place.businessId)?.city ?? null,
+          distanceKm: distanceByBusiness.get(place.businessId)?.distanceKm ?? null,
           leadLine: leadLine(
             applicable.map((campaign) => ({
               id: campaign.id,
@@ -398,7 +434,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
   app.put('/me/exploration/city', async (request, reply) => {
     const auth = requireCustomerAuth(request);
     const body = cityBody.parse(request.body);
-    const match = findCity(await listCatalogCities(), body.city, body.state);
+    const match = findCity(listMunicipalities(), body.city, body.state);
     if (!match) {
       return reply.code(400).send({ error: 'CITY_UNAVAILABLE' });
     }
@@ -425,6 +461,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     const { businessId } = request.params as { businessId: string };
     const query = placeQuery.parse(request.query);
     const city = { city: query.city.trim(), state: query.state.trim().toUpperCase() };
+    const origin = parseOrigin(query.lat, query.lng);
 
     const business = (
       await prisma.business.findMany({
@@ -439,10 +476,10 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
     if (!business) {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
-    const inCity = business.locations.some((location) =>
-      locationInCity(location, city),
+    const inRange = business.locations.some((location) =>
+      locationInExploration(location, city),
     );
-    if (!inCity) {
+    if (!inRange) {
       return reply.code(404).send({ error: 'NOT_FOUND' });
     }
 
@@ -469,7 +506,7 @@ export const explorationRoutes: FastifyPluginAsync = async (app) => {
       }),
     ]);
     const isFavorite = Boolean(favorite) || membership?.isFavorite === true;
-    const shown = publicBusiness(business, city);
+    const shown = publicBusiness(business, city, origin);
 
     if (!membership) {
       const campaigns = applicableCampaigns(business, city).map((campaign) =>

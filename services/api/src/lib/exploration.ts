@@ -1,7 +1,8 @@
 import { prisma } from '@frego/db';
 import { BUSINESS_TYPE_VALUES } from './business-type.js';
-import { groupCities, type CityRef } from './city.js';
-import { sameCity } from './city.js';
+import { cityCenter } from './centroids.js';
+import { groupCities, sameCity, type CityRef } from './city.js';
+import { displayDistanceKm, EXPLORATION_RADIUS_KM, haversineKm, type LatLng } from './geo.js';
 
 export const EXPLORATION_STATUSES = ['trial', 'active'] as const;
 
@@ -31,6 +32,8 @@ export type ExplorationLocation = {
   id: string;
   city: string | null;
   state: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 };
 
 export function locationInCity(
@@ -41,6 +44,113 @@ export function locationInCity(
   return sameCity(location.city, location.state, city.city, city.state);
 }
 
+function locationPoint(location: ExplorationLocation): LatLng | null {
+  if (
+    typeof location.latitude === 'number' &&
+    typeof location.longitude === 'number' &&
+    Number.isFinite(location.latitude) &&
+    Number.isFinite(location.longitude)
+  ) {
+    return { latitude: location.latitude, longitude: location.longitude };
+  }
+  if (!location.city || !location.state) return null;
+  return cityCenter(location.city, location.state);
+}
+
+function distanceKmBetween(
+  location: ExplorationLocation,
+  origin: LatLng,
+): number | null {
+  const point = locationPoint(location);
+  if (!point) return null;
+  return haversineKm(origin, point);
+}
+
+/** Kilometers from the browsed city's center to this unidade. Null when either point is missing. */
+export function distanceKmFromCity(
+  location: ExplorationLocation,
+  city: CityRef,
+): number | null {
+  const origin = cityCenter(city.city, city.state);
+  if (!origin) return null;
+  return distanceKmBetween(location, origin);
+}
+
+/** Whole kilometers from a phone position to this unidade. Null when the unidade has no point. */
+export function displayKmFrom(
+  location: ExplorationLocation,
+  origin: LatLng,
+): number | null {
+  const km = distanceKmBetween(location, origin);
+  if (km == null) return null;
+  return displayDistanceKm(km);
+}
+
+/**
+ * A unidade in the browsed city always counts. Any other unidade counts when
+ * it sits within 15 km of that city's center.
+ */
+export function locationInExploration(
+  location: ExplorationLocation,
+  city: CityRef,
+): boolean {
+  if (locationInCity(location, city)) return true;
+  const km = distanceKmFromCity(location, city);
+  return km != null && km <= EXPLORATION_RADIUS_KM;
+}
+
+/**
+ * Card label for the nearest unidade inside the ring.
+ * From the phone, every unidade has kilometers, and a unidade in the browsed
+ * city omits its name. From the city center, a nearest unidade in that city
+ * has no label. Whole kilometers, and never 0.
+ */
+export function explorationDistanceLabel(
+  locations: ExplorationLocation[],
+  city: CityRef,
+  origin?: LatLng | null,
+): { city: string | null; distanceKm: number } | null {
+  const inside = locations
+    .filter((location) => locationInExploration(location, city))
+    .map((location) => ({
+      location,
+      km: origin
+        ? distanceKmBetween(location, origin)
+        : distanceKmFromCity(location, city),
+    }))
+    .sort((a, b) => {
+      if (a.km == null && b.km == null) return 0;
+      if (a.km == null) return 1;
+      if (b.km == null) return -1;
+      return a.km - b.km;
+    });
+  const nearest = inside[0];
+  if (!nearest || nearest.km == null) return null;
+  const same = locationInCity(nearest.location, city);
+  if (same && !origin) return null;
+  if (same) return { city: null, distanceKm: displayDistanceKm(nearest.km) };
+  const name = nearest.location.city?.trim();
+  if (!name) return null;
+  return { city: name, distanceKm: displayDistanceKm(nearest.km) };
+}
+
+/**
+ * Place-page kilometers. From the phone, a unidade in the browsed city still
+ * has them. From the city center, that unidade has none.
+ */
+export function locationDistanceLabelKm(
+  location: ExplorationLocation,
+  city: CityRef,
+  origin?: LatLng | null,
+): number | null {
+  if (!origin && locationInCity(location, city)) return null;
+  const km = origin
+    ? distanceKmBetween(location, origin)
+    : distanceKmFromCity(location, city);
+  if (km == null) return null;
+  return displayDistanceKm(km);
+}
+
 export function campaignAppliesToCity(
   campaign: Pick<ExplorationCampaign, 'locationIds'>,
   locations: ExplorationLocation[],
@@ -49,7 +159,7 @@ export function campaignAppliesToCity(
   if (campaign.locationIds.length === 0) return true;
   return campaign.locationIds.some((locationId) => {
     const location = locations.find((item) => item.id === locationId);
-    return location ? locationInCity(location, city) : false;
+    return location ? locationInExploration(location, city) : false;
   });
 }
 
@@ -61,7 +171,12 @@ export function orderLocationsForCity<T extends ExplorationLocation>(
     const aIn = locationInCity(a, city);
     const bIn = locationInCity(b, city);
     if (aIn !== bIn) return aIn ? -1 : 1;
-    return 0;
+    const aKm = distanceKmFromCity(a, city);
+    const bKm = distanceKmFromCity(b, city);
+    if (aKm == null && bKm == null) return 0;
+    if (aKm == null) return 1;
+    if (bKm == null) return -1;
+    return aKm - bKm;
   });
 }
 

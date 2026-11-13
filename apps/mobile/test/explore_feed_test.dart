@@ -218,4 +218,66 @@ void main() {
     expect(feed.sections.single.campaigns.single.canRedeem, isFalse);
     expect(feed.sections.single.campaigns.single.line, '10% de cashback');
   });
+
+  test('Distância names another city and keeps kilometers in this one', () {
+    expect(distancePhrase(city: 'Americana', km: 7), 'Americana · 7 km');
+    expect(distancePhrase(city: 'Americana', km: null), isNull);
+    expect(distancePhrase(city: null, km: 4), '4 km');
+    expect(distancePhrase(city: '  ', km: 7), '7 km');
+
+    final feed = parseExplorationFeed({
+      'sections': [
+        {
+          'type': 'café',
+          'places': [
+            {
+              'businessId': 'cafe',
+              'distanceCity': 'Americana',
+              'distanceKm': 7,
+              'business': {'id': 'cafe', 'name': 'Café', 'type': 'café'},
+            },
+          ],
+          'campaigns': [],
+        },
+      ],
+    });
+    final place = feed.sections.single.places.single;
+    expect(place.distanceLabel, 'Americana · 7 km');
+    expect(place.copyWith(isFavorite: true).distanceLabel, 'Americana · 7 km');
+  });
+
+  test('the header says perto de when any place is outside the city', () {
+    expect(
+      explorationCityLine(
+        cityLabel: 'Nova Odessa, SP',
+        placeCount: 3,
+        anyOutsideCity: true,
+      ),
+      '3 lugares perto de Nova Odessa, SP',
+    );
+    expect(
+      explorationCityLine(
+        cityLabel: 'Nova Odessa, SP',
+        placeCount: 1,
+        anyOutsideCity: false,
+      ),
+      '1 lugar em Nova Odessa, SP',
+    );
+    expect(
+      explorationCityLine(
+        cityLabel: 'Nova Odessa, SP',
+        placeCount: 0,
+        anyOutsideCity: false,
+      ),
+      'Nova Odessa, SP',
+    );
+    expect(
+      explorationCityLine(
+        cityLabel: null,
+        placeCount: 0,
+        anyOutsideCity: false,
+      ),
+      'Escolha uma cidade',
+    );
+  });
 }

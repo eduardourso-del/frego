@@ -46,6 +46,37 @@ String? stampScopeLabel(
   return 'Saldo compartilhado';
 }
 
+/// Chip under a Loja. Cashback is not a carimbo cycle.
+String loyaltyChipLabel({
+  required int remaining,
+  required String? type,
+  required String? rewardTitle,
+}) {
+  if (type == 'cashback') {
+    final title = rewardTitle?.trim();
+    return title != null && title.isNotEmpty ? title : 'Cashback';
+  }
+  final reward = (rewardTitle != null && rewardTitle.trim().isNotEmpty)
+      ? rewardTitle.trim()
+      : 'prêmio';
+  if (type == 'promo' || type == 'birthday') return reward;
+  final unit = type == 'spend' ? 'pts' : 'carimbos';
+  return 'Faltam $remaining $unit · $reward';
+}
+
+/// A zero stamp chip only belongs on a shop that actually runs carimbos.
+bool showsStampChip(Map membership) {
+  if (holdsStamps(membership)) return true;
+  final campaigns = membership['campaigns'];
+  if (campaigns is! List) return false;
+  for (final campaign in campaigns) {
+    if (campaign is! Map) continue;
+    final type = campaign['type'];
+    if (type == 'stamps' || type == 'visits') return true;
+  }
+  return false;
+}
+
 String stampSummary(Map membership) {
   final pools = membership['pools'] as Map?;
   final shared = (pools?['stamps'] as num?)?.toInt() ?? 0;

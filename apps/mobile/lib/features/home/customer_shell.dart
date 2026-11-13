@@ -4,6 +4,8 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../explore/cidade_gate_page.dart';
+import '../explore/city_picker.dart';
+import '../explore/device_location.dart';
 import '../explore/explore_page.dart';
 import '../history/history_page.dart';
 import '../profile/profile_page.dart';
@@ -53,6 +55,8 @@ class _CustomerShellState extends State<CustomerShell> {
   int _historyRefresh = 0;
   bool _checkingCidade = false;
   bool _needsCidade = false;
+  bool _offerLocation = false;
+  CityChoice? _cidade;
   late final CupertinoTabController _cupertinoTabs;
 
   @override
@@ -80,13 +84,23 @@ class _CustomerShellState extends State<CustomerShell> {
 
   Future<void> _checkCidade() async {
     try {
+      final offered = await DeviceLocation.wasOffered();
       final data = await fetchMyCustomer();
       final customer = data['customer'] as Map<String, dynamic>?;
       final city = (customer?['city'] as String?)?.trim();
+      final state = (customer?['state'] as String?)?.trim();
+      final choice = city == null ||
+              city.isEmpty ||
+              state == null ||
+              state.isEmpty
+          ? null
+          : CityChoice(city: city, state: state);
       if (!mounted) return;
       setState(() {
         _checkingCidade = false;
-        _needsCidade = city == null || city.isEmpty;
+        _cidade = choice;
+        _needsCidade = choice == null;
+        _offerLocation = !offered;
       });
     } catch (_) {
       if (mounted) setState(() => _checkingCidade = false);
@@ -188,7 +202,7 @@ class _CustomerShellState extends State<CustomerShell> {
     final home = FregoAdaptive.useCupertino(context)
         ? _cupertinoHome()
         : _materialHome();
-    if (!_needsCidade) return home;
+    if (!_needsCidade && !_offerLocation) return home;
     return PopScope(
       canPop: false,
       child: Stack(
@@ -196,7 +210,15 @@ class _CustomerShellState extends State<CustomerShell> {
         children: [
           // Own widget so the shell does not rebuild when the keyboard opens.
           _HomeBehindSheet(child: home),
-          CidadeGatePage(onPicked: () => setState(() => _needsCidade = false)),
+          CidadeGatePage(
+            initialCity: _needsCidade ? null : _cidade,
+            onPicked: () => setState(() {
+              _needsCidade = false;
+              _offerLocation = false;
+              _exploreRefresh++;
+              _shopsRefresh++;
+            }),
+          ),
         ],
       ),
     );

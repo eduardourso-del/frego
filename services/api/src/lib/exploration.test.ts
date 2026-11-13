@@ -1,12 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { cityCenter, nearestMunicipality } from './centroids.js';
+import { displayDistanceKm } from './geo.js';
 import {
   browsingCity,
   buildExplorationFeed,
   campaignAppliesToCity,
+  distanceKmFromCity,
+  explorationDistanceLabel,
   leadLine,
+  locationDistanceLabelKm,
+  locationInExploration,
   orderLocationsForCity,
   type ExplorationCampaign,
+  type ExplorationLocation,
   type FeedCampaign,
   type FeedPlace,
 } from './exploration.js';
@@ -24,6 +31,152 @@ function campaign(
     ...partial,
   };
 }
+
+function northOf(
+  origin: { latitude: number; longitude: number },
+  km: number,
+): { latitude: number; longitude: number } {
+  return {
+    latitude: origin.latitude + km / 111.32,
+    longitude: origin.longitude,
+  };
+}
+
+describe('locationInExploration', () => {
+  const americana = { city: 'Americana', state: 'SP' };
+  const novaOdessa = { city: 'Nova Odessa', state: 'SP' };
+  const center = cityCenter('Americana', 'SP');
+
+  it('includes Americana for someone browsing Nova Odessa', () => {
+    const km = distanceKmFromCity(
+      { id: 'am', city: 'Americana', state: 'SP' },
+      novaOdessa,
+    );
+    assert.ok(km != null && km > 6 && km < 7);
+    assert.equal(displayDistanceKm(km!), 6);
+    assert.equal(
+      locationInExploration({ id: 'am', city: 'Americana', state: 'SP' }, novaOdessa),
+      true,
+    );
+    assert.deepEqual(
+      explorationDistanceLabel(
+        [{ id: 'am', city: 'Americana', state: 'SP' }],
+        novaOdessa,
+      ),
+      { city: 'Americana', distanceKm: 6 },
+    );
+  });
+
+  it('leaves Campinas outside the Nova Odessa ring', () => {
+    assert.equal(
+      locationInExploration({ id: 'cps', city: 'Campinas', state: 'SP' }, novaOdessa),
+      false,
+    );
+  });
+
+  it('keeps a unidade in the browsed city even far from the center', () => {
+    assert.ok(center);
+    const far = northOf(center, 30);
+    const location: ExplorationLocation = {
+      id: 'far',
+      city: 'Americana',
+      state: 'SP',
+      ...far,
+    };
+    assert.equal(locationInExploration(location, americana), true);
+    assert.equal(explorationDistanceLabel([location], americana), null);
+    assert.equal(locationDistanceLabelKm(location, americana), null);
+    const phone = northOf(center, 2);
+    assert.deepEqual(explorationDistanceLabel([location], americana, phone), {
+      city: null,
+      distanceKm: 28,
+    });
+    assert.equal(locationDistanceLabelKm(location, americana, phone), 28);
+  });
+
+  it('uses the nearer unidade, including one outside the city', () => {
+    assert.ok(center);
+    const label = explorationDistanceLabel(
+      [
+        { id: 'home', city: 'Americana', state: 'SP', ...northOf(center, 12) },
+        { id: 'near', city: 'Nova Odessa', state: 'SP', ...northOf(center, 4) },
+      ],
+      americana,
+    );
+    assert.deepEqual(label, { city: 'Nova Odessa', distanceKm: 4 });
+  });
+
+  it('hides Distância when the nearest unidade is in the browsed city', () => {
+    assert.ok(center);
+    assert.equal(
+      explorationDistanceLabel(
+        [
+          { id: 'home', city: 'Americana', state: 'SP', ...northOf(center, 2) },
+          { id: 'near', city: 'Nova Odessa', state: 'SP', ...northOf(center, 6) },
+        ],
+        americana,
+      ),
+      null,
+    );
+  });
+
+  it('stops at 15 km and shows 1 km under a kilometer', () => {
+    assert.ok(center);
+    assert.equal(
+      locationInExploration(
+        { id: 'edge', city: 'Sumaré', state: 'SP', ...northOf(center, 14.9) },
+        americana,
+      ),
+      true,
+    );
+    assert.equal(
+      locationInExploration(
+        { id: 'out', city: 'Limeira', state: 'SP', ...northOf(center, 15.2) },
+        americana,
+      ),
+      false,
+    );
+    assert.deepEqual(
+      explorationDistanceLabel(
+        [{ id: 'door', city: 'Nova Odessa', state: 'SP', ...northOf(center, 0.4) }],
+        americana,
+      ),
+      { city: 'Nova Odessa', distanceKm: 1 },
+    );
+  });
+
+  it('names the municipality under the phone', () => {
+    const center = cityCenter('Nova Odessa', 'SP');
+    assert.ok(center);
+    assert.deepEqual(nearestMunicipality(center), {
+      city: 'Nova Odessa',
+      state: 'SP',
+    });
+    assert.deepEqual(nearestMunicipality(northOf(center, 2)), {
+      city: 'Nova Odessa',
+      state: 'SP',
+    });
+  });
+
+  it('lists a Campanha on a unidade inside the ring', () => {
+    assert.equal(
+      campaignAppliesToCity(
+        campaign({ id: 'near', type: 'stamps', locationIds: ['am'] }),
+        [{ id: 'am', city: 'Americana', state: 'SP' }],
+        novaOdessa,
+      ),
+      true,
+    );
+    assert.equal(
+      campaignAppliesToCity(
+        campaign({ id: 'far', type: 'stamps', locationIds: ['cps'] }),
+        [{ id: 'cps', city: 'Campinas', state: 'SP' }],
+        novaOdessa,
+      ),
+      false,
+    );
+  });
+});
 
 describe('campaignAppliesToCity', () => {
   const locations = [
@@ -62,6 +215,23 @@ describe('orderLocationsForCity', () => {
     assert.deepEqual(
       ordered.map((location) => location.id),
       ['sp', 'cps'],
+    );
+  });
+
+  it('lists the browsed city first, then the nearer unidade', () => {
+    const origin = cityCenter('Americana', 'SP');
+    assert.ok(origin);
+    const ordered = orderLocationsForCity(
+      [
+        { id: 'far', city: 'Sumaré', state: 'SP', ...northOf(origin, 12) },
+        { id: 'home', city: 'Americana', state: 'SP' },
+        { id: 'near', city: 'Nova Odessa', state: 'SP', ...northOf(origin, 4) },
+      ],
+      { city: 'Americana', state: 'SP' },
+    );
+    assert.deepEqual(
+      ordered.map((location) => location.id),
+      ['home', 'near', 'far'],
     );
   });
 });

@@ -102,6 +102,7 @@ for key in (
     "RESEND_API_KEY",
     "MAIL_FROM",
     "ESTABLISHMENT_APP_ORIGIN",
+    "GOOGLE_GEOCODING_API_KEY",
 ):
     value = os.environ.get(key, "").strip()
     if value:

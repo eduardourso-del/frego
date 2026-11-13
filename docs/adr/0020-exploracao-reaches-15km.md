@@ -1,0 +1,9 @@
+# Exploração reaches 15 km past the city
+
+A unidade used to be listed only when its city and UF matched the city a Cliente was browsing, so Nova Odessa (6.5 km from Americana) saw an empty Exploração. Exploração now lists every unidade in the browsed city, plus any unidade within 15 km of that city's center. Who is listed stays on that center, so two people browsing one city see the same places. Distância is from her phone when she allows location on the city screen, and from the city center when she does not. She still picks a city by name in that case. The unidade's address is geocoded with Google when it is saved. A unidade with no point uses its city center, so every such place in one city shares a number until her phone is the origin. Several unidades count from the nearest one, and only Campanhas at unidades inside the ring apply. Distância is a label on the Estabelecimento card and the place page. From the city center it is shown only when that unidade's city is not the one she is browsing. From her phone it is shown for every unidade, and the city name is omitted when the unidade is in the browsed city. It does not change Relevância. Campanha cards stay as they are. Trocar searches every municipality, and the ring is measured from the city she picks. Saving the address still succeeds when Google returns no point.
+
+## Considered Options
+
+- **Exact city match.** Rejected: a Cliente in Nova Odessa could not see Americana.
+- **20 km.** Rejected: Paulínia, Monte Mor, and Cosmópolis joined the Nova Odessa ring. 15 km keeps Sumaré, Americana, Hortolândia, and Santa Bárbara d'Oeste.
+- **Her phone for who is listed.** Rejected: Cidade is where she lives, and two people browsing one city would see different places. The phone is only the origin of Distância, and only when she allows it.

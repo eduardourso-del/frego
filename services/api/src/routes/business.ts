@@ -5,6 +5,7 @@ import { requireAuth } from '../plugins/auth.js';
 import { normalizeCnpj } from '../lib/cnpj.js';
 import { activeEarnKindsForBusiness, type EarnKind } from '../lib/earn-kinds.js';
 import { closeToldExpiryNotices } from '../lib/notify/close-told-expiry.js';
+import { storeLocationPoint } from '../lib/geocode.js';
 import {
   locationAddressData,
   operatingAddressSchema,
@@ -292,7 +293,11 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
       data: {
         name: body.name,
         ...(parsedAddress?.ok
-          ? locationAddressData(parsedAddress.address)
+          ? {
+              ...locationAddressData(parsedAddress.address),
+              latitude: null,
+              longitude: null,
+            }
           : {}),
         isOpen: body.isOpen,
       },
@@ -313,6 +318,7 @@ export const businessRoutes: FastifyPluginAsync = async (app) => {
 
     if (parsedAddress?.ok) {
       await syncBusinessFuso(auth.businessId);
+      await storeLocationPoint(location.id);
     }
 
     return { location };
