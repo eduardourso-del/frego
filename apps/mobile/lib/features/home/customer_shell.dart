@@ -89,10 +89,8 @@ class _CustomerShellState extends State<CustomerShell> {
       final customer = data['customer'] as Map<String, dynamic>?;
       final city = (customer?['city'] as String?)?.trim();
       final state = (customer?['state'] as String?)?.trim();
-      final choice = city == null ||
-              city.isEmpty ||
-              state == null ||
-              state.isEmpty
+      final choice =
+          city == null || city.isEmpty || state == null || state.isEmpty
           ? null
           : CityChoice(city: city, state: state);
       if (!mounted) return;
@@ -153,15 +151,15 @@ class _CustomerShellState extends State<CustomerShell> {
   }
 
   Widget _shopsPage() => ShopsPage(
-        phoneE164: widget.phoneE164,
-        refreshToken: _shopsRefresh,
-        onOpenReadyRewards: _openReadyRewards,
-      );
+    phoneE164: widget.phoneE164,
+    refreshToken: _shopsRefresh,
+    onOpenReadyRewards: _openReadyRewards,
+  );
 
   Widget _explorePage() => ExplorePage(
-        refreshToken: _exploreRefresh,
-        onOpenReadyRewards: _openReadyRewards,
-      );
+    refreshToken: _exploreRefresh,
+    onOpenReadyRewards: _openReadyRewards,
+  );
 
   Widget _rewardsPage() => RewardsPage(refreshToken: _rewardsRefresh);
 
@@ -209,7 +207,11 @@ class _CustomerShellState extends State<CustomerShell> {
         fit: StackFit.expand,
         children: [
           // Own widget so the shell does not rebuild when the keyboard opens.
-          _HomeBehindSheet(child: home),
+          // The explore search field stays out of the focus tree, or iOS
+          // hands it the keyboard and drops it again.
+          _HomeBehindSheet(
+            child: ExcludeFocus(child: IgnorePointer(child: home)),
+          ),
           CidadeGatePage(
             initialCity: _needsCidade ? null : _cidade,
             onPicked: () => setState(() {

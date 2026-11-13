@@ -25,7 +25,11 @@ class _CidadeGatePageState extends State<CidadeGatePage>
   final _search = TextEditingController();
   final _query = ValueNotifier<String>('');
   final _focus = FocusNode();
+  final _fieldKey = GlobalKey();
   late final AnimationController _enter;
+  late final CurvedAnimation _curve;
+  late final Animation<Offset> _slide;
+  double _fullHeight = 0;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -41,6 +45,11 @@ class _CidadeGatePageState extends State<CidadeGatePage>
       vsync: this,
       duration: const Duration(milliseconds: 280),
     )..forward();
+    _curve = CurvedAnimation(parent: _enter, curve: Curves.easeOutCubic);
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(_curve);
     _enter.addStatusListener(_onEnter);
     _load();
   }
@@ -52,6 +61,7 @@ class _CidadeGatePageState extends State<CidadeGatePage>
     _focus.dispose();
     _search.dispose();
     _query.dispose();
+    _curve.dispose();
     _enter.dispose();
     super.dispose();
   }
@@ -119,184 +129,173 @@ class _CidadeGatePageState extends State<CidadeGatePage>
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 72% of the screen while the window is full. If the keyboard shrinks
-        // the window, stay inside it — a taller sheet overflows and tears the
-        // field down while she is typing.
-        final wanted = MediaQuery.sizeOf(context).height * 0.72;
-        final height = constraints.maxHeight < wanted
-            ? constraints.maxHeight
-            : wanted;
-        return _sheet(height);
+        final reported = MediaQuery.sizeOf(context).height;
+        if (reported > _fullHeight) _fullHeight = reported;
+        final full = _fullHeight == 0 ? reported : _fullHeight;
+        // The top edge stays where it was before the keyboard. Only the
+        // bottom shortens, so the field does not move and iOS keeps the
+        // keyboard. A moving field resigns first responder mid-tap.
+        final inset = MediaQuery.viewInsetsOf(context).bottom;
+        final visible = constraints.maxHeight;
+        final room = visible < full - inset ? visible : full - inset;
+        // Keep the header and the field on screen. Shift the top only when
+        // the keyboard would otherwise crush them.
+        const minSheet = 260.0;
+        var top = full * 0.28;
+        var height = room - top;
+        if (height < minSheet) {
+          height = room < minSheet ? room : minSheet;
+          top = room - height;
+          if (top < 0) top = 0;
+        }
+        final keyboardOpen = room < full - 1;
+        return _sheet(top, height < 1 ? 1 : height, keyboardOpen);
       },
     );
   }
 
-  Widget _sheet(double height) {
+  Widget _sheet(double top, double height, bool keyboardOpen) {
     return Stack(
       fit: StackFit.expand,
       children: [
-        const ColoredBox(color: Color(0x73000000)),
-        Align(
-          alignment: Alignment.bottomCenter,
+        const ModalBarrier(color: Color(0x73000000), dismissible: false),
+        Positioned(
+          top: top,
+          left: 0,
+          right: 0,
+          height: height,
           child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-                .animate(
-                  CurvedAnimation(parent: _enter, curve: Curves.easeOutCubic),
-                ),
-            child: SizedBox(
-              height: height,
-              width: double.infinity,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: FregoColors.card,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    const Center(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: FregoColors.hairline,
-                          borderRadius: BorderRadius.all(Radius.circular(99)),
-                        ),
-                        child: SizedBox(width: 36, height: 4),
+            position: _slide,
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                color: FregoColors.card,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  const Center(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: FregoColors.hairline,
+                        borderRadius: BorderRadius.all(Radius.circular(99)),
+                      ),
+                      child: SizedBox(width: 36, height: 4),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    child: Text(
+                      'Onde você mora?',
+                      style: TextStyle(
+                        fontSize: 22,
+                        height: 1.15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.4,
+                        color: FregoColors.ink,
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
-                      child: Text(
-                        'Onde você mora?',
-                        style: TextStyle(
-                          fontSize: 22,
-                          height: 1.15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.4,
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(20, 6, 20, 0),
+                    child: Text(
+                      'Use sua localização para ver a distância. Sem ela, escolha a cidade.',
+                      style: TextStyle(
+                        fontSize: 15,
+                        height: 1.4,
+                        color: FregoColors.neutral500,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: UseMyLocationButton(
+                      enabled: !_saving,
+                      onResolved: _pick,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: TextField(
+                        key: _fieldKey,
+                        controller: _search,
+                        focusNode: _focus,
+                        enabled: !_saving,
+                        autofillHints: const [],
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        scrollPadding: EdgeInsets.zero,
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.search,
+                        style: const TextStyle(
+                          fontSize: 17,
                           color: FregoColors.ink,
                         ),
-                      ),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(20, 6, 20, 0),
-                      child: Text(
-                        'Use sua localização para ver a distância. Sem ela, escolha a cidade.',
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.4,
-                          color: FregoColors.neutral500,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                      child: UseMyLocationButton(
-                        enabled: !_saving,
-                        onResolved: _pick,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                      child: Material(
-                        type: MaterialType.transparency,
-                        child: TextField(
-                          controller: _search,
-                          focusNode: _focus,
-                          enabled: !_saving,
-                          autofillHints: const [],
-                          enableSuggestions: false,
-                          autocorrect: false,
-                          scrollPadding: EdgeInsets.zero,
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.search,
-                          style: const TextStyle(
+                        decoration: InputDecoration(
+                          hintText: 'Nome da cidade',
+                          hintStyle: const TextStyle(
                             fontSize: 17,
-                            color: FregoColors.ink,
+                            color: FregoColors.neutral400,
                           ),
-                          decoration: InputDecoration(
-                            hintText: 'Nome da cidade',
-                            hintStyle: const TextStyle(
-                              fontSize: 17,
-                              color: FregoColors.neutral400,
-                            ),
-                            filled: true,
-                            fillColor: FregoColors.card,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 14,
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: FregoColors.control,
-                              ),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: FregoColors.control,
-                              ),
+                          filled: true,
+                          fillColor: FregoColors.card,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: FregoColors.control,
                             ),
                           ),
-                          onTapOutside: (_) {},
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(
+                              color: FregoColors.control,
+                            ),
+                          ),
                         ),
+                        onTapOutside: (_) {},
+                        onTapUpOutside: (_) {},
                       ),
                     ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: FregoColors.danger),
-                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: _query,
+                      builder: (context, raw, _) {
+                        final query = raw.trim();
+                        final waiting = foldCityLabel(query).length < 2;
+                        final catalog = _catalog;
+                        final matches = waiting || catalog == null
+                            ? const <CityChoice>[]
+                            : catalog.search(query, limit: 40);
+                        return _results(waiting, matches);
+                      },
+                    ),
+                  ),
+                  if (!_loading && !keyboardOpen)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        8,
+                        16,
+                        12 + MediaQuery.viewPaddingOf(context).bottom,
                       ),
-                    if (_error != null && _catalog == null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                        child: FregoPrimaryButton(
-                          label: 'Tentar de novo',
-                          onPressed: () {
-                            setState(() {
-                              _loading = true;
-                              _error = null;
-                            });
-                            _load();
-                          },
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: ValueListenableBuilder<String>(
-                        valueListenable: _query,
-                        builder: (context, raw, _) {
-                          final query = raw.trim();
-                          final waiting = foldCityLabel(query).length < 2;
-                          final catalog = _catalog;
-                          final matches = waiting || catalog == null
-                              ? const <CityChoice>[]
-                              : catalog.search(query, limit: 40);
-                          return _body(waiting, matches);
-                        },
+                      child: FregoPrimaryButton(
+                        label: 'Confirmar',
+                        onPressed: _selected == null || _saving
+                            ? null
+                            : () => _pick(_selected!),
                       ),
                     ),
-                    if (!_loading)
-                      Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          16,
-                          8,
-                          16,
-                          12 + MediaQuery.paddingOf(context).bottom,
-                        ),
-                        child: FregoPrimaryButton(
-                          label: 'Confirmar',
-                          onPressed: _selected == null || _saving
-                              ? null
-                              : () => _pick(_selected!),
-                        ),
-                      ),
-                  ],
-                ),
+                ],
               ),
             ),
           ),
@@ -305,44 +304,74 @@ class _CidadeGatePageState extends State<CidadeGatePage>
     );
   }
 
-  Widget _body(bool waiting, List<CityChoice> cities) {
-    if (_loading) return const Center(child: FregoProgress());
+  Widget _results(bool waiting, List<CityChoice> cities) {
     final selected = _selected;
     final rows = <CityChoice>[
-      if (selected != null && !cities.any((city) => _sameCity(city, selected)))
+      if (!_loading &&
+          selected != null &&
+          !cities.any((city) => _sameCity(city, selected)))
         selected,
       ...cities,
     ];
-    if (waiting && selected == null) return const SizedBox.shrink();
-    if (rows.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-        child: Text(
-          'Nenhuma cidade com esse nome.',
-          style: TextStyle(
-            fontSize: 15,
-            height: 1.4,
-            color: FregoColors.neutral500,
-          ),
-        ),
-      );
-    }
-    return ListView.separated(
+    return ListView(
       primary: false,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
       padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
-      itemCount: rows.length,
-      separatorBuilder: (_, _) => const CityHairline(),
-      itemBuilder: (context, index) {
-        final city = rows[index];
-        final isSelected = selected != null && _sameCity(city, selected);
-        return CityOption(
-          label: city.label,
-          selected: isSelected,
-          enabled: !_saving,
-          onTap: () => _select(city),
-        );
-      },
+      children: [
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 0),
+            child: Text(
+              _error!,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: FregoColors.danger),
+            ),
+          ),
+        if (_error != null && _catalog == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: FregoPrimaryButton(
+              label: 'Tentar de novo',
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _load();
+              },
+            ),
+          ),
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: Center(child: FregoProgress()),
+          )
+        else if (waiting && selected == null)
+          const SizedBox.shrink()
+        else if (rows.isEmpty)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
+            child: Text(
+              'Nenhuma cidade com esse nome.',
+              style: TextStyle(
+                fontSize: 15,
+                height: 1.4,
+                color: FregoColors.neutral500,
+              ),
+            ),
+          )
+        else
+          for (var index = 0; index < rows.length; index++) ...[
+            if (index > 0) const CityHairline(),
+            CityOption(
+              label: rows[index].label,
+              selected: selected != null && _sameCity(rows[index], selected),
+              enabled: !_saving,
+              onTap: () => _select(rows[index]),
+            ),
+          ],
+      ],
     );
   }
 }
