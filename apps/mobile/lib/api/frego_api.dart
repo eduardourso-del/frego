@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
+import 'api_client.dart';
 
 String get apiBaseUrl => AppConfig.apiBaseUrl;
 
@@ -37,7 +38,7 @@ Map<String, dynamic> _decode(http.Response res) {
 /// Após o OTP: cria/vincula Customer pelo telefone e mescla carimbos do balcão.
 Future<Map<String, dynamic>> fetchMyCustomer() async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/customer'),
     headers: headers,
   );
@@ -56,7 +57,7 @@ Future<Map<String, dynamic>> updateMyCustomer({
   String? state,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.patch(
+  final res = await apiClient.patch(
     Uri.parse('$apiBaseUrl/me/customer'),
     headers: headers,
     body: jsonEncode({
@@ -77,7 +78,7 @@ Future<Map<String, dynamic>> updateMyCustomer({
 
 Future<List<Map<String, dynamic>>> fetchHomeCities() async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/cities'),
     headers: headers,
   );
@@ -91,7 +92,7 @@ Future<Map<String, dynamic>> locateCity({
   required double longitude,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/exploration/locate').replace(
       queryParameters: {
         'lat': latitude.toString(),
@@ -116,7 +117,7 @@ Future<Map<String, dynamic>> fetchExploration({
   double? longitude,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/exploration').replace(
       queryParameters: _positionQuery(latitude, longitude),
     ),
@@ -130,7 +131,7 @@ Future<Map<String, dynamic>> setBrowseCity({
   required String state,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.put(
+  final res = await apiClient.put(
     Uri.parse('$apiBaseUrl/me/exploration/city'),
     headers: headers,
     body: jsonEncode({'city': city, 'state': state}),
@@ -146,7 +147,7 @@ Future<Map<String, dynamic>> fetchExplorationPlace({
   double? longitude,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/exploration/businesses/$businessId').replace(
       queryParameters: {
         'city': city,
@@ -164,7 +165,7 @@ Future<Map<String, dynamic>> setFavorite({
   required bool isFavorite,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.patch(
+  final res = await apiClient.patch(
     Uri.parse('$apiBaseUrl/me/favorites/$businessId'),
     headers: headers,
     body: jsonEncode({'isFavorite': isFavorite}),
@@ -177,7 +178,7 @@ Future<Map<String, dynamic>> fetchMyMemberships({
   double? longitude,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/memberships').replace(
       queryParameters: _positionQuery(latitude, longitude),
     ),
@@ -199,7 +200,7 @@ Future<Map<String, dynamic>> fetchMyWallet({
   final uri = query.isEmpty
       ? Uri.parse('$apiBaseUrl/me/wallet')
       : Uri.parse('$apiBaseUrl/me/wallet').replace(queryParameters: query);
-  final res = await http.get(uri, headers: headers);
+  final res = await apiClient.get(uri, headers: headers);
   return _decode(res);
 }
 
@@ -208,7 +209,7 @@ Future<Map<String, dynamic>> redeemCampaign({
   required String campaignId,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.post(
+  final res = await apiClient.post(
     Uri.parse('$apiBaseUrl/me/redeem'),
     headers: headers,
     body: jsonEncode({
@@ -221,7 +222,7 @@ Future<Map<String, dynamic>> redeemCampaign({
 
 Future<Map<String, dynamic>> fetchMyHistory({int limit = 50}) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/history').replace(
       queryParameters: {'limit': '$limit'},
     ),
@@ -233,7 +234,7 @@ Future<Map<String, dynamic>> fetchMyHistory({int limit = 50}) async {
 /// Resumo de uso (visitas, prêmios, progresso).
 Future<Map<String, dynamic>> fetchMyStats() async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/stats'),
     headers: headers,
   );
@@ -252,7 +253,7 @@ Future<Map<String, dynamic>> putDeviceToken({
   required String platform,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.put(
+  final res = await apiClient.put(
     Uri.parse('$apiBaseUrl/me/device-token'),
     headers: headers,
     body: jsonEncode({
@@ -265,7 +266,7 @@ Future<Map<String, dynamic>> putDeviceToken({
 
 Future<Map<String, dynamic>> deleteMyAccount() async {
   final headers = await customerAuthHeaders();
-  final res = await http.delete(
+  final res = await apiClient.delete(
     Uri.parse('$apiBaseUrl/me/customer'),
     headers: headers,
     // Auth headers always set application/json. Fastify 400s an empty body.
@@ -276,7 +277,7 @@ Future<Map<String, dynamic>> deleteMyAccount() async {
 
 Future<Map<String, dynamic>> fetchMyConvite(String businessId) async {
   final headers = await customerAuthHeaders();
-  final res = await http.get(
+  final res = await apiClient.get(
     Uri.parse('$apiBaseUrl/me/businesses/$businessId/convite'),
     headers: headers,
   );
@@ -289,7 +290,7 @@ Future<Map<String, dynamic>> submitMyConvite({
   String? note,
 }) async {
   final headers = await customerAuthHeaders();
-  final res = await http.post(
+  final res = await apiClient.post(
     Uri.parse('$apiBaseUrl/me/convites/$conviteId/submit'),
     headers: headers,
     body: jsonEncode({
@@ -311,7 +312,7 @@ Future<Map<String, dynamic>> submitMyConvite({
 
 Future<Map<String, dynamic>> deleteDeviceToken(String token) async {
   final headers = await customerAuthHeaders();
-  final res = await http.delete(
+  final res = await apiClient.delete(
     Uri.parse('$apiBaseUrl/me/device-token'),
     headers: headers,
     body: jsonEncode({'token': token}),
