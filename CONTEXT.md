@@ -21,7 +21,7 @@ An address where an Estabelecimento operates. Exploração lists it for its own 
 _Avoid_: loja, filial, location
 
 **Fuso**:
-The civil timezone of an Estabelecimento, taken from the UF of the address where it operates. The Painel's day follows that Fuso.
+The civil timezone of an Estabelecimento, taken from the UF of the address where it operates. The Painel's day follows that Fuso, as do a Campanha de check-in's day and its Resgatar cap.
 _Avoid_: browser timezone, UTC, fuso do usuário
 
 **Plano**:
@@ -77,7 +77,7 @@ What the Clube puts in the Cliente's wallet: carimbos, pontos, cashback, or a Pr
 _Avoid_: fidelidade
 
 **Campanha**:
-A program an Estabelecimento defines that may entitle a Prêmio. Kinds: stamps, spend, birthday, cashback, Promoção.
+A program an Estabelecimento defines that may entitle a Prêmio. Kinds: stamps, spend, birthday, cashback, Promoção, check-in.
 _Avoid_: offer, promotion (as the name for every Campanha)
 
 **Carimbo**:
@@ -92,12 +92,20 @@ _Avoid_: card, cartão, punch card, pool
 A Campanha whose Prêmio is entitled by Audiência, the Estabelecimento calendar, and a Resgatar frequency cap — not by stamps or points.
 _Avoid_: offer, gift, brinde, perk
 
+**Check-in**:
+A Cliente's presence at one Estabelecimento, recorded by her scan of that Campanha's QR, at most one a civil day in the Fuso, and removing it does not free that day. It lasts until that Campanha is archived or a Membro removes one that Resgatar has not consumed, and the first scan there opens her Clube.
+_Avoid_: visita, presença, carimbo, código
+
+**Campanha de check-in**:
+A Campanha whose Prêmio is entitled by Check-ins through one QR, with no Audiência and no calendar. One Resgatar consumes the Check-ins that entitled it and leaves any further ones; only one is active at an Estabelecimento, and once it has been active the Prêmio and that number stay fixed.
+_Avoid_: campanha de visitas, visita
+
 **Janela**:
 The span in which a birthday Campanha may be Resgatada, taken from the Cliente's birthday. Either that birthday's calendar month, or a number of days that begin on the birthday.
 _Avoid_: promo calendar, shop calendar, validade
 
 **Audiência**:
-A saved set of Clientes. A Campanha or a Pesquisa can be limited to one. With none set, every Cliente qualifies.
+A saved set of Clientes. A Campanha other than a Campanha de check-in, or a Pesquisa, can be limited to one. With none set, every Cliente qualifies.
 _Avoid_: segment, list, filter, audience
 
 **Prêmio**:
@@ -109,11 +117,11 @@ The delivery token created when the Cliente Resgata a Prêmio. It is not a secon
 _Avoid_: coupon, ticket, QR voucher
 
 **Código**:
-The identifier of a Voucher (`XXX-XXX`). A scannable image is the same Código, not a second token. The UI may say QR for that image; QR is not a second identifier and not a kind of Voucher.
+The identifier of a Voucher (`XXX-XXX`). A scannable image of that identifier is the same Código, not a second token. The UI may say QR for that image; QR is not a second identifier and not a kind of Voucher.
 _Avoid_: QR (as the name of the token), barcode, voucher ID, PIN, QR voucher
 
 **Resgatar**:
-The Cliente action that creates a Voucher and consumes the wallet entitlement. A carimbo Campanha may cap how often one Cliente can Resgatar.
+The Cliente action that creates a Voucher and consumes the wallet entitlement. A carimbo Campanha or a Campanha de check-in may cap how often one Cliente can Resgatar; on a Campanha de check-in the cap follows the Fuso, and a scan is not a Check-in once that cap can never allow another.
 _Avoid_: generate, issue, claim, unlock
 
 **Confirmar**:
@@ -157,7 +165,7 @@ The questions an Estabelecimento asks a Cliente: up to five polegar questions an
 _Avoid_: survey, research, campanha, NPS
 
 **Convite**:
-The open offer for one Cliente to answer a Pesquisa, tied to her latest qualifying earn.
+The open offer for one Cliente to answer a Pesquisa, tied to her latest qualifying earn. A Check-in does not open one.
 _Avoid_: invite, link, notification, survey
 
 **Polegar**:
