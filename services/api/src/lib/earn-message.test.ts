@@ -91,10 +91,53 @@ describe('buildEarnPushMessage', () => {
       unitKind: 'stamps',
       transactionId: 'tx_1',
       quantity: '2',
+      title: 'Loja',
+      body: 'Você acabou de ganhar',
     });
-    const payload = message.apns?.payload as Record<string, unknown> | undefined;
+    assert.equal(message.notification, undefined);
+    const payload = message.apns?.payload as
+      | {
+          type?: string;
+          businessId?: string;
+          unitKind?: string;
+          aps?: { alert?: { title?: string }; mutableContent?: boolean };
+        }
+      | undefined;
     assert.equal(payload?.type, 'earn');
     assert.equal(payload?.businessId, 'biz_1');
     assert.equal(payload?.unitKind, 'stamps');
+    assert.equal(payload?.aps?.alert?.title, 'Loja');
+    assert.equal(payload?.aps?.mutableContent, undefined);
+  });
+
+  it('attaches an https logo without turning the alert into a wide image', () => {
+    const message = buildEarnPushMessage({
+      tokens: ['abc'],
+      title: 'Loja',
+      body: 'Você acabou de ganhar',
+      businessId: 'biz_1',
+      unitKind: 'stamps',
+      logoUrl: ' https://cdn.example/logo.png ',
+    });
+    assert.equal(message.notification, undefined);
+    assert.equal(message.android?.notification, undefined);
+    assert.equal(message.data?.logoUrl, 'https://cdn.example/logo.png');
+    const payload = message.apns?.payload as
+      | { aps?: { mutableContent?: boolean }; logoUrl?: string }
+      | undefined;
+    assert.equal(payload?.aps?.mutableContent, true);
+    assert.equal(payload?.logoUrl, 'https://cdn.example/logo.png');
+  });
+
+  it('drops a logo that is not https', () => {
+    const message = buildEarnPushMessage({
+      tokens: ['abc'],
+      title: 'Loja',
+      body: 'Você acabou de ganhar',
+      businessId: 'biz_1',
+      unitKind: 'stamps',
+      logoUrl: 'http://cdn.example/logo.png',
+    });
+    assert.equal(message.data?.logoUrl, undefined);
   });
 });

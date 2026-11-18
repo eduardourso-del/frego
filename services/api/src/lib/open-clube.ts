@@ -1,5 +1,6 @@
 import { prisma } from '@frego/db';
 import { phoneLast4, toE164 } from './phone.js';
+import { queueBoasVindasPush } from './push/boas-vindas-notify.js';
 import { queueWelcomeWhatsAppForBusiness } from './whatsapp/welcome-notify.js';
 
 export type OpenClubeLog = (msg: string, extra?: Record<string, unknown>) => void;
@@ -7,7 +8,7 @@ export type OpenClubeLog = (msg: string, extra?: Record<string, unknown>) => voi
 /**
  * Find the Cliente by phone, or create them and the Clube.
  * An empty name or birthday is filled. A name the Cliente already has stays.
- * A new Clube gets the welcome message.
+ * A new Clube gets the welcome WhatsApp. Push follows when she already has the app.
  */
 export async function openClube(input: {
   businessId: string;
@@ -93,6 +94,11 @@ export async function openClube(input: {
       businessName: business?.name ?? 'Frego',
       toE164: customer.phoneE164,
       customerName: customer.displayName,
+      log: input.log,
+    });
+    queueBoasVindasPush({
+      customerId: customer.id,
+      businessId: input.businessId,
       log: input.log,
     });
   }

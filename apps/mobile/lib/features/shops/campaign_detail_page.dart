@@ -288,8 +288,6 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     final audienceEligible = campaign['audienceEligible'] == true;
     final audienceLocked = lockedReason == 'audience';
     final unlockMessage = campaign['audienceUnlockMessage'] as String?;
-    final description = (campaign['rewardDescription'] as String?)?.trim();
-
     late String buttonLabel;
     String? statusHint;
     if (isBirthday) {
@@ -379,150 +377,52 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         onTap: _openShop,
       ),
       const SizedBox(height: 20),
-      Text(
-        campaign['campaignName'] as String? ?? 'Campanha',
-        style: const TextStyle(
-          fontSize: 26,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.4,
-          color: FregoColors.ink,
+      LoyaltyCampaignCard(
+          businessName: name,
+          businessLogoUrl: logoUrl,
+          primary: primary,
+          primaryDark: primaryDark,
+          campaignName: campaign['campaignName'] as String? ?? 'Campanha',
+          campaignType: type,
+          unitsNeeded: needed <= 0 ? 1 : needed,
+          currentUnits: pool,
+          rewardTitle: campaign['rewardTitle'] as String? ?? 'Prêmio',
+          rewardDescription: campaign['rewardDescription'] as String?,
+          rewardImageUrl: campaign['rewardImageUrl'] as String?,
+          canRedeem: canRedeem,
+          buttonLabel: buttonLabel,
+          statusHint: statusHint,
+          pointsPerReal: business?['pointsPerReal'] as int?,
+          cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
+          cashbackBalanceCents: cashbackBalance,
+          cashbackUseMultiple:
+              (campaign['cashbackUseMultiple'] as num?)?.toInt(),
+          busy: _redeeming,
+          promoCalendar: PromoCalendar.fromCampaign(campaign),
+          audienceUnlocked: audienceEligible && !audienceLocked,
+          audienceLabel: unlockMessage ??
+              (audienceEligible ? 'Conquista liberada pra você' : null),
+          scopeLabel: stampScopeLabel(
+            campaign,
+            split: stampRows.length > 1,
+          ),
+          fullText: true,
+          onRedeem: isCashback || !canRedeem || _redeeming
+              ? null
+              : () => _redeem(campaign),
         ),
-      ),
-      if (statusHint != null && statusHint.isNotEmpty) ...[
-        const SizedBox(height: 8),
+      if (isPromo) ...[
+        const SizedBox(height: 12),
         Text(
-          statusHint,
+          promoFrequencyLine(PromoCalendar.fromCampaign(campaign)),
           style: const TextStyle(
-            fontSize: 15,
+            fontSize: 13,
             height: 1.4,
             color: FregoColors.neutral500,
           ),
         ),
       ],
-      const SizedBox(height: 16),
-      LoyaltyCampaignCard(
-        businessName: name,
-        businessLogoUrl: logoUrl,
-        primary: primary,
-        primaryDark: primaryDark,
-        campaignName: campaign['campaignName'] as String? ?? 'Campanha',
-        campaignType: type,
-        unitsNeeded: needed <= 0 ? 1 : needed,
-        currentUnits: pool,
-        rewardTitle: campaign['rewardTitle'] as String? ?? 'Prêmio',
-        rewardDescription: campaign['rewardDescription'] as String?,
-        rewardImageUrl: campaign['rewardImageUrl'] as String?,
-        canRedeem: canRedeem,
-        buttonLabel: buttonLabel,
-        statusHint: statusHint,
-        pointsPerReal: business?['pointsPerReal'] as int?,
-        cashbackPercent: (campaign['cashbackPercent'] as num?)?.toInt(),
-        cashbackBalanceCents: cashbackBalance,
-        cashbackUseMultiple:
-            (campaign['cashbackUseMultiple'] as num?)?.toInt(),
-        busy: _redeeming,
-        promoCalendar: PromoCalendar.fromCampaign(campaign),
-        audienceUnlocked: audienceEligible && !audienceLocked,
-        audienceLabel: unlockMessage ??
-            (audienceEligible ? 'Conquista liberada pra você' : null),
-        scopeLabel: stampScopeLabel(
-          campaign,
-          split: stampRows.length > 1,
-        ),
-        onRedeem: isCashback || !canRedeem || _redeeming
-            ? null
-            : () => _redeem(campaign),
-      ),
-      if (isPromo ||
-          campaignValidityLine(PromoCalendar.fromCampaign(campaign)) != null)
-        ..._promoWhenSection(campaign),
       if (isCashback) ..._cashbackLotSections(),
-      if (description != null && description.isNotEmpty) ...[
-        const SizedBox(height: 20),
-        const Text(
-          'Descrição',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.04,
-            color: FregoColors.neutral400,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          description,
-          style: const TextStyle(
-            fontSize: 15,
-            height: 1.45,
-            color: FregoColors.ink,
-          ),
-        ),
-      ],
-    ];
-  }
-
-  List<Widget> _promoWhenSection(Map<String, dynamic> campaign) {
-    final calendar = PromoCalendar.fromCampaign(campaign);
-    final ends = campaignValidityLine(calendar);
-    final restricted = calendar.restrictsWeekdays;
-    return [
-      const SizedBox(height: 20),
-      const Text(
-        'Quando vale',
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.04,
-          color: FregoColors.neutral400,
-        ),
-      ),
-      if (ends != null) ...[
-        const SizedBox(height: 8),
-        CampaignValidityRow(line: ends),
-      ],
-      const SizedBox(height: 10),
-      if (restricted)
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: [
-            for (final d in calendar.weekdays)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: FregoColors.promoBg,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: FregoColors.promoRing),
-                ),
-                child: Text(
-                  kPromoWeekdayLabels[d],
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: FregoColors.promo,
-                  ),
-                ),
-              ),
-          ],
-        )
-      else
-        const Text(
-          'Todos os dias',
-          style: TextStyle(
-            fontSize: 15,
-            height: 1.4,
-            color: FregoColors.ink,
-          ),
-        ),
-      const SizedBox(height: 8),
-      Text(
-        promoFrequencyLine(calendar),
-        style: const TextStyle(
-          fontSize: 13,
-          height: 1.4,
-          color: FregoColors.neutral500,
-        ),
-      ),
     ];
   }
 

@@ -4,19 +4,60 @@ import { getFirebaseMessaging } from '../firebase.js';
 
 export const FCM_BATCH_SIZE = 500;
 
-/** Monochrome status icon in the Android app (`res/drawable/ic_notification.xml`). */
-export const ANDROID_NOTIFICATION_ICON = 'ic_notification';
-export const ANDROID_NOTIFICATION_COLOR = '#0073C8';
+/** Public https logo, or null when the estabelecimento has nothing we can show. */
+export function pushLogoUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
-/** Shared Android tray config so every push uses the smiley, not the launcher square. */
-export function androidPushConfig(): NonNullable<MulticastMessage['android']> {
+export async function businessPushLogo(
+  businessId: string,
+): Promise<string | null> {
+  const business = await prisma.business.findUnique({
+    where: { id: businessId },
+    select: { logoUrl: true },
+  });
+  return pushLogoUrl(business?.logoUrl);
+}
+
+/**
+ * Alert for both platforms.
+ *
+ * Android is data-only so the app can draw the logo as the small right-hand
+ * picture. An FCM image becomes a wide picture when the notification opens.
+ * iOS keeps a normal alert. `logoUrl` asks the notification extension to
+ * attach that same small picture.
+ */
+export function fcmAlertMessage(input: {
+  tokens: string[];
+  title: string;
+  body: string;
+  data: Record<string, string>;
+  logoUrl?: string | null;
+}): MulticastMessage {
+  const logo = pushLogoUrl(input.logoUrl);
+  const data: Record<string, string> = {
+    ...input.data,
+    title: input.title,
+    body: input.body,
+  };
+  if (logo) data.logoUrl = logo;
   return {
-    priority: 'high',
-    notification: {
-      channelId: 'frego_campaigns',
-      icon: ANDROID_NOTIFICATION_ICON,
-      color: ANDROID_NOTIFICATION_COLOR,
-    },
+    tokens: input.tokens,
+    data,
+    android: { priority: 'high' },
+    apns: apnsWithData(
+      data,
+      { title: input.title, body: input.body },
+      logo != null,
+    ),
   };
 }
 
@@ -24,6 +65,7 @@ export function androidPushConfig(): NonNullable<MulticastMessage['android']> {
 export function apnsWithData(
   data: Record<string, string>,
   alert?: { title: string; body: string },
+  mutableContent = false,
 ): NonNullable<MulticastMessage['apns']> {
   return {
     headers: {
@@ -34,6 +76,7 @@ export function apnsWithData(
       aps: {
         sound: 'default',
         ...(alert ? { alert } : {}),
+        ...(mutableContent ? { mutableContent: true } : {}),
       },
       ...data,
     },

@@ -12,6 +12,7 @@ import '../../ui/legal_links.dart';
 import '../../ui/skeleton.dart';
 import '../auth/auth_gate.dart';
 import '../explore/city_picker.dart';
+import 'notification_settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({
@@ -37,8 +38,6 @@ class _ProfilePageState extends State<ProfilePage> {
   CityChoice? _city;
   int _membershipCount = 0;
   Map<String, dynamic>? _stats;
-  bool _notificationsEnabled = true;
-  bool _savingNotifications = false;
   bool _deleting = false;
 
   @override
@@ -94,7 +93,6 @@ class _ProfilePageState extends State<ProfilePage> {
         _birthday = _parseBirthday(customer['birthday']);
         _city = CityChoice.fromMap(customer);
         _membershipCount = (data['membershipCount'] as num?)?.toInt() ?? 0;
-        _notificationsEnabled = customer['notificationsEnabled'] != false;
         _stats = results[1];
         _loading = false;
       });
@@ -182,33 +180,6 @@ class _ProfilePageState extends State<ProfilePage> {
       _birthday = picked;
       _success = null;
     });
-  }
-
-  Future<void> _setNotificationsEnabled(bool value) async {
-    if (_savingNotifications) return;
-    final previous = _notificationsEnabled;
-    setState(() {
-      _notificationsEnabled = value;
-      _savingNotifications = true;
-      _error = null;
-    });
-    try {
-      await updateMyCustomer(notificationsEnabled: value);
-      if (value) {
-        await PushService.start();
-      } else {
-        await PushService.stop();
-      }
-      if (!mounted) return;
-      setState(() => _savingNotifications = false);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _notificationsEnabled = previous;
-        _savingNotifications = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
-      });
-    }
   }
 
   Future<void> _logout() async {
@@ -465,12 +436,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                   ),
                 ],
-                const SizedBox(height: 20),
-                _NotificationToggle(
-                  value: _notificationsEnabled,
-                  enabled: !_savingNotifications,
-                  onChanged: _setNotificationsEnabled,
-                ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -496,6 +461,15 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 8),
                 _SettingsGroup(
                   children: [
+                    _SettingsRow(
+                      label: 'Notificações',
+                      onTap: _deleting
+                          ? null
+                          : () => FregoAdaptive.push(
+                                context,
+                                const NotificationSettingsPage(),
+                              ),
+                    ),
                     _SettingsRow(
                       label: 'Ajuda',
                       onTap: _deleting
@@ -649,73 +623,6 @@ class _SettingsRow extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _NotificationToggle extends StatelessWidget {
-  const _NotificationToggle({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
-
-  final bool value;
-  final bool enabled;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final cupertino = FregoAdaptive.useCupertino(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: FregoColors.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: FregoColors.neutral200),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text(
-                  'Notificações',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: FregoColors.ink,
-                  ),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Avisos quando uma loja lançar uma campanha para você.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    height: 1.35,
-                    color: FregoColors.neutral500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          cupertino
-              ? CupertinoSwitch(
-                  value: value,
-                  activeTrackColor: FregoColors.ink,
-                  onChanged: enabled ? onChanged : null,
-                )
-              : Switch(
-                  value: value,
-                  activeThumbColor: FregoColors.card,
-                  activeTrackColor: FregoColors.ink,
-                  onChanged: enabled ? onChanged : null,
-                ),
-        ],
       ),
     );
   }

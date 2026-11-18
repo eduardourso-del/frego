@@ -138,6 +138,8 @@ model Business {
   status    BusinessStatus @default(trial)
   /// Operator included this Estabelecimento in Exploração. Off until chosen.
   explorationVisible Boolean @default(false) @map("exploration_visible")
+  /// Set the first time Entrada goes out. A later return to Exploração stays quiet.
+  entradaSentAt DateTime? @map("entrada_sent_at")
   logoUrl   String?        @map("logo_url")
   /// Imagem de capa (hero) da página pública e detalhe no app.
   heroImageUrl String?       @map("hero_image_url")
@@ -287,6 +289,10 @@ model Customer {
   onboardingCompleted Boolean @default(false) @map("onboarding_completed")
   /// Opt-out de push no app. Default on — OS permission is still required.
   notificationsEnabled Boolean @default(true) @map("notifications_enabled")
+  /// Boas-vindas push. Off, that push does not go out. The welcome WhatsApp is separate.
+  boasVindasEnabled Boolean @default(true) @map("boas_vindas_enabled")
+  /// Entrada push. Off, a newly listed Estabelecimento does not reach her.
+  entradaEnabled Boolean @default(true) @map("entrada_enabled")
   /// Cidade: where the Cliente lives. City label plus UF.
   city        String?
   state       String?

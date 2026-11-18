@@ -18,10 +18,12 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.bearlabs.frego"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications compiles against API 37.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -66,4 +68,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

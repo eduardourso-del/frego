@@ -140,7 +140,7 @@ describe('campaignPushCopy', () => {
 });
 
 describe('buildCampaignPushMessage', () => {
-  it('includes notification and data payload', () => {
+  it('includes the alert and data payload', () => {
     const message = buildCampaignPushMessage({
       tokens: ['abc'],
       businessName: 'Loja',
@@ -148,19 +148,26 @@ describe('buildCampaignPushMessage', () => {
       businessId: 'biz_1',
       campaignId: 'cmp_1',
     });
-    assert.deepEqual(message.notification, {
-      title: 'Loja',
-      body: 'Lançou uma nova campanha: VIP. Abra o app Frego para conferir os detalhes e participar.',
-    });
+    assert.equal(message.notification, undefined);
     assert.deepEqual(message.data, {
       type: 'campaign_new',
       businessId: 'biz_1',
       campaignId: 'cmp_1',
+      title: 'Loja',
+      body: 'Lançou uma nova campanha: VIP. Abra o app Frego para conferir os detalhes e participar.',
     });
-    const payload = message.apns?.payload as Record<string, unknown> | undefined;
+    const payload = message.apns?.payload as
+      | {
+          type?: string;
+          businessId?: string;
+          campaignId?: string;
+          aps?: { alert?: { title?: string; body?: string } };
+        }
+      | undefined;
     assert.equal(payload?.type, 'campaign_new');
     assert.equal(payload?.businessId, 'biz_1');
     assert.equal(payload?.campaignId, 'cmp_1');
+    assert.equal(payload?.aps?.alert?.title, 'Loja');
     assert.deepEqual(message.tokens, ['abc']);
   });
 });

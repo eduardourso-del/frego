@@ -50,6 +50,8 @@ Future<Map<String, dynamic>> updateMyCustomer({
   bool clearBirthday = false,
   bool onboardingCompleted = true,
   bool? notificationsEnabled,
+  bool? boasVindasEnabled,
+  bool? entradaEnabled,
   String? city,
   String? state,
 }) async {
@@ -64,6 +66,8 @@ Future<Map<String, dynamic>> updateMyCustomer({
       if (!clearBirthday && birthday != null) 'birthday': birthday,
       if (notificationsEnabled != null)
         'notificationsEnabled': notificationsEnabled,
+      if (boasVindasEnabled != null) 'boasVindasEnabled': boasVindasEnabled,
+      if (entradaEnabled != null) 'entradaEnabled': entradaEnabled,
       if (city != null) 'city': city,
       if (state != null) 'state': state,
     }),

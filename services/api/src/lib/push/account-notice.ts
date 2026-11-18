@@ -1,5 +1,5 @@
 import type { MulticastMessage } from 'firebase-admin/messaging';
-import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
+import { fcmAlertMessage, sendAndPruneFcm } from './send.js';
 
 export type AccountNoticePushType = 'wallet_expiry' | 'campaign_ending';
 
@@ -10,22 +10,20 @@ export function buildAccountNoticePush(input: {
   type: AccountNoticePushType;
   businessId: string;
   campaignId?: string | null;
+  logoUrl?: string | null;
 }): MulticastMessage {
   const data: Record<string, string> = {
     type: input.type,
     businessId: input.businessId,
   };
   if (input.campaignId) data.campaignId = input.campaignId;
-  return {
+  return fcmAlertMessage({
     tokens: input.tokens,
-    notification: {
-      title: input.title,
-      body: input.body,
-    },
+    title: input.title,
+    body: input.body,
     data,
-    android: androidPushConfig(),
-    apns: apnsWithData(data, { title: input.title, body: input.body }),
-  };
+    logoUrl: input.logoUrl,
+  });
 }
 
 export async function sendAccountNoticePush(input: {
@@ -36,6 +34,7 @@ export async function sendAccountNoticePush(input: {
   type: AccountNoticePushType;
   businessId: string;
   campaignId?: string | null;
+  logoUrl?: string | null;
 }): Promise<{ sent: boolean; skipped?: string; error?: string }> {
   if (!input.notificationsEnabled) {
     return { sent: false, skipped: 'notifications_disabled' };
@@ -54,6 +53,7 @@ export async function sendAccountNoticePush(input: {
           type: input.type,
           businessId: input.businessId,
           campaignId: input.campaignId,
+          logoUrl: input.logoUrl,
         }),
       tokens,
     );

@@ -31,6 +31,7 @@ Future<void> main() async {
   }
   AppConfig.assertShipBuildUsesProductionApi();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  PushService.registerBackground();
   await FregoTelemetry.attach();
   PushService.attachNative();
   runApp(FregoApp(analyticsObserver: FregoTelemetry.observer));

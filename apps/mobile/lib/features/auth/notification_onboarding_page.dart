@@ -86,7 +86,7 @@ class _NotificationOnboardingPageState extends State<NotificationOnboardingPage>
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      'Quando a loja te der carimbo, ponto ou cashback, o Frego dá um toque. Também avisa se nascer uma campanha só pra você.',
+                      'Quando um estabelecimento te der carimbo, ponto ou cashback, o Frego dá um toque. Também avisa de uma campanha só pra você, de quando você passa a fazer parte e de um lugar novo na sua cidade.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 16,

@@ -1,13 +1,32 @@
 import 'dart:async';
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/frego_api.dart';
 import '../config/app_config.dart';
+import '../firebase_options.dart';
+import 'push_tray.dart';
+
+@pragma('vm:entry-point')
+Future<void> pushBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  DartPluginRegistrant.ensureInitialized();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('push background firebase: $e');
+  }
+  await PushTray.show(message);
+}
 
 /// Destination after a push tap. [CustomerShell] consumes this.
 class PushOpenTarget {
@@ -18,9 +37,11 @@ class PushOpenTarget {
     this.unitKind,
     this.transactionId,
     this.quantity,
+    this.city,
+    this.state,
   });
 
-  /// `campaign_new`, `campaign_ending`, `earn`, or `wallet_expiry`.
+  /// `campaign_new`, `campaign_ending`, `earn`, `wallet_expiry`, `boas_vindas`, or `entrada`.
   final String type;
   final String businessId;
   final String? campaignId;
@@ -30,12 +51,18 @@ class PushOpenTarget {
   final String? transactionId;
   final int? quantity;
 
+  /// Her Cidade, carried on an Entrada so the place page can load without a Clube.
+  final String? city;
+  final String? state;
+
   bool sameDestination(PushOpenTarget other) {
     return type == other.type &&
         businessId == other.businessId &&
         campaignId == other.campaignId &&
         unitKind == other.unitKind &&
-        transactionId == other.transactionId;
+        transactionId == other.transactionId &&
+        city == other.city &&
+        state == other.state;
   }
 
   /// Reads FCM `data` or the native APNs userInfo flatten.
@@ -68,6 +95,8 @@ class PushOpenTarget {
       unitKind: data['unitKind'] ?? data['unit_kind'],
       transactionId: data['transactionId'] ?? data['transaction_id'],
       quantity: quantityRaw == null ? null : int.tryParse(quantityRaw),
+      city: data['city'],
+      state: data['state'],
     );
   }
 }
@@ -221,11 +250,18 @@ abstract final class PushService {
     }
   }
 
+  static void registerBackground() {
+    if (!_supported) return;
+    FirebaseMessaging.onBackgroundMessage(pushBackgroundHandler);
+  }
+
   /// Listen for native APNs + notification taps as soon as Flutter is up.
   static void attachNative() {
     if (!_supported) return;
+    PushTray.bind(_offerFromMap);
     if (_nativeHandlerReady) return;
     _nativeHandlerReady = true;
+    unawaited(PushTray.prepare());
     _native.setMethodCallHandler((call) async {
       if (call.method == 'apns') {
         debugPrint('PushService native APNs token (${call.arguments} bytes)');
@@ -256,9 +292,9 @@ abstract final class PushService {
     if (_listenersReady) return;
     _listenersReady = true;
     await messaging.setForegroundNotificationPresentationOptions(
-      alert: true,
+      alert: false,
       badge: true,
-      sound: true,
+      sound: false,
     );
     await messaging.setAutoInitEnabled(true);
 
@@ -266,8 +302,9 @@ abstract final class PushService {
     _openedSub = FirebaseMessaging.onMessageOpenedApp.listen(_onOpened);
     _foregroundSub = FirebaseMessaging.onMessage.listen((message) {
       debugPrint(
-        'PushService foreground message type=${message.data['type']} title=${message.notification?.title}',
+        'PushService foreground message type=${message.data['type']} title=${message.data['title'] ?? message.notification?.title}',
       );
+      unawaited(PushTray.show(message));
     });
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (user == null || !_permissionGranted) return;

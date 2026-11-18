@@ -149,14 +149,30 @@ class ExploreCampaign {
     );
   }
 
-  /// Prêmio title, or the cashback line.
+  /// Campanha name. The detail page uses the same title.
   String get line {
+    final campaignName = name.trim();
+    if (campaignName.isNotEmpty) return campaignName;
+    return rewardOffer ?? '';
+  }
+
+  /// Prêmio, when it is not already the Campanha name.
+  String? get rewardLine {
+    final offer = rewardOffer;
+    if (offer == null || offer.isEmpty) return null;
+    if (name.trim().isEmpty) return null;
+    if (offer.toLowerCase() == name.trim().toLowerCase()) return null;
+    return offer;
+  }
+
+  /// What she receives: the prêmio title, or the cashback line.
+  String? get rewardOffer {
     if (type == 'cashback' && (cashbackPercent ?? 0) > 0) {
       return '$cashbackPercent% de cashback';
     }
     final title = rewardTitle?.trim();
     if (title != null && title.isNotEmpty) return title;
-    return name;
+    return null;
   }
 
   /// What kind of Campanha this is, in the words the Cliente already sees.

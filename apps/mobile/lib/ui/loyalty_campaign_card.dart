@@ -37,6 +37,8 @@ class LoyaltyCampaignCard extends StatelessWidget {
     this.onOpen,
     this.promoCalendar,
     this.scopeLabel,
+    this.embedded = false,
+    this.fullText = false,
   });
 
   final String businessName;
@@ -74,6 +76,13 @@ class LoyaltyCampaignCard extends StatelessWidget {
   /// Cartela vs shared carimbos. Empty when the shop has a single destination.
   final String? scopeLabel;
 
+  /// Detail page already shows the shop, the name, the status, and the
+  /// description. The card keeps the progress, the reward, and the action.
+  final bool embedded;
+
+  /// Detail page shows the Campanha name, prêmio, and description in full.
+  final bool fullText;
+
   bool get _isBirthday => campaignType == 'birthday';
   bool get _isPromo => campaignType == 'promo';
   bool get _isSpend => campaignType == 'spend' || campaignType == 'points';
@@ -100,54 +109,60 @@ class LoyaltyCampaignCard extends StatelessWidget {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-                  Row(
-                    children: [
-                      _BizMark(
-                        letter: letter,
-                        logoUrl: businessLogoUrl,
-                        accent: accent,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                businessName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: FregoColors.neutral500,
-                                ),
-                              ),
-                            ),
-                            if (onOpenShop != null) ...[
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: onOpenShop,
-                                behavior: HitTestBehavior.opaque,
-                                child: const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 2),
-                                  child: Text(
-                                    'Ver loja',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: FregoColors.ink,
-                                    ),
+                  if (!embedded)
+                    Row(
+                      children: [
+                        _BizMark(
+                          letter: letter,
+                          logoUrl: businessLogoUrl,
+                          accent: accent,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  businessName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: FregoColors.neutral500,
                                   ),
                                 ),
                               ),
+                              if (onOpenShop != null) ...[
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: onOpenShop,
+                                  behavior: HitTestBehavior.opaque,
+                                  child: const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 2),
+                                    child: Text(
+                                      'Ver loja',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: FregoColors.ink,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      _TypeChip(type: campaignType, accent: accent),
-                    ],
-                  ),
+                        const SizedBox(width: 8),
+                        _TypeChip(type: campaignType, accent: accent),
+                      ],
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _TypeChip(type: campaignType, accent: accent),
+                    ),
                   if (audienceUnlocked) ...[
                     const SizedBox(height: 8),
                     _AudienceUnlockChip(
@@ -157,7 +172,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                       accent: accent,
                     ),
                   ],
-                  const SizedBox(height: 10),
+                  if (!embedded) const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -169,24 +184,50 @@ class LoyaltyCampaignCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              campaignName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.2,
-                                color: FregoColors.ink,
+                            if (!embedded) ...[
+                              Text(
+                                campaignName,
+                                maxLines: fullText ? null : 1,
+                                overflow: fullText ? null : TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.2,
+                                  color: FregoColors.ink,
+                                ),
                               ),
-                            ),
-                            if (rewardDescription != null &&
+                              if (reward.toLowerCase() !=
+                                      campaignName.trim().toLowerCase() &&
+                                  (hasImage ||
+                                      _isBirthday ||
+                                      _isPromo ||
+                                      _isCashback)) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  reward,
+                                  maxLines: fullText ? null : 2,
+                                  overflow: fullText
+                                      ? null
+                                      : TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    height: 1.3,
+                                    fontWeight: FontWeight.w500,
+                                    color: FregoColors.neutral500,
+                                  ),
+                                ),
+                              ],
+                            ],
+                            if (!embedded &&
+                                rewardDescription != null &&
                                 rewardDescription!.trim().isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
                                 rewardDescription!.trim(),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                                maxLines: fullText ? null : 2,
+                                overflow: fullText
+                                    ? null
+                                    : TextOverflow.ellipsis,
                                 style: const TextStyle(
                                   fontSize: 12,
                                   height: 1.35,
@@ -212,25 +253,27 @@ class LoyaltyCampaignCard extends StatelessWidget {
                               ),
                             ],
                             const SizedBox(height: 8),
-                            if (_isBirthday)
-                              _BirthdayBody(
-                                reward: reward,
-                                statusHint: statusHint,
-                                showReward: !hasImage,
-                                accent: accent,
-                              )
-                            else if (_isPromo)
-                              _PromoBody(
-                                reward: reward,
-                                statusHint: statusHint,
-                                showReward: !hasImage,
-                                calendar: promoCalendar,
-                              )
-                            else if (_isCashback)
+                            if (_isBirthday) ...[
+                              if (!embedded)
+                                _BirthdayBody(
+                                  reward: reward,
+                                  statusHint: embedded ? null : statusHint,
+                                  showReward: false,
+                                  accent: accent,
+                                ),
+                            ] else if (_isPromo) ...[
+                              if (!embedded)
+                                _PromoBody(
+                                  reward: reward,
+                                  statusHint: embedded ? null : statusHint,
+                                  showReward: false,
+                                  calendar: embedded ? null : promoCalendar,
+                                ),
+                            ] else if (_isCashback)
                               _CashbackBody(
                                 balanceCents: cashbackBalanceCents ?? 0,
                                 percent: cashbackPercent ?? 0,
-                                statusHint: statusHint,
+                                statusHint: embedded ? null : statusHint,
                                 useMultiple: readCashbackUseMultiple(
                                   cashbackUseMultiple,
                                 ),
@@ -245,7 +288,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 canRedeem: canRedeem,
                                 showRewardInline: !hasImage,
                                 accent: accent,
-                                statusHint: statusHint,
+                                statusHint: embedded ? null : statusHint,
                               )
                             else
                               _StampsBody(
@@ -258,18 +301,22 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 actualNeeded: needed,
                                 actualCurrent: currentUnits,
                                 showRewardInline: !hasImage,
-                                statusHint: statusHint,
+                                statusHint: embedded ? null : statusHint,
                               ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  if (!_isPromo && validity != null) ...[
+                  if (!embedded && !_isPromo && validity != null) ...[
                     const SizedBox(height: 8),
                     CampaignValidityRow(line: validity),
                   ],
-                  if (!_isBirthday && !_isPromo && !_isCashback && !hasImage) ...[
+                  if (!embedded &&
+                      !_isBirthday &&
+                      !_isPromo &&
+                      !_isCashback &&
+                      !hasImage) ...[
                     const SizedBox(height: 8),
                     Text(
                       reward,

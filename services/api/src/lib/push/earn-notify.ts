@@ -5,7 +5,11 @@ import {
   earnPushCopy,
   type EarnNotifyInput,
 } from '../whatsapp/earn-message.js';
-import { androidPushConfig, apnsWithData, sendAndPruneFcm } from './send.js';
+import {
+  businessPushLogo,
+  fcmAlertMessage,
+  sendAndPruneFcm,
+} from './send.js';
 
 export function buildEarnPushMessage(input: {
   tokens: string[];
@@ -16,6 +20,7 @@ export function buildEarnPushMessage(input: {
   transactionId?: string | null;
   quantity?: number;
   conviteId?: string | null;
+  logoUrl?: string | null;
 }): MulticastMessage {
   const data: Record<string, string> = {
     type: input.conviteId ? 'pesquisa' : 'earn',
@@ -25,29 +30,29 @@ export function buildEarnPushMessage(input: {
   if (input.transactionId) data.transactionId = input.transactionId;
   if (input.quantity != null) data.quantity = String(input.quantity);
   if (input.conviteId) data.conviteId = input.conviteId;
-  return {
+  return fcmAlertMessage({
     tokens: input.tokens,
-    notification: {
-      title: input.title,
-      body: input.body,
-    },
+    title: input.title,
+    body: input.body,
     data,
-    android: androidPushConfig(),
-    apns: apnsWithData(data, { title: input.title, body: input.body }),
-  };
+    logoUrl: input.logoUrl,
+  });
 }
 
 export async function notifyEarnPush(
   input: EarnNotifyInput,
 ): Promise<{ sent: boolean; sentCount: number; skipped?: string; error?: string }> {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { id: input.customerId },
-      select: {
-        notificationsEnabled: true,
-        deviceTokens: { select: { token: true } },
-      },
-    });
+    const [customer, logoUrl] = await Promise.all([
+      prisma.customer.findUnique({
+        where: { id: input.customerId },
+        select: {
+          notificationsEnabled: true,
+          deviceTokens: { select: { token: true } },
+        },
+      }),
+      businessPushLogo(input.businessId),
+    ]);
     if (!customer) {
       return { sent: false, sentCount: 0, skipped: 'customer_not_found' };
     }
@@ -81,6 +86,7 @@ export async function notifyEarnPush(
           unitKind: input.unitKind,
           transactionId: input.transactionId,
           quantity: input.quantity,
+          logoUrl,
         }),
       tokens,
     );
@@ -105,13 +111,16 @@ export async function notifyPesquisaPush(input: {
   conviteId: string;
 }): Promise<{ sent: boolean; sentCount: number; skipped?: string; error?: string }> {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { id: input.customerId },
-      select: {
-        notificationsEnabled: true,
-        deviceTokens: { select: { token: true } },
-      },
-    });
+    const [customer, logoUrl] = await Promise.all([
+      prisma.customer.findUnique({
+        where: { id: input.customerId },
+        select: {
+          notificationsEnabled: true,
+          deviceTokens: { select: { token: true } },
+        },
+      }),
+      businessPushLogo(input.businessId),
+    ]);
     if (!customer) {
       return { sent: false, sentCount: 0, skipped: 'customer_not_found' };
     }
@@ -132,6 +141,7 @@ export async function notifyPesquisaPush(input: {
           businessId: input.businessId,
           unitKind: 'stamps',
           conviteId: input.conviteId,
+          logoUrl,
         }),
       tokens,
     );

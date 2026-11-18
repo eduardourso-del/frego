@@ -168,7 +168,8 @@ void main() {
       rewardTitle: 'Bolo grátis',
     );
     expect(birthday.kindLabel, 'Aniversário');
-    expect(birthday.line, 'Bolo grátis');
+    expect(birthday.line, 'Bolo');
+    expect(birthday.rewardLine, 'Bolo grátis');
     expect(birthday.detailLine, 'No aniversário · 1× ao ano');
 
     final ready = campaign(
@@ -216,7 +217,11 @@ void main() {
       ],
     });
     expect(feed.sections.single.campaigns.single.canRedeem, isFalse);
-    expect(feed.sections.single.campaigns.single.line, '10% de cashback');
+    expect(feed.sections.single.campaigns.single.line, 'Cashback');
+    expect(
+      feed.sections.single.campaigns.single.rewardLine,
+      '10% de cashback',
+    );
   });
 
   test('Distância names another city and keeps kilometers in this one', () {

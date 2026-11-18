@@ -14,6 +14,10 @@ import {
   emailOwnerIfApproved,
   emailOwnerIfRefused,
 } from '../lib/mail/business-approved.js';
+import {
+  queueEntrada,
+  shouldQueueEntrada,
+} from '../lib/push/entrada-notify.js';
 
 const STATUSES = [
   'pending',
@@ -943,6 +947,29 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
       );
     }
 
+    const nextStatus =
+      body.status && body.status !== existing.status
+        ? body.status
+        : existing.status;
+    const nextVisible =
+      body.explorationVisible === undefined
+        ? existing.explorationVisible
+        : body.explorationVisible;
+    if (
+      shouldQueueEntrada({
+        previousStatus: existing.status,
+        previousVisible: existing.explorationVisible,
+        nextStatus,
+        nextVisible,
+        alreadySent: existing.entradaSentAt != null,
+      })
+    ) {
+      queueEntrada({
+        businessId: id,
+        log: (msg, extra) => request.log.info({ msg, ...extra }),
+      });
+    }
+
     const detail = await loadBusinessDetail(id);
     return detail;
   });
@@ -1007,6 +1034,20 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
     const updated = await setBusinessStatus(id, 'trial');
     await emailOwnerIfApproved(request.log, 'pending', 'trial', updated);
+    if (
+      shouldQueueEntrada({
+        previousStatus: business.status,
+        previousVisible: business.explorationVisible,
+        nextStatus: 'trial',
+        nextVisible: business.explorationVisible,
+        alreadySent: business.entradaSentAt != null,
+      })
+    ) {
+      queueEntrada({
+        businessId: id,
+        log: (msg, extra) => request.log.info({ msg, ...extra }),
+      });
+    }
 
     return {
       business: {

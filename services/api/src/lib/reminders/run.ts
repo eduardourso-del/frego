@@ -273,6 +273,7 @@ async function deliver(input: {
   campaignIdFor?: (key: string) => string | null;
   businessId: string;
   businessName: string;
+  logoUrl: string | null;
   phoneE164: string;
   notificationsEnabled: boolean;
   tokens: string[];
@@ -315,6 +316,7 @@ async function deliver(input: {
           businessId: input.businessId,
           campaignId:
             input.campaignIdFor?.(keys[0]!) ?? input.campaignId ?? null,
+          logoUrl: input.logoUrl,
         });
         const settled = channelSettled('push', push);
         if (settled === 'retry') retryPush.push(...keys);
@@ -394,6 +396,7 @@ export async function runAccountReminders(input?: {
     select: {
       id: true,
       name: true,
+      logoUrl: true,
       expiryNoticeEnabled: true,
       expiryNoticeDays: true,
     },
@@ -470,6 +473,7 @@ export async function runAccountReminders(input?: {
               pushType: 'wallet_expiry',
               businessId: business.id,
               businessName: business.name,
+              logoUrl: business.logoUrl,
               phoneE164: membership.customer.phoneE164,
               notificationsEnabled: membership.customer.notificationsEnabled,
               tokens,
@@ -520,6 +524,7 @@ export async function runAccountReminders(input?: {
               keyed.find((item) => item.noticeKey === key)?.campaignId ?? null,
             businessId: business.id,
             businessName: business.name,
+            logoUrl: business.logoUrl,
             phoneE164: membership.customer.phoneE164,
             notificationsEnabled: membership.customer.notificationsEnabled,
             tokens,

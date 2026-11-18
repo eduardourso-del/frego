@@ -87,6 +87,8 @@ const updateCustomerBody = z.object({
   /** Marca o onboarding do app como concluído. */
   onboardingCompleted: z.boolean().optional(),
   notificationsEnabled: z.boolean().optional(),
+  boasVindasEnabled: z.boolean().optional(),
+  entradaEnabled: z.boolean().optional(),
   /** Cidade. Both fields together. Cannot be cleared. */
   city: z.string().trim().min(1).max(80).optional(),
   state: z.string().trim().min(2).max(2).optional(),
@@ -108,6 +110,8 @@ const customerPublicSelect = {
   birthday: true,
   onboardingCompleted: true,
   notificationsEnabled: true,
+  boasVindasEnabled: true,
+  entradaEnabled: true,
   city: true,
   state: true,
   browseCity: true,
@@ -215,6 +219,8 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       body.birthday === undefined &&
       body.onboardingCompleted === undefined &&
       body.notificationsEnabled === undefined &&
+      body.boasVindasEnabled === undefined &&
+      body.entradaEnabled === undefined &&
       body.city === undefined &&
       body.state === undefined
     ) {
@@ -249,6 +255,12 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
           : {}),
         ...(body.notificationsEnabled !== undefined
           ? { notificationsEnabled: body.notificationsEnabled }
+          : {}),
+        ...(body.boasVindasEnabled !== undefined
+          ? { boasVindasEnabled: body.boasVindasEnabled }
+          : {}),
+        ...(body.entradaEnabled !== undefined
+          ? { entradaEnabled: body.entradaEnabled }
           : {}),
         ...(cidade
           ? { city: cidade.city, state: cidade.state }

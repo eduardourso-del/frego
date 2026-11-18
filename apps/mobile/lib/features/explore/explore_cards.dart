@@ -191,10 +191,12 @@ class ExploreCampaignCard extends StatelessWidget {
     final hasImage = image != null && image.isNotEmpty;
     final accent = Color(parseHexColor(campaign.primaryColor) ?? 0xFF070707);
     final description = campaign.rewardDescription?.trim();
+    final reward = campaign.rewardLine;
     final showDescription =
         description != null &&
         description.isNotEmpty &&
-        description != campaign.line;
+        description != campaign.line &&
+        description != reward;
     final hasProgress =
         campaign.progressNeeded != null && campaign.progressCurrent != null;
 
@@ -262,6 +264,20 @@ class ExploreCampaignCard extends StatelessWidget {
                         color: FregoColors.ink,
                       ),
                     ),
+                    if (reward != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        reward,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          height: 1.3,
+                          fontWeight: FontWeight.w500,
+                          color: FregoColors.neutral500,
+                        ),
+                      ),
+                    ],
                     if (campaign.type == 'birthday' &&
                         campaign.detailLine != null) ...[
                       const SizedBox(height: 4),

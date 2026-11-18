@@ -123,6 +123,16 @@ class _CustomerShellState extends State<CustomerShell> {
         transactionId: target.transactionId,
         quantity: target.quantity,
       ),
+      'entrada'
+          when target.city != null &&
+              target.city!.isNotEmpty &&
+              target.state != null &&
+              target.state!.isNotEmpty =>
+        ShopDetailPage(
+          businessId: target.businessId,
+          explorationCity: target.city,
+          explorationState: target.state,
+        ),
       _ => ShopDetailPage(businessId: target.businessId),
     };
     FregoAdaptive.push(context, page, rootNavigator: true);

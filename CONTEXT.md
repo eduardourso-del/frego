@@ -137,8 +137,16 @@ The last day carimbos, pontos, or cashback from one earn can still be used.
 _Avoid_: validade, expiração
 
 **Lembrete**:
-A notice a Cliente receives. One kind says remaining carimbos, pontos, or cashback are near vencimento. Another says a Promoção is near its end. WhatsApp and push carry the same Lembrete.
+A notice a Cliente receives that her carimbos, pontos, or cashback are near vencimento, or that a Promoção is near its end. WhatsApp and push carry the same Lembrete.
 _Avoid_: notificação, aviso, alerta, convite
+
+**Boas-vindas**:
+The notice a Cliente receives when her Clube at an Estabelecimento begins. WhatsApp carries it. Push carries it when she already has the app.
+_Avoid_: cadastro, welcome, notificação de cadastro
+
+**Entrada**:
+The notice a Cliente receives when an Estabelecimento is first listed in Exploração for her Cidade. Push carries it. A Clube she already holds there is not an Entrada.
+_Avoid_: loja nova, novidade, notificação
 
 **Antecedência**:
 How far ahead of vencimento an Estabelecimento sends the Lembrete for carimbos, pontos, and cashback. One day count on the Estabelecimento, and a switch. Turned off, that Lembrete does not go out.
