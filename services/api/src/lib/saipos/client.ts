@@ -3,10 +3,17 @@ import { formatSaiposDateTime, unwrapSaiposSales } from './sale.js';
 const DEFAULT_BASE = 'https://data.saipos.io/v1';
 const PAGE_LIMIT = 1000;
 const MAX_PAGES = 20;
+/** Their limit page documents 429. The 502/503/504 pool timeouts are what the live API returns under load. */
+const RETRY_STATUSES = new Set([0, 429, 502, 503, 504]);
+const RETRY_DELAYS_MS = [1000, 3000, 8000];
 
 export type SaiposFetchResult =
   | { ok: true; sales: unknown[] }
   | { ok: false; status: number; message: string };
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function baseUrl(): string {
   return (process.env.SAIPOS_DATA_API_BASE?.trim() || DEFAULT_BASE).replace(
@@ -25,6 +32,24 @@ export async function fetchSaiposSales(
   start: Date,
   end: Date,
   fetchImpl: typeof fetch = fetch,
+  sleep: (ms: number) => Promise<void> = delay,
+): Promise<SaiposFetchResult> {
+  for (let attempt = 0; ; attempt++) {
+    const result = await fetchSaiposSalesOnce(token, start, end, fetchImpl);
+    const retry =
+      !result.ok &&
+      RETRY_STATUSES.has(result.status) &&
+      attempt < RETRY_DELAYS_MS.length;
+    if (!retry) return result;
+    await sleep(RETRY_DELAYS_MS[attempt] ?? 0);
+  }
+}
+
+async function fetchSaiposSalesOnce(
+  token: string,
+  start: Date,
+  end: Date,
+  fetchImpl: typeof fetch,
 ): Promise<SaiposFetchResult> {
   const sales: unknown[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {

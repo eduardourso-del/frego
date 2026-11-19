@@ -7,34 +7,15 @@ import { applySaiposSale, type SaiposImportRow, type SaiposSave } from './apply.
 import { fetchSaiposSales } from './client.js';
 import { saiposErrorForHouse } from './house-error.js';
 import { saiposSaleId } from './sale.js';
+import { saiposQueryWindow } from './window.js';
 
-const OVERLAP_MS = 6 * 60 * 60 * 1000;
-const MAX_WINDOW_MS = 15 * 24 * 60 * 60 * 1000 - 60 * 1000;
 const SYNC_HOURS = [5, 13, 21];
+/** 15 days of backlog at one day per slice, with the 6-hour overlap. */
+const MAX_SLICES = 32;
 
 type SyncLog = (msg: string, extra?: Record<string, unknown>) => void;
 
-export function saiposQueryWindow(input: {
-  connectedAt: Date;
-  cursorUpdatedAt: Date | null;
-  now: Date;
-}): { start: Date; end: Date; cursorNext: Date } {
-  const floor = input.connectedAt;
-  let start = input.cursorUpdatedAt ?? floor;
-  if (start < floor) start = floor;
-  start = new Date(start.getTime() - OVERLAP_MS);
-  if (start < floor) start = new Date(floor);
-  let end = input.now;
-  if (end.getTime() - start.getTime() > MAX_WINDOW_MS) {
-    end = new Date(start.getTime() + MAX_WINDOW_MS);
-  }
-  if (end < start) end = new Date(start);
-  const caughtUp = end.getTime() >= input.now.getTime() - 1000;
-  const cursorNext = caughtUp
-    ? new Date(Math.max(floor.getTime(), input.now.getTime() - OVERLAP_MS))
-    : end;
-  return { start, end, cursorNext };
-}
+export { saiposQueryWindow };
 
 /** Next 05:00, 13:00, or 21:00 in America/Sao_Paulo. */
 export function msUntilNextSaiposSync(now = new Date()): number {
@@ -166,11 +147,6 @@ export async function syncSaiposConnection(
   }
 
   const now = new Date();
-  const window = saiposQueryWindow({
-    connectedAt: connection.connectedAt,
-    cursorUpdatedAt: connection.cursorUpdatedAt,
-    now,
-  });
   let token: string;
   try {
     token = decryptToken(connection.tokenCiphertext, connection.tokenKeyVersion);
@@ -182,37 +158,72 @@ export async function syncSaiposConnection(
     return { ok: false, sales: 0 };
   }
 
-  const pulled = await fetchSaiposSales(token, window.start, window.end);
-  if (!pulled.ok) {
-    const authFailed = pulled.status === 401 || pulled.status === 403;
+  const businessId = connection.businessId;
+  const connectedAt = connection.connectedAt;
+  const saleLocationId = locationId;
+  const saleActorId = actor;
+  let cursor = connection.cursorUpdatedAt;
+  let applied = 0;
+  for (let slice = 0; slice < MAX_SLICES; slice++) {
+    const window = saiposQueryWindow({
+      connectedAt: connection.connectedAt,
+      cursorUpdatedAt: cursor,
+      now,
+    });
+    const pulled = await fetchSaiposSales(token, window.start, window.end);
+    if (!pulled.ok) {
+      const authFailed = pulled.status === 401 || pulled.status === 403;
+      await prisma.businessSaiposConnection.update({
+        where: { id: connection.id },
+        data: {
+          status: authFailed ? 'error' : connection.status,
+          lastError: saiposErrorForHouse(pulled.message.slice(0, 400), connection.status),
+          lastSyncAt: new Date(),
+        },
+      });
+      log?.('saipos_sync_failed', {
+        businessId: connection.businessId,
+        status: pulled.status,
+        sales: applied,
+      });
+      return { ok: false, sales: applied };
+    }
+
+    applied += await applyPulledSales(pulled.sales);
     await prisma.businessSaiposConnection.update({
       where: { id: connection.id },
       data: {
-        status: authFailed ? 'error' : connection.status,
-        lastError: saiposErrorForHouse(pulled.message.slice(0, 400), connection.status),
+        status: 'connected',
+        lastError: null,
         lastSyncAt: new Date(),
+        cursorUpdatedAt: window.cursorNext,
       },
     });
-    log?.('saipos_sync_failed', {
-      businessId: connection.businessId,
-      status: pulled.status,
-    });
-    return { ok: false, sales: 0 };
+    const advanced = window.cursorNext.getTime() > (cursor?.getTime() ?? 0);
+    cursor = window.cursorNext;
+    if (window.caughtUp || !advanced) break;
   }
 
-  let applied = 0;
-  for (const sale of pulled.sales) {
-    const id = saiposSaleId(sale);
-    if (!id) continue;
-    applied += 1;
-    await applySaiposSale(
-      { sale, connectedAt: connection.connectedAt },
-      {
+  log?.('saipos_sync_done', {
+    businessId: connection.businessId,
+    sales: applied,
+  });
+  return { ok: true, sales: applied };
+
+  async function applyPulledSales(sales: unknown[]): Promise<number> {
+    let count = 0;
+    for (const sale of sales) {
+      const id = saiposSaleId(sale);
+      if (!id) continue;
+      count += 1;
+      await applySaiposSale(
+        { sale, connectedAt },
+        {
         findImport: async (saiposSaleId) => {
           const row = await prisma.saiposSale.findUnique({
             where: {
               businessId_saiposSaleId: {
-                businessId: connection.businessId,
+                businessId,
                 saiposSaleId,
               },
             },
@@ -230,7 +241,7 @@ export async function syncSaiposConnection(
           const current = await prisma.saiposSale.findUnique({
             where: {
               businessId_saiposSaleId: {
-                businessId: connection.businessId,
+                businessId,
                 saiposSaleId,
               },
             },
@@ -262,7 +273,7 @@ export async function syncSaiposConnection(
           try {
             await prisma.saiposSale.create({
               data: {
-                businessId: connection.businessId,
+                businessId,
                 saiposSaleId,
                 status: 'processing',
               },
@@ -273,10 +284,10 @@ export async function syncSaiposConnection(
             throw err;
           }
         },
-        save: (row) => saveImport(connection.businessId, row),
+        save: (row) => saveImport(businessId, row),
         openClube: async (opened) => {
           const clube = await openClube({
-            businessId: connection.businessId,
+            businessId,
             phone: opened.phone,
             displayName: opened.displayName,
             birthday: opened.birthday,
@@ -286,10 +297,10 @@ export async function syncSaiposConnection(
         },
         recordEarn: async (earn) => {
           const result = await recordSaleEarn({
-            businessId: connection.businessId,
+            businessId,
             membershipId: earn.membershipId,
-            locationId,
-            actorTeamMemberId: actor,
+            locationId: saleLocationId,
+            actorTeamMemberId: saleActorId,
             mode: {
               kind: 'amount',
               amountCents: earn.amountCents,
@@ -302,10 +313,10 @@ export async function syncSaiposConnection(
         },
         reverse: async (undo) => {
           const result = await reverseLedgerSale({
-            businessId: connection.businessId,
+            businessId,
             membershipId: undo.membershipId,
             saleId: undo.saleId,
-            actorTeamMemberId: actor,
+            actorTeamMemberId: saleActorId,
             log,
           });
           if (result.ok) return 'reversed';
@@ -314,22 +325,9 @@ export async function syncSaiposConnection(
         },
       },
     );
+    }
+    return count;
   }
-
-  await prisma.businessSaiposConnection.update({
-    where: { id: connection.id },
-    data: {
-      status: 'connected',
-      lastError: null,
-      lastSyncAt: new Date(),
-      cursorUpdatedAt: window.cursorNext,
-    },
-  });
-  log?.('saipos_sync_done', {
-    businessId: connection.businessId,
-    sales: applied,
-  });
-  return { ok: true, sales: applied };
 }
 
 export async function runSaiposSync(log?: SyncLog): Promise<void> {
