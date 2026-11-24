@@ -20,6 +20,7 @@ import {
   Layers,
   LayoutDashboard,
   Percent,
+  QrCode,
   Route,
   Settings,
   Stamp,
@@ -281,6 +282,10 @@ export function GuideView() {
                       'Carimbos, pontos e gasto',
                       'Cada um só aparece se o estabelecimento tiver campanha desse tipo. Gasto registrado é o valor lançado no balcão no programa de pontos.',
                     ],
+                    [
+                      'Check-ins',
+                      'Leituras do QR e quantas pessoas fizeram ao menos uma. Aparece quando o estabelecimento tem campanha de check-in.',
+                    ],
                   ]}
                 />
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -347,8 +352,9 @@ export function GuideView() {
                     pouco saldo lançado.
                   </Callout>
                   <Callout title="Ao vivo">
-                    As últimas movimentações do balcão, lançamento ou
-                    confirmação, com a unidade e há quanto tempo.
+                    As últimas movimentações: lançamento ou confirmação no
+                    balcão e, quando houver campanha de check-in, o check-in
+                    feito agora.
                   </Callout>
                 </div>
               </Block>
@@ -430,6 +436,37 @@ export function GuideView() {
                   </p>
                 </TypeCard>
                 <TypeCard
+                  icon={QrCode}
+                  title="Check-in"
+                  fill="var(--color-mostarda)"
+                  bg="var(--color-card)"
+                  onFill="var(--color-grafite)"
+                >
+                  <p>
+                    O cliente aponta a câmera para o QR do cartaz. Vale um
+                    check-in por dia, no fuso do estabelecimento. A campanha
+                    define a cada quantos check-ins sai o prêmio. Só uma fica
+                    ativa por vez, e o mesmo cartaz vale em todas as unidades.
+                  </p>
+                  <p>
+                    Depois da primeira ativação, a meta e o prêmio ficam
+                    fixos. O nome da campanha e o limite de resgates continuam
+                    editáveis. O limite pode ficar sem teto, ou valer nesta
+                    campanha, por dia, por semana, por mês ou por ano. Com o
+                    limite nesta campanha esgotado, novos check-ins ficam
+                    suspensos até o limite subir. Nos outros períodos, o
+                    check-in do dia continua.
+                  </p>
+                  <p>
+                    O cartaz sai da lista de campanhas, com o estabelecimento,
+                    o prêmio, a meta e o QR. Trocar o QR encerra o link antigo
+                    e mantém a contagem. Pausar segura os check-ins novos; um
+                    prêmio já completo ainda pode ser resgatado. Arquivar
+                    encerra os check-ins que ainda não viraram prêmio. Na
+                    ficha do cliente, um membro tira um check-in por vez.
+                  </p>
+                </TypeCard>
+                <TypeCard
                   icon={Percent}
                   title="Promoção"
                   fill="var(--color-promo)"
@@ -453,7 +490,8 @@ export function GuideView() {
                 “O cliente ganha” é o texto do prêmio. “Nome no app” é o
                 título do cartão. A foto é opcional. Sem audiência escolhida, a
                 campanha vale para todos os clientes. Com audiência, ela vale
-                só para quem estiver nesse grupo na hora do resgate.
+                só para quem estiver nesse grupo na hora do resgate. O
+                check-in vale para qualquer cliente.
               </Callout>
             </Screen>
 
@@ -570,7 +608,8 @@ export function GuideView() {
                 Cada ficha mostra visitas, saldo, etiquetas e o histórico. VIP
                 e etiquetas são marcas do estabelecimento: entram na regra da audiência e
                 no filtro da lista. Ao abrir uma audiência, você chega nesta
-                mesma lista, já filtrada.
+                mesma lista, já filtrada. Na campanha de check-in, a ficha
+                tem “Tirar um check-in”.
               </p>
             </Screen>
 
@@ -595,7 +634,8 @@ export function GuideView() {
               />
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Callout title="Atividade">
-                  Carimbos, pontos e resgates por dia, semana ou mês.
+                  Carimbos, pontos e resgates por dia, semana ou mês. Com
+                  campanha de check-in, o gráfico também conta os check-ins.
                 </Callout>
                 <Callout title="Retenção por mês de cadastro">
                   De quem entrou naquele mês, quantos voltaram depois.
@@ -623,6 +663,10 @@ export function GuideView() {
                     [
                       'Receita no resgate',
                       'Vendas registradas na confirmação do voucher ou no uso do cashback. Se alguma confirmação veio sem valor, aparece quantas tinham o valor preenchido, por exemplo “3 de 5 com valor”.',
+                    ],
+                    [
+                      'Check-ins',
+                      'Na campanha de check-in, a linha mostra os check-ins e as pessoas do período.',
                     ],
                   ]}
                 />

@@ -17,6 +17,7 @@ import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { saleIdFromMeta, shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { DEFAULT_FUSO } from '../lib/br-fuso.js';
+import { foldCheckIns } from '../lib/check-in.js';
 import {
   periodQuerySchema,
   resolvePeriod,
@@ -272,6 +273,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       lateVoucherTxs,
       prevLateVoucherTxs,
       earnKinds,
+      checkInCampaignCount,
+      currentCheckInRows,
+      previousCheckInRows,
+      recentCheckIns,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -320,7 +325,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         where: {
           businessId: auth.businessId,
           status: 'active',
-          type: { in: ['stamps', 'spend', 'cashback', 'promo'] },
+          type: { in: ['stamps', 'spend', 'cashback', 'promo', 'checkin'] },
         },
         orderBy: { createdAt: 'asc' },
         select: {
@@ -373,6 +378,57 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         },
       }),
       activeEarnKindsForBusiness(auth.businessId),
+      prisma.campaign.count({
+        where: { businessId: auth.businessId, type: 'checkin' },
+      }),
+      prisma.checkIn.findMany({
+        where: {
+          businessId: auth.businessId,
+          status: { not: 'removed' },
+          createdAt: { gte: from, lt: toExclusive },
+        },
+        select: {
+          campaignId: true,
+          membershipId: true,
+          status: true,
+          civilDate: true,
+        },
+      }),
+      prisma.checkIn.findMany({
+        where: {
+          businessId: auth.businessId,
+          status: { not: 'removed' },
+          createdAt: { gte: prevFrom, lt: prevTo },
+        },
+        select: {
+          campaignId: true,
+          membershipId: true,
+          status: true,
+          civilDate: true,
+        },
+      }),
+      prisma.checkIn.findMany({
+        where: {
+          businessId: auth.businessId,
+          status: { not: 'removed' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        include: {
+          membership: {
+            include: {
+              customer: {
+                select: {
+                  displayName: true,
+                  phoneE164: true,
+                  deletedAt: true,
+                },
+              },
+            },
+          },
+          campaign: { select: { name: true } },
+        },
+      }),
     ]);
 
     const firstVisitByMember = new Map<string, Date>();
@@ -381,6 +437,10 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         firstVisitByMember.set(row.membershipId, row._min.createdAt);
       }
     }
+
+    const currentCheckIns = foldCheckIns(currentCheckInRows);
+    const previousCheckIns = foldCheckIns(previousCheckInRows);
+    const hasCheckIn = checkInCampaignCount > 0;
 
     const current = summarizePeriod(currentTxs, firstVisitByMember, timeZone);
     const previous = summarizePeriod(previousTxs, firstVisitByMember, timeZone);
@@ -506,18 +566,27 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
       ymdInTimeZone(prevFrom, timeZone),
       days,
     );
-    const weekSeries = currentDays.map((d, i) => ({
-      ...d,
-      prevDate: previousDays[i]?.date ?? d.date,
-      prevVisits: previousDays[i]?.visits ?? 0,
-      prevRedeems: previousDays[i]?.redeems ?? 0,
-    }));
+    const weekSeries = currentDays.map((d, i) => {
+      const prevDate = previousDays[i]?.date ?? d.date;
+      return {
+        ...d,
+        prevDate,
+        prevVisits: previousDays[i]?.visits ?? 0,
+        prevRedeems: previousDays[i]?.redeems ?? 0,
+        ...(hasCheckIn
+          ? {
+              checkIns: currentCheckIns.byDay.get(d.date) ?? 0,
+              prevCheckIns: previousCheckIns.byDay.get(prevDate) ?? 0,
+            }
+          : {}),
+      };
+    });
     const weekDeltaPct = deltaPct(
       currentDays.reduce((sum, d) => sum + d.visits, 0),
       previousDays.reduce((sum, d) => sum + d.visits, 0),
     );
 
-    const live = liveTxs
+    const liveFromTill = liveTxs
       .filter((tx) => !shouldOmitFromLedger(tx.metadata))
       .map((tx) => {
       const name = tx.membership.customer.deletedAt
@@ -555,6 +624,32 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         createdAt: tx.createdAt,
       };
     });
+
+    const liveFromCheckIn = hasCheckIn
+      ? recentCheckIns.map((row) => {
+          const customer = row.membership.customer;
+          const name = customer.deletedAt
+            ? 'Conta encerrada'
+            : customer.displayName ?? customer.phoneE164?.slice(-4) ?? 'Cliente';
+          const initials = name
+            .split(/\s+/)
+            .map((p) => p[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase();
+          return {
+            id: row.id,
+            type: 'checkin' as const,
+            text: `${name} fez check-in`,
+            initials,
+            locationName: row.campaign.name,
+            createdAt: row.createdAt,
+          };
+        })
+      : [];
+    const live = [...liveFromTill, ...liveFromCheckIn]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, 8);
 
     let inactiveBase = 0;
     for (const id of firstVisitByMember.keys()) {
@@ -668,13 +763,21 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
         expiredVouchers: s?.expired ?? 0,
         redeemRevenueCents: ret.revenueCents,
         revenueCoverage: ret.coverage,
+        checkIns: currentCheckIns.byCampaign.get(c.id)?.checkIns ?? 0,
+        checkInCustomers: currentCheckIns.byCampaign.get(c.id)?.people.size ?? 0,
+        checkInsDeltaPct: deltaPct(
+          currentCheckIns.byCampaign.get(c.id)?.checkIns ?? 0,
+          previousCheckIns.byCampaign.get(c.id)?.checkIns ?? 0,
+        ),
       };
     });
-    const moved = campaignPerf.filter((c) => c.redeems > 0);
+    const heat = (c: { type: string; redeems: number; checkIns: number }) =>
+      c.type === 'checkin' ? c.checkIns : c.redeems;
+    const moved = campaignPerf.filter((c) => heat(c) > 0);
     const topCampaign =
       [...moved].sort(
         (a, b) =>
-          b.redeems - a.redeems ||
+          heat(b) - heat(a) ||
           b.redeemRevenueCents - a.redeemRevenueCents ||
           b.fulfillPct - a.fulfillPct,
       )[0] ?? null;
@@ -685,7 +788,7 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
     const lowFulfill = [...rest]
       .filter((c) => c.type !== 'cashback' && c.redeems > 0)
       .sort((a, b) => a.fulfillPct - b.fulfillPct || a.redeems - b.redeems);
-    const idle = rest.filter((c) => c.redeems === 0);
+    const idle = rest.filter((c) => heat(c) === 0);
     const weakCampaign =
       pendingConfirm[0] ??
       (lowFulfill[0] && lowFulfill[0].fulfillPct < 70 ? lowFulfill[0] : null) ??
@@ -851,6 +954,26 @@ export const dashboardRoutes: FastifyPluginAsync = async (app) => {
           ),
         },
       },
+      checkIn: hasCheckIn
+        ? {
+            checkIns: {
+              value: currentCheckIns.checkIns,
+              previous: previousCheckIns.checkIns,
+              deltaPct: deltaPct(
+                currentCheckIns.checkIns,
+                previousCheckIns.checkIns,
+              ),
+            },
+            customers: {
+              value: currentCheckIns.customers,
+              previous: previousCheckIns.customers,
+              deltaPct: deltaPct(
+                currentCheckIns.customers,
+                previousCheckIns.customers,
+              ),
+            },
+          }
+        : null,
       funnel: {
         base: totalMembers,
         active: current.customers,

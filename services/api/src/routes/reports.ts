@@ -10,6 +10,7 @@ import { voucherFromMetadata } from '../lib/voucher.js';
 import { isCashbackUnit } from '../lib/customer-stats.js';
 import { shouldOmitFromLedger } from '../lib/ledger-meta.js';
 import { DEFAULT_FUSO } from '../lib/br-fuso.js';
+import { foldCheckIns } from '../lib/check-in.js';
 import {
   periodQuerySchema,
   resolvePeriod,
@@ -206,6 +207,8 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
       lateVoucherTxs,
       prevLateVoucherTxs,
       firstVisits,
+      currentCheckInRows,
+      previousCheckInRows,
     ] = await Promise.all([
       prisma.transaction.findMany({
         where: {
@@ -280,6 +283,32 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         where: { businessId: auth.businessId },
         _min: { createdAt: true },
       }),
+      prisma.checkIn.findMany({
+        where: {
+          businessId: auth.businessId,
+          status: { not: 'removed' },
+          createdAt: { gte: from, lt: toExclusive },
+        },
+        select: {
+          campaignId: true,
+          membershipId: true,
+          status: true,
+          civilDate: true,
+        },
+      }),
+      prisma.checkIn.findMany({
+        where: {
+          businessId: auth.businessId,
+          status: { not: 'removed' },
+          createdAt: { gte: prevFrom, lt: prevTo },
+        },
+        select: {
+          campaignId: true,
+          membershipId: true,
+          status: true,
+          civilDate: true,
+        },
+      }),
     ]);
 
     const firstVisitByMember = new Map<string, Date>();
@@ -288,6 +317,10 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
         firstVisitByMember.set(row.membershipId, row._min.createdAt);
       }
     }
+
+    const currentCheckIns = foldCheckIns(currentCheckInRows);
+    const previousCheckIns = foldCheckIns(previousCheckInRows);
+    const hasCheckIn = campaigns.some((c) => c.type === 'checkin');
 
     const current = summarize(currentTxs, timeZone, firstVisitByMember);
     const previous = summarize(previousTxs, timeZone, firstVisitByMember);
@@ -334,6 +367,12 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
             : `${Number(dayOfMonth)}/${Number(month)}`,
         ...currentDay,
         prevCustomers: previousDay.customers,
+        ...(hasCheckIn
+          ? {
+              checkIns: currentCheckIns.byDay.get(key) ?? 0,
+              prevCheckIns: previousCheckIns.byDay.get(prevKey) ?? 0,
+            }
+          : {}),
       };
     });
 
@@ -581,6 +620,14 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
             isCashback: c.type === 'cashback',
             range: periodRange,
           });
+          const checkIns =
+            c.type === 'checkin'
+              ? currentCheckIns.byCampaign.get(c.id)?.checkIns ?? 0
+              : 0;
+          const previousCheckInCount =
+            c.type === 'checkin'
+              ? previousCheckIns.byCampaign.get(c.id)?.checkIns ?? 0
+              : 0;
 
           return {
             id: c.id,
@@ -605,14 +652,24 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
             expiredVouchers: vouchers.expired,
             revenueFromRedeemersCents: ret.revenueCents,
             revenueCoverage: ret.coverage,
+            checkIns,
+            checkInCustomers:
+              c.type === 'checkin'
+                ? currentCheckIns.byCampaign.get(c.id)?.people.size ?? 0
+                : 0,
+            previousCheckIns: previousCheckInCount,
+            checkInsDeltaPct: deltaPct(checkIns, previousCheckInCount),
           };
         }),
       )
     )
-      .filter((c) => c.redeems > 0 || c.status === 'active')
+      .filter(
+        (c) => c.redeems > 0 || c.checkIns > 0 || c.status === 'active',
+      )
       .sort(
         (a, b) =>
-          b.redeems - a.redeems ||
+          (b.type === 'checkin' ? b.checkIns : b.redeems) -
+            (a.type === 'checkin' ? a.checkIns : a.redeems) ||
           b.fulfillPct - a.fulfillPct ||
           b.engagePct - a.engagePct,
       )
@@ -727,6 +784,26 @@ export const reportsRoutes: FastifyPluginAsync = async (app) => {
           deltaPct: deltaPct(current.repeatRate, previous.repeatRate),
         },
         base: totalMembers,
+        ...(hasCheckIn
+          ? {
+              checkIns: {
+                value: currentCheckIns.checkIns,
+                previous: previousCheckIns.checkIns,
+                deltaPct: deltaPct(
+                  currentCheckIns.checkIns,
+                  previousCheckIns.checkIns,
+                ),
+              },
+              checkInCustomers: {
+                value: currentCheckIns.customers,
+                previous: previousCheckIns.customers,
+                deltaPct: deltaPct(
+                  currentCheckIns.customers,
+                  previousCheckIns.customers,
+                ),
+              },
+            }
+          : {}),
       },
       series,
       seriesDeltaPct: deltaPct(current.visitDays, previous.visitDays),

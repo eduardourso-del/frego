@@ -28,7 +28,7 @@ const outcomes: Array<{
   },
   {
     title: 'Crie motivos para voltar',
-    body: 'Use pontos, carimbos, cashback ou benefícios para incentivar a próxima visita — do jeito da sua loja.',
+    body: 'Use pontos, carimbos, cashback, check-in ou benefícios para incentivar a próxima visita — do jeito da sua loja.',
     Icon: Gift,
   },
   {

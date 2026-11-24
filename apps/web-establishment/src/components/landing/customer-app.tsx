@@ -18,7 +18,7 @@ const shots = [
     alt: 'App Frego — ficha da loja com carimbos, pontos e cashback',
     title: 'Benefícios da loja',
     caption:
-      'Carimbos, pontos e saldo, cada um no seu ritmo. O cliente vê o que ainda pode ganhar.',
+      'Carimbos, pontos, saldo e check-in, cada um no seu ritmo. O cliente vê o que ainda pode ganhar.',
   },
   {
     src: '/landing/app-premios.png',

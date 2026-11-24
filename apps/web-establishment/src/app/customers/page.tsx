@@ -1898,6 +1898,35 @@ function CustomersPageContent() {
                                   {camp.rewardTitle}
                                 </p>
                               ) : null}
+                              {camp.type === 'checkin' && current > 0 ? (
+                                <button
+                                  type="button"
+                                  className="mt-2 text-[12px] font-semibold text-[var(--color-neutral-500)]"
+                                  onClick={() => {
+                                    void (async () => {
+                                      const headers = {
+                                        ...(await authHeaders()),
+                                        'Content-Type': 'application/json',
+                                      };
+                                      const res = await fetch(
+                                        `${API_URL}/campaigns/${camp.campaignId}/check-ins/remove`,
+                                        {
+                                          method: 'POST',
+                                          headers,
+                                          body: JSON.stringify({
+                                            membershipId: profile.membership.id,
+                                          }),
+                                        },
+                                      );
+                                      if (res.ok) {
+                                        await loadProfile(profile.customer.id);
+                                      }
+                                    })();
+                                  }}
+                                >
+                                  Tirar um check-in
+                                </button>
+                              ) : null}
                               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-neutral-100)]">
                                 <div
                                   className={`h-full rounded-full ${

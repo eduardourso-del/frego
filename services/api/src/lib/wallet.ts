@@ -8,6 +8,13 @@ import {
   normalizeWeekdays,
 } from './promo.js';
 import {
+  checkInRedeemTxs,
+  checkInRewards,
+  countedByCampaign,
+  evaluateCheckInQuota,
+} from './check-in.js';
+import { DEFAULT_FUSO } from './br-fuso.js';
+import {
   buildStampDestinations,
   isCartelaCampaign,
   type StampDestination,
@@ -39,7 +46,7 @@ export type CampaignLockedReason = BirthdayLockedReason | PromoLockedReason;
 export type CampaignWalletEntry = {
   campaignId: string;
   campaignName: string;
-  type: 'stamps' | 'spend' | 'visits' | 'birthday' | 'cashback' | 'promo';
+  type: 'stamps' | 'spend' | 'visits' | 'birthday' | 'cashback' | 'promo' | 'checkin';
   /** Meta da recompensa (carimbos ou pontos). */
   unitsNeeded: number;
   /** @deprecated use unitsNeeded */
@@ -162,7 +169,8 @@ export function campaignSpendableUnits(
   pools: { stamps: number; points: number },
 ): number {
   if (campaign.type === 'spend') return pools.points;
-  if (campaign.type !== 'stamps') return 0;
+  if (campaign.type === 'checkin') return campaign.balance ?? 0;
+  if (campaign.type !== 'stamps' && campaign.type !== 'visits') return 0;
   if (campaign.cartela) return campaign.balance ?? 0;
   return pools.stamps;
 }
@@ -488,6 +496,7 @@ export async function deriveWallet(
         pointsExpireDays: true,
         cashbackExpireDays: true,
         cashbackUseMultiple: true,
+        timeZone: true,
       },
     }),
   ]);
@@ -497,6 +506,7 @@ export async function deriveWallet(
   const pointsExpireDays = business?.pointsExpireDays ?? null;
   const cashbackExpireDays = business?.cashbackExpireDays ?? null;
   const cashbackUseMultiple = business?.cashbackUseMultiple ?? null;
+  const timeZone = business?.timeZone ?? DEFAULT_FUSO;
   const cashbackPercent = Math.max(
     0,
     ...campaigns
@@ -781,6 +791,66 @@ export async function deriveWallet(
       audienceName: null,
       audienceUnlockMessage: null,
       balance: 0,
+      cartela: false,
+    });
+  }
+
+  const checkInCampaigns = await prisma.campaign.findMany({
+    where: {
+      businessId,
+      type: 'checkin',
+      status: { in: ['active', 'paused'] },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      stampsNeeded: true,
+      rewardTitle: true,
+      rewardDescription: true,
+      rewardImageUrl: true,
+      redeemMax: true,
+      redeemPeriod: true,
+      audienceSegmentId: true,
+    },
+  });
+  const checkInCounts = await countedByCampaign(
+    membershipId,
+    checkInCampaigns.map((campaign) => campaign.id),
+  );
+  for (const campaign of checkInCampaigns) {
+    const needed = campaign.stampsNeeded ?? 1;
+    const balance = checkInCounts.get(campaign.id) ?? 0;
+    const redeems = checkInRedeemTxs(
+      transactions.filter((tx) => !shouldOmitFromLedger(tx.metadata)),
+      campaign.id,
+    );
+    const quota = evaluateCheckInQuota(campaign, redeems, timeZone);
+    const rewardsAvailable = checkInRewards(balance, needed, quota.remaining);
+    const quotaBlocked = quota.exhausted && Math.floor(balance / needed) >= 1;
+    entries.push({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      type: 'checkin',
+      unitsNeeded: needed,
+      stampsNeeded: needed,
+      pointsPerReal: null,
+      canRedeem: rewardsAvailable >= 1 && !quotaBlocked,
+      rewardsAvailable: quotaBlocked ? 0 : rewardsAvailable,
+      rewardTitle: campaign.rewardTitle,
+      rewardDescription: campaign.rewardDescription,
+      rewardImageUrl: campaign.rewardImageUrl,
+      lockedReason: quotaBlocked ? 'quota_exhausted' : null,
+      unlocksAt: quotaBlocked ? quota.unlocksAt : null,
+      startsOn: null,
+      endsOn: null,
+      redeemMax: campaign.redeemMax,
+      redeemPeriod: campaign.redeemPeriod,
+      audienceSegmentId: null,
+      audienceEligible: null,
+      audienceName: null,
+      audienceUnlockMessage: null,
+      balance,
       cartela: false,
     });
   }

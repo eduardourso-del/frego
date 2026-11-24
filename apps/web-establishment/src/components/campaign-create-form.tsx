@@ -18,6 +18,7 @@ import {
   Gift,
   ImageIcon,
   Percent,
+  QrCode,
   Stamp,
   Users,
   type LucideIcon,
@@ -32,7 +33,7 @@ import {
 
 import { birthdayWindowLabel, type BirthdayWindowKind } from '@/lib/birthday-window';
 
-export type CampaignType = 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo';
+export type CampaignType = 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo' | 'checkin';
 export type PromoPeriod = 'day' | 'week' | 'month' | 'year' | 'campaign';
 
 export type CampaignFormState = {
@@ -55,6 +56,8 @@ export type CampaignFormState = {
   cartela: boolean;
   /** True after the Campanha has been active once. The Cartela choice is fixed. */
   cartelaLocked: boolean;
+  /** Check-in: X and the Prêmio stay fixed after the first activation. */
+  promiseLocked: boolean;
   birthdayWindow: BirthdayWindowKind;
   birthdayWindowDays: number;
 };
@@ -84,6 +87,7 @@ export const emptyCampaignForm: CampaignFormState = {
   redeemPeriod: 'day',
   cartela: false,
   cartelaLocked: false,
+  promiseLocked: false,
   birthdayWindow: 'days',
   birthdayWindowDays: 7,
 };
@@ -151,6 +155,16 @@ const TYPES: TypeOption[] = [
     fill: 'var(--color-promo)',
     onFill: '#fff',
   },
+  {
+    value: 'checkin',
+    title: 'Check-in',
+    hint: 'A cliente escaneia o QR da mesa. Um por dia.',
+    Icon: QrCode,
+    color: 'var(--color-ink)',
+    bg: 'var(--color-primary-50)',
+    fill: 'var(--color-ink)',
+    onFill: '#fff',
+  },
 ];
 
 const TYPE_DEFAULTS: Record<
@@ -182,6 +196,11 @@ const TYPE_DEFAULTS: Record<
     name: 'Promoção',
     rewardTitle: '50% off',
   },
+  checkin: {
+    stampsNeeded: 8,
+    name: 'Check-in',
+    rewardTitle: 'Prêmio do check-in',
+  },
 };
 
 const inputClass =
@@ -209,7 +228,17 @@ function applyType(form: CampaignFormState, type: CampaignType): CampaignFormSta
         }
       : type === 'stamps'
         ? { unlimited: true, redeemMax: 1, redeemPeriod: 'day' as const }
-        : { cartela: false }),
+        : type === 'checkin'
+          ? {
+              unlimited: true,
+              redeemMax: 1,
+              redeemPeriod: 'day' as const,
+              cartela: false,
+              audienceSegmentId: '',
+              startsOn: '',
+              endsOn: '',
+            }
+          : { cartela: false }),
   };
 }
 
@@ -258,12 +287,14 @@ function Stepper({
   max,
   onChange,
   suffix,
+  disabled = false,
 }: {
   value: number;
   min: number;
   max: number;
   onChange: (n: number) => void;
   suffix: string;
+  disabled?: boolean;
 }) {
   const [text, setText] = useState(String(value));
   const editing = useRef(false);
@@ -273,12 +304,14 @@ function Stepper({
   }, [value]);
 
   function commit(raw: string) {
+    if (disabled) return;
     const next = clampStepper(raw, min, max);
     setText(String(next));
     onChange(next);
   }
 
   function step(delta: number) {
+    if (disabled) return;
     const parsed = Number(text);
     const base = text !== '' && Number.isFinite(parsed) ? parsed : min;
     const next = Math.min(max, Math.max(min, base + delta));
@@ -291,9 +324,10 @@ function Stepper({
       <button
         type="button"
         aria-label="Diminuir"
+        disabled={disabled}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => step(-1)}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)]"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)] disabled:opacity-40"
       >
         −
       </button>
@@ -302,6 +336,7 @@ function Stepper({
           type="text"
           inputMode="numeric"
           autoComplete="off"
+          disabled={disabled}
           value={text}
           onFocus={() => {
             editing.current = true;
@@ -335,9 +370,10 @@ function Stepper({
       <button
         type="button"
         aria-label="Aumentar"
+        disabled={disabled}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => step(1)}
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)]"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[12px] border border-[var(--color-neutral-200)] text-[20px] font-semibold text-[var(--color-ink)] disabled:opacity-40"
       >
         +
       </button>
@@ -625,7 +661,7 @@ export function CampaignCreateForm({
             title="Tipo da campanha"
             hint={selectedType.hint}
           >
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {TYPES.map((opt) => {
                 const selected = form.type === opt.value;
                 const Icon = opt.Icon;
@@ -633,6 +669,7 @@ export function CampaignCreateForm({
                   <button
                     key={opt.value}
                     type="button"
+                    disabled={form.promiseLocked}
                     onClick={() => setForm((f) => applyType(f, opt.value))}
                     className="flex flex-col items-center gap-1.5 rounded-[14px] border border-[var(--color-hairline)] px-2 py-3 transition hover:border-[var(--color-neutral-400)]"
                     style={
@@ -687,7 +724,12 @@ export function CampaignCreateForm({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, rewardTitle: e.target.value }))
                 }
-                required={form.type === 'birthday' || form.type === 'promo'}
+                required={
+                  form.type === 'birthday' ||
+                  form.type === 'promo' ||
+                  form.type === 'checkin'
+                }
+                disabled={form.promiseLocked}
                 className={inputClass}
                 placeholder={
                   form.type === 'birthday'
@@ -844,9 +886,39 @@ export function CampaignCreateForm({
               </label>
             ) : form.type === 'promo' ? (
               <PromoRules form={form} setForm={setForm} />
+            ) : form.type === 'checkin' ? (
+              <>
+                <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
+                  Check-ins para o prêmio
+                  <Stepper
+                    value={form.stampsNeeded}
+                    min={1}
+                    max={100}
+                    suffix={form.stampsNeeded === 1 ? 'check-in' : 'check-ins'}
+                    onChange={(n) =>
+                      setForm((f) => ({ ...f, stampsNeeded: n }))
+                    }
+                    disabled={form.promiseLocked}
+                  />
+                  <span className="mt-1.5 block text-[12px] font-normal text-[var(--color-neutral-500)]">
+                    Um check-in por dia, no fuso do estabelecimento. O número e
+                    o prêmio ficam fixos depois da primeira ativação.
+                  </span>
+                </label>
+                <div className="mt-3">
+                  <RedeemLimitFields
+                    form={form}
+                    setForm={setForm}
+                    unlimitedHint="Pode resgatar cada vez que completar os check-ins."
+                    cappedHint="O limite segura o resgate. Em por dia, semana, mês ou ano, o check-in de hoje continua. Nesta campanha, o limite esgotado também para os check-ins."
+                  />
+                </div>
+              </>
             ) : null}
 
-            <ValidityFields form={form} setForm={setForm} />
+            {form.type === 'checkin' ? null : (
+              <ValidityFields form={form} setForm={setForm} />
+            )}
 
             <label className="mt-3 block text-[13px] font-semibold text-[var(--color-ink)]">
               Nome no app
@@ -869,6 +941,7 @@ export function CampaignCreateForm({
                   setForm((f) => ({ ...f, rewardDescription: e.target.value }))
                 }
                 maxLength={200}
+                disabled={form.promiseLocked}
                 className={inputClass}
                 placeholder="Uma linha a mais, se quiser"
               />
@@ -882,11 +955,19 @@ export function CampaignCreateForm({
             Icon={Users}
             title="Para quem"
             hint={
-              selectedAudience
-                ? `${selectedAudience.name} · ${selectedAudience.memberCount} cliente${selectedAudience.memberCount === 1 ? '' : 's'}`
-                : 'Todo o estabelecimento, ou só uma audiência.'
+              form.type === 'checkin'
+                ? 'Qualquer cliente. O QR da mesa não usa audiência.'
+                : selectedAudience
+                  ? `${selectedAudience.name} · ${selectedAudience.memberCount} cliente${selectedAudience.memberCount === 1 ? '' : 's'}`
+                  : 'Todo o estabelecimento, ou só uma audiência.'
             }
           >
+            {form.type === 'checkin' ? (
+              <p className="text-[13px] text-[var(--color-neutral-500)]">
+                Vale em todas as unidades. O cartaz leva o mesmo QR.
+              </p>
+            ) : (
+              <>
             {selectedAudience ? (
               <div className="mb-3 flex items-center gap-2 rounded-[12px] bg-[var(--color-intel-bg)] px-3 py-2.5">
                 <Users
@@ -934,6 +1015,8 @@ export function CampaignCreateForm({
                 ))}
               </select>
             </div>
+              </>
+            )}
 
             <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-[12px] border border-[var(--color-hairline)] px-3 py-2.5">
               <span>
@@ -972,12 +1055,16 @@ export function CampaignCreateForm({
               )}
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <label className="inline-flex min-h-10 cursor-pointer items-center justify-center rounded-[12px] border border-[var(--color-hairline)] bg-[var(--color-card)] px-3 text-[13px] font-semibold">
-                  {uploading ? 'Enviando…' : 'Escolher foto'}
+                  {uploading
+                    ? 'Enviando…'
+                    : form.promiseLocked
+                      ? 'Foto definida'
+                      : 'Escolher foto'}
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     className="sr-only"
-                    disabled={uploading || !business?.id}
+                    disabled={uploading || !business?.id || form.promiseLocked}
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';
@@ -1002,7 +1089,7 @@ export function CampaignCreateForm({
                     }}
                   />
                 </label>
-                {form.rewardImageUrl ? (
+                {form.rewardImageUrl && !form.promiseLocked ? (
                   <button
                     type="button"
                     onClick={() =>

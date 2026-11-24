@@ -536,6 +536,20 @@ class _WalletPageState extends State<WalletPage> {
                                     lockedReason: lockedReason,
                                     canRedeem: canRedeem,
                                   );
+                                } else if (type == 'checkin') {
+                                  final quotaHint = stampQuotaStatusLine(
+                                    lockedReason: lockedReason,
+                                    unlocksAt: unlocksAt,
+                                  );
+                                  subtitle = quotaHint ??
+                                      'A cada $needed check-in${needed == 1 ? '' : 's'} · um por dia';
+                                  buttonLabel = lockedReason == 'quota_exhausted'
+                                      ? 'Já resgatado'
+                                      : canRedeem
+                                          ? 'Resgatar e mostrar'
+                                          : needed > pool
+                                              ? 'Ainda falta ${needed - pool}'
+                                              : 'Continuar acumulando';
                                 } else {
                                   final quotaHint = type == 'stamps'
                                       ? stampQuotaStatusLine(

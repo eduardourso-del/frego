@@ -87,6 +87,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
   bool get _isPromo => campaignType == 'promo';
   bool get _isSpend => campaignType == 'spend' || campaignType == 'points';
   bool get _isCashback => campaignType == 'cashback';
+  bool get _isCheckIn => campaignType == 'checkin';
 
   @override
   Widget build(BuildContext context) {
@@ -302,6 +303,7 @@ class LoyaltyCampaignCard extends StatelessWidget {
                                 actualCurrent: currentUnits,
                                 showRewardInline: !hasImage,
                                 statusHint: embedded ? null : statusHint,
+                                checkIn: _isCheckIn,
                               ),
                           ],
                         ),
@@ -506,6 +508,7 @@ class _TypeChip extends StatelessWidget {
     final isBirthday = type == 'birthday';
     final isCashback = type == 'cashback';
     final isPromo = type == 'promo';
+    final isCheckIn = type == 'checkin';
     final label = isBirthday
         ? 'Aniversário'
         : isSpend
@@ -514,7 +517,9 @@ class _TypeChip extends StatelessWidget {
                 ? 'Cashback'
                 : isPromo
                     ? 'Promoção'
-                    : 'Carimbos';
+                    : isCheckIn
+                        ? 'Check-in'
+                        : 'Carimbos';
     final bg = isSpend
         ? const Color(0xFFFFF8E8)
         : isBirthday
@@ -541,7 +546,9 @@ class _TypeChip extends StatelessWidget {
                 ? FregoIcons.cashback(size: 11, color: fg)
                 : isPromo
                     ? FregoIcons.promo(size: 11, color: fg)
-                    : FregoIcons.stamp(size: 11, color: fg);
+                    : isCheckIn
+                        ? FregoIcons.checkIn(size: 11, color: fg)
+                        : FregoIcons.stamp(size: 11, color: fg);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -709,6 +716,7 @@ class _StampsBody extends StatelessWidget {
     required this.actualCurrent,
     required this.showRewardInline,
     this.statusHint,
+    this.checkIn = false,
   });
 
   final int filled;
@@ -721,6 +729,7 @@ class _StampsBody extends StatelessWidget {
   final int actualCurrent;
   final bool showRewardInline;
   final String? statusHint;
+  final bool checkIn;
 
   @override
   Widget build(BuildContext context) {
@@ -747,7 +756,8 @@ class _StampsBody extends StatelessWidget {
               height: 24,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: checkIn ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: checkIn ? BorderRadius.circular(6) : null,
                 color: isFilled ? accent : Colors.transparent,
                 border: isFilled
                     ? null
@@ -763,11 +773,13 @@ class _StampsBody extends StatelessWidget {
                       color: isFilled ? Colors.white : FregoColors.neutral400,
                     )
                   : isFilled
-                      ? const Icon(
-                          FregoIcons.stampCheck,
-                          size: 12,
-                          color: Colors.white,
-                        )
+                      ? checkIn
+                          ? FregoIcons.checkIn(size: 12, color: Colors.white)
+                          : const Icon(
+                              FregoIcons.stampCheck,
+                              size: 12,
+                              color: Colors.white,
+                            )
                       : null,
             );
           }),

@@ -14,6 +14,16 @@
 					<string>com.googleusercontent.apps.258859601466-r90s2mut9cn7stucjrq2gjblabiqq1fp</string>
 				</array>
 			</dict>
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>br.app.frego.checkin</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>frego</string>
+				</array>
+			</dict>
 		</array>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
@@ -82,6 +92,15 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSCameraUsageDescription</key>
+		<string>Para ler o QR do check-in na mesa.</string>
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>Para falar com o Frego neste Wi-Fi.</string>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsLocalNetworking</key>
+			<true/>
+		</dict>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Para mostrar a distância até os estabelecimentos. Sem ela, você escolhe a cidade.</string>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

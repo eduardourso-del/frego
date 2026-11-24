@@ -43,6 +43,15 @@ enum CampaignType {
   birthday
   cashback
   promo
+  checkin
+}
+
+/// A Check-in row. `ended` is an archived run and does not block the civil day.
+enum CheckInStatus {
+  counted
+  removed
+  consumed
+  ended
 }
 
 /// Birthday Campanha: days begin on the birthday, or that birthday's calendar month.
@@ -180,6 +189,7 @@ model Business {
   teamMembers  TeamMember[]
   memberships  Membership[]
   campaigns    Campaign[]
+  checkIns     CheckIn[]
   pesquisas    Pesquisa[]
   audienceSegments AudienceSegment[]
   tags         BusinessTag[]
@@ -349,6 +359,7 @@ model Membership {
   business     Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   tags         MembershipTag[]
+  checkIns     CheckIn[]
   convites     Convite[]
   respostas    Resposta[]
   accountNotices AccountNotice[]
@@ -490,6 +501,8 @@ model Campaign {
   audienceSegmentId String?   @map("audience_segment_id")
   /// Set when audience FCM was claimed/sent. Re-activate does not send again.
   audiencePushSentAt DateTime? @map("audience_push_sent_at")
+  /// Public token on the Campanha de check-in QR. Replacing it stops the old link.
+  checkInToken String? @unique @map("check_in_token")
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
@@ -498,10 +511,33 @@ model Campaign {
   locations   CampaignLocation[]
   transactions Transaction[]
   pesquisaBonuses Pesquisa[]
+  checkIns    CheckIn[]
 
   @@index([businessId, status])
   @@index([audienceSegmentId])
   @@map("campaigns")
+}
+
+/// One civil day of a Campanha de check-in. Counted rows are the progress.
+/// Removed keeps the day used. Consumed was spent by Resgatar. Ended was archived.
+model CheckIn {
+  id           String        @id @default(cuid())
+  businessId   String        @map("business_id")
+  campaignId   String        @map("campaign_id")
+  membershipId String        @map("membership_id")
+  /// Civil day in the Fuso, YYYY-MM-DD.
+  civilDate    String        @map("civil_date")
+  status       CheckInStatus @default(counted)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  campaign   Campaign   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, membershipId, status])
+  @@index([membershipId, civilDate])
+  @@map("check_ins")
 }
 
 /// Audiência salva: regras JSON para segmentar clientes (gasto, inatividade, etc.).

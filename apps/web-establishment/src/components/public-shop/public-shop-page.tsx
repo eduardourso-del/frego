@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { FregoWordmark } from '@/components/brand';
 import { StoreBadges } from '@/components/store-badges';
 import { RemoteImg, BusinessLogo } from '@/components/remote-img';
-import { Banknote, Cake, Coins, MapPin, Percent, Stamp } from 'lucide-react';
+import { Banknote, Cake, Coins, MapPin, Percent, QrCode, Stamp } from 'lucide-react';
 import { businessTypeLabel } from '@frego/tokens';
 import { birthdayWindowLabel } from '@/lib/birthday-window';
 import { promoFrequencyHint, promoHint } from '@/lib/promo-label';
@@ -23,6 +23,10 @@ function campaignHint(
 ): string {
   if (c.type === 'birthday') {
     return birthdayWindowLabel(c.birthdayWindow, c.birthdayWindowDays);
+  }
+  if (c.type === 'checkin') {
+    const n = c.stampsNeeded ?? 1;
+    return `A cada ${n} check-in${n === 1 ? '' : 's'}`;
   }
   if (c.type === 'promo') {
     return promoHint(c);
@@ -84,6 +88,14 @@ function CampaignTypeBadge({
       <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-promo-bg)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-promo)]">
         <Percent size={12} strokeWidth={2.5} aria-hidden />
         Promoção
+      </span>
+    );
+  }
+  if (type === 'checkin') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[var(--color-primary-50)] px-2 py-0.5 text-[11px] font-semibold text-[var(--color-ink)]">
+        <QrCode size={12} strokeWidth={2.5} aria-hidden />
+        Check-in
       </span>
     );
   }

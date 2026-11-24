@@ -25,6 +25,7 @@ import { findCity } from '../lib/city.js';
 import { displayKmFrom } from '../lib/exploration.js';
 import { parseOrigin, type LatLng } from '../lib/geo.js';
 import { listMunicipalities } from '../lib/municipalities.js';
+import { consumeCountedCheckIns, recordCheckIn } from '../lib/check-in.js';
 
 const locationSelect = {
   id: true,
@@ -542,6 +543,34 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /** Cliente escolhe campanha e resgata do pool. */
+  app.post('/me/check-in', async (request, reply) => {
+    const auth = requireCustomerAuth(request);
+    const body = z.object({ token: z.string().min(8).max(80) }).parse(request.body);
+    const result = await recordCheckIn({
+      token: body.token,
+      customerId: auth.customerId,
+    });
+    if (!result.ok) {
+      const status = result.error === 'NOT_FOUND' ? 404 : 409;
+      return reply.code(status).send({ error: result.error, status: result.status });
+    }
+    const wallet = await deriveWallet(result.membershipId, result.businessId);
+    return {
+      created: result.created,
+      alreadyToday: result.alreadyToday,
+      openedClube: result.openedClube,
+      counted: result.counted,
+      needed: result.needed,
+      civilDate: result.civilDate,
+      campaignId: result.campaignId,
+      campaignName: result.campaignName,
+      businessId: result.businessId,
+      businessName: result.businessName,
+      rewardTitle: result.rewardTitle,
+      wallet,
+    };
+  });
+
   app.post('/me/redeem', async (request, reply) => {
     const auth = requireCustomerAuth(request);
     const body = redeemBody.parse(request.body);
@@ -561,8 +590,13 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       where: {
         id: body.campaignId,
         businessId: body.businessId,
-        status: 'active',
-        type: { in: ['stamps', 'spend', 'birthday', 'promo'] },
+        OR: [
+          {
+            status: 'active',
+            type: { in: ['stamps', 'spend', 'birthday', 'promo', 'checkin'] },
+          },
+          { status: 'paused', type: 'checkin' },
+        ],
       },
       include: {
         audienceSegment: { select: { id: true, rules: true } },
@@ -642,21 +676,56 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const voucher = createVoucherMeta();
+    const needed = campaign.stampsNeeded ?? 1;
 
-    const tx = await prisma.transaction.create({
-      data: {
-        businessId: body.businessId,
-        membershipId: membership.id,
-        campaignId: campaign.id,
-        locationId: location.id,
-        actorTeamMemberId: null,
-        actorCustomerId: auth.customerId,
-        type: 'redeem',
-        quantity,
-        unitKind: null,
-        metadata: voucher,
-      },
-    });
+    const tx =
+      campaign.type === 'checkin'
+        ? await prisma.$transaction(async (db) => {
+            const consumed = await consumeCountedCheckIns(db, {
+              campaignId: campaign.id,
+              membershipId: membership.id,
+              count: quantity * needed,
+            });
+            if (!consumed) {
+              throw new Error('NO_REWARD_AVAILABLE');
+            }
+            return db.transaction.create({
+              data: {
+                businessId: body.businessId,
+                membershipId: membership.id,
+                campaignId: campaign.id,
+                locationId: location.id,
+                actorTeamMemberId: null,
+                actorCustomerId: auth.customerId,
+                type: 'redeem',
+                quantity,
+                unitKind: null,
+                metadata: voucher,
+              },
+            });
+          }).catch((err: unknown) => {
+            if (err instanceof Error && err.message === 'NO_REWARD_AVAILABLE') {
+              return null;
+            }
+            throw err;
+          })
+        : await prisma.transaction.create({
+            data: {
+              businessId: body.businessId,
+              membershipId: membership.id,
+              campaignId: campaign.id,
+              locationId: location.id,
+              actorTeamMemberId: null,
+              actorCustomerId: auth.customerId,
+              type: 'redeem',
+              quantity,
+              unitKind: null,
+              metadata: voucher,
+            },
+          });
+    if (!tx) {
+      return reply.code(409).send({ error: 'NO_REWARD_AVAILABLE' });
+    }
 
     const next = await deriveWallet(membership.id, body.businessId);
     const rewardTitle = campaign.rewardTitle ?? campaign.name;

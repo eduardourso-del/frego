@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Banknote, Cake, CalendarRange, Coins, Gift, ImageIcon, Percent, Stamp } from 'lucide-react';
+import { Banknote, Cake, CalendarRange, Coins, Gift, ImageIcon, Percent, QrCode, Stamp } from 'lucide-react';
 import { RemoteImg } from '@/components/remote-img';
 import {
   WEEKDAY_LABELS,
@@ -18,7 +18,7 @@ type CampaignCardPreviewProps = {
   primaryColor: string;
   primaryColorDark?: string;
   campaignName: string;
-  campaignType: 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo';
+  campaignType: 'stamps' | 'spend' | 'birthday' | 'cashback' | 'promo' | 'checkin';
   unitsNeeded: number;
   pointsPerReal?: number;
   cashbackPercent?: number;
@@ -56,17 +56,19 @@ export function CampaignCardPreview({
   const goal = Math.max(1, unitsNeeded || 1);
   // Stamp dots stay capped so a long cartela does not blow up the card.
   const stampSlots = Math.min(goal, 24);
-  const needed = campaignType === 'stamps' ? stampSlots : goal;
-  const sampleProgress =
-    campaignType === 'stamps'
-      ? Math.min(3, Math.max(0, stampSlots - 1))
-      : Math.min(Math.round(goal * 0.35), Math.max(0, goal - 1));
+  const stampDots = campaignType === 'stamps' || campaignType === 'checkin';
+  const needed = stampDots ? stampSlots : goal;
+  const sampleProgress = stampDots
+    ? Math.min(3, Math.max(0, stampSlots - 1))
+    : Math.min(Math.round(goal * 0.35), Math.max(0, goal - 1));
   const remaining = Math.max(0, needed - sampleProgress);
   const letter = businessName.trim().charAt(0).toUpperCase() || 'V';
   const reward = rewardTitle.trim() || 'Recompensa';
   const hasImage = Boolean(rewardImageUrl?.trim());
   const validity =
-    campaignType === 'promo' ? null : campaignValidityLine({ startsOn, endsOn });
+    campaignType === 'promo' || campaignType === 'checkin'
+      ? null
+      : campaignValidityLine({ startsOn, endsOn });
 
   return (
     <div>
@@ -126,7 +128,7 @@ export function CampaignCardPreview({
                         : ''
               }`}
               style={
-                campaignType === 'stamps'
+                campaignType === 'stamps' || campaignType === 'checkin'
                   ? {
                       background: `${primaryColor}1A`,
                       color: primaryColor,
@@ -142,6 +144,8 @@ export function CampaignCardPreview({
                 <Banknote size={11} strokeWidth={2.5} aria-hidden />
               ) : campaignType === 'promo' ? (
                 <Percent size={11} strokeWidth={2.5} aria-hidden />
+              ) : campaignType === 'checkin' ? (
+                <QrCode size={11} strokeWidth={2.5} aria-hidden />
               ) : (
                 <Stamp size={11} strokeWidth={2.5} aria-hidden />
               )}
@@ -153,7 +157,9 @@ export function CampaignCardPreview({
                     ? 'Cashback'
                     : campaignType === 'promo'
                       ? 'Promoção'
-                      : 'Carimbos'}
+                      : campaignType === 'checkin'
+                        ? 'Check-in'
+                        : 'Carimbos'}
             </span>
           </div>
 
@@ -201,7 +207,7 @@ export function CampaignCardPreview({
                     </p>
                   ) : null}
                 </>
-              ) : campaignType === 'stamps' ? (
+              ) : campaignType === 'stamps' || campaignType === 'checkin' ? (
                 <>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {Array.from({ length: needed }).map((_, i) => {
@@ -210,7 +216,11 @@ export function CampaignCardPreview({
                       return (
                         <div
                           key={i}
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
+                          className={`flex h-6 w-6 shrink-0 items-center justify-center ${
+                            campaignType === 'checkin'
+                              ? 'rounded-[6px]'
+                              : 'rounded-full'
+                          } ${
                             filled
                               ? 'text-white'
                               : 'border-[1.4px] border-[var(--color-neutral-200)] bg-transparent text-[var(--color-neutral-400)]'
@@ -223,15 +233,20 @@ export function CampaignCardPreview({
                           {isGift ? (
                             <Gift size={12} strokeWidth={2.25} />
                           ) : filled ? (
-                            <Stamp size={12} strokeWidth={2.25} />
+                            campaignType === 'checkin' ? (
+                              <QrCode size={12} strokeWidth={2.25} />
+                            ) : (
+                              <Stamp size={12} strokeWidth={2.25} />
+                            )
                           ) : null}
                         </div>
                       );
                     })}
                   </div>
                   <p className="mt-1.5 text-[11px] font-medium text-[var(--color-neutral-500)]">
-                    {sampleProgress}/{needed}
-                    {remaining > 0 ? ` · faltam ${remaining}` : ''}
+                    {campaignType === 'checkin'
+                      ? `A cada ${goal} check-in${goal === 1 ? '' : 's'}`
+                      : `${sampleProgress}/${needed}${remaining > 0 ? ` · faltam ${remaining}` : ''}`}
                     {promoHint ? ` · ${promoHint}` : ''}
                   </p>
                 </>

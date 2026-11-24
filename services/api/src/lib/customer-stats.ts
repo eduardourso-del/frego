@@ -85,7 +85,12 @@ export function foldLedgerTx(
 }
 
 function isLoyaltyProgress(c: CampaignWalletEntry) {
-  return c.type === 'stamps' || c.type === 'spend' || c.type === 'visits';
+  return (
+    c.type === 'stamps' ||
+    c.type === 'spend' ||
+    c.type === 'visits' ||
+    c.type === 'checkin'
+  );
 }
 
 function primaryCampaign(

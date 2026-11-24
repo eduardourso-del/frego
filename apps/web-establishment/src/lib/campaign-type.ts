@@ -4,6 +4,7 @@ export const CAMPAIGN_TYPE_LABEL: Record<string, string> = {
   birthday: 'Aniversário',
   cashback: 'Cashback',
   promo: 'Promoção',
+  checkin: 'Check-in',
 };
 
 export const CAMPAIGN_TYPE_COLOR: Record<string, string> = {
@@ -12,6 +13,7 @@ export const CAMPAIGN_TYPE_COLOR: Record<string, string> = {
   birthday: 'var(--color-primary-500)',
   cashback: 'var(--color-cashback)',
   promo: 'var(--color-promo)',
+  checkin: 'var(--color-mostarda)',
 };
 
 export function campaignTypeLabel(type: string) {

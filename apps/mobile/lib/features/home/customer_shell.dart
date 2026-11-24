@@ -10,6 +10,8 @@ import '../explore/explore_page.dart';
 import '../history/history_page.dart';
 import '../profile/profile_page.dart';
 import '../rewards/rewards_page.dart';
+import '../shops/check_in_page.dart';
+import '../shops/check_in_scan_page.dart';
 import '../shops/campaign_detail_page.dart';
 import '../shops/earn_detail_page.dart';
 import '../shops/pesquisa_page.dart';
@@ -17,6 +19,7 @@ import '../shops/shop_detail_page.dart';
 import '../shops/shops_page.dart';
 import '../../analytics/frego_telemetry.dart';
 import '../../api/frego_api.dart';
+import '../../notifications/check_in_links.dart';
 import '../../notifications/push_service.dart';
 import '../../theme/frego_icons.dart';
 import '../../theme/frego_theme.dart';
@@ -64,6 +67,7 @@ class _CustomerShellState extends State<CustomerShell> {
     super.initState();
     _cupertinoTabs = CupertinoTabController(initialIndex: 0);
     PendingPushOpen.target.addListener(_openPendingPush);
+    CheckInLinks.pending.addListener(_openPendingCheckIn);
     if (!widget.deferCidade) {
       _checkingCidade = true;
       unawaited(_checkCidade());
@@ -71,6 +75,7 @@ class _CustomerShellState extends State<CustomerShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(PushService.syncIfAuthorized());
       _openPendingPush();
+      _openPendingCheckIn();
     });
     unawaited(FregoTelemetry.screen(_tabScreens[_index]));
   }
@@ -78,6 +83,7 @@ class _CustomerShellState extends State<CustomerShell> {
   @override
   void dispose() {
     PendingPushOpen.target.removeListener(_openPendingPush);
+    CheckInLinks.pending.removeListener(_openPendingCheckIn);
     _cupertinoTabs.dispose();
     super.dispose();
   }
@@ -138,6 +144,21 @@ class _CustomerShellState extends State<CustomerShell> {
     FregoAdaptive.push(context, page, rootNavigator: true);
   }
 
+  void _openPendingCheckIn() {
+    final token = CheckInLinks.take();
+    if (token == null || !mounted) return;
+    FregoAdaptive.push(
+      context,
+      CheckInPage(
+        token: token,
+        onRecorded: () {
+          if (mounted) setState(() => _shopsRefresh++);
+        },
+      ),
+      rootNavigator: true,
+    );
+  }
+
   void _openReadyRewards() {
     openReadyRewards();
     if (!mounted) return;
@@ -187,19 +208,24 @@ class _CustomerShellState extends State<CustomerShell> {
   );
 
   Widget _pageAt(int index) {
-    switch (index) {
-      case 1:
-        return _shopsPage();
-      case 2:
-        return _rewardsPage();
-      case 3:
-        return _historyPage();
-      case 4:
-        return _profilePage();
-      case 0:
-      default:
-        return _explorePage();
-    }
+    final page = switch (index) {
+      1 => _shopsPage(),
+      2 => _rewardsPage(),
+      3 => _historyPage(),
+      4 => _profilePage(),
+      _ => _explorePage(),
+    };
+    return _CheckInLayer(
+      onRecorded: () {
+        if (!mounted) return;
+        setState(() {
+          _shopsRefresh++;
+          _exploreRefresh++;
+          _rewardsRefresh++;
+        });
+      },
+      child: page,
+    );
   }
 
   @override
@@ -288,13 +314,7 @@ class _CustomerShellState extends State<CustomerShell> {
     return Scaffold(
       body: IndexedStack(
         index: _index,
-        children: [
-          _explorePage(),
-          _shopsPage(),
-          _rewardsPage(),
-          _historyPage(),
-          _profilePage(),
-        ],
+        children: [for (var i = 0; i < 5; i++) _pageAt(i)],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
@@ -329,6 +349,27 @@ class _CustomerShellState extends State<CustomerShell> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CheckInLayer extends StatelessWidget {
+  const _CheckInLayer({required this.child, required this.onRecorded});
+
+  final Widget child;
+  final VoidCallback onRecorded;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(child: child),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: CheckInFab(onRecorded: onRecorded),
+        ),
+      ],
     );
   }
 }

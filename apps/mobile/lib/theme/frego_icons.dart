@@ -48,6 +48,8 @@ abstract final class FregoIcons {
       _lucide('percent', size: size, color: color);
   static Widget promoFilled({double size = 24, Color? color}) =>
       promo(size: size, color: color);
+  static Widget checkIn({double size = 24, Color? color}) =>
+      _lucide('qr-code', size: size, color: color);
   static Widget thumbUp({double size = 24, Color? color, bool filled = false}) =>
       _lucide(filled ? 'thumbs-up-filled' : 'thumbs-up', size: size, color: color);
   static Widget thumbDown({

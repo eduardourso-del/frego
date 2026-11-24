@@ -3,7 +3,7 @@
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Stamp, Coins, Cake, ImageIcon, Banknote, Percent } from 'lucide-react';
+import { Stamp, Coins, Cake, ImageIcon, Banknote, Percent, Printer, QrCode } from 'lucide-react';
 import { AppShell } from '@/components/app-shell';
 import {
   CampaignCreateForm,
@@ -55,6 +55,7 @@ type Campaign = {
   redeemPeriod?: string | null;
   birthdayWindow?: 'days' | 'month' | null;
   birthdayWindowDays?: number | null;
+  checkInToken?: string | null;
 };
 
 type CampaignPerformance = {
@@ -95,6 +96,7 @@ const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'birthday', label: 'Aniversário' },
   { value: 'cashback', label: 'Cashback' },
   { value: 'promo', label: 'Promoção' },
+  { value: 'checkin', label: 'Check-in' },
 ];
 
 function parseCampaignType(raw: string | null): CampaignType | null {
@@ -103,7 +105,8 @@ function parseCampaignType(raw: string | null): CampaignType | null {
     raw === 'spend' ||
     raw === 'birthday' ||
     raw === 'cashback' ||
-    raw === 'promo'
+    raw === 'promo' ||
+    raw === 'checkin'
   ) {
     return raw;
   }
@@ -624,7 +627,9 @@ function CampaignsPageContent() {
             ? 'cashback'
             : c.type === 'promo'
               ? 'promo'
-              : 'stamps';
+              : c.type === 'checkin'
+                ? 'checkin'
+                : 'stamps';
     const period: PromoPeriod =
       c.redeemPeriod === 'day' ||
       c.redeemPeriod === 'week' ||
@@ -658,6 +663,7 @@ function CampaignsPageContent() {
       redeemPeriod: period,
       cartela: Boolean(c.cartela),
       cartelaLocked: Boolean(c.activatedAt),
+      promiseLocked: c.type === 'checkin' && Boolean(c.activatedAt),
       birthdayWindow: c.birthdayWindow === 'month' ? 'month' : 'days',
       birthdayWindowDays: c.birthdayWindowDays ?? 7,
     });
@@ -724,6 +730,15 @@ function CampaignsPageContent() {
                 redeemPeriod: form.unlimited ? null : form.redeemPeriod,
                 cartela: form.cartela,
               }
+            : form.type === 'checkin'
+              ? {
+                  weekdays: [],
+                  redeemMax: form.unlimited ? null : form.redeemMax,
+                  redeemPeriod: form.unlimited ? null : form.redeemPeriod,
+                  audienceSegmentId: null,
+                  startsOn: null,
+                  endsOn: null,
+                }
             : form.type === 'birthday'
               ? {
                   weekdays: [],
@@ -914,6 +929,8 @@ function CampaignsPageContent() {
                       <Banknote size={14} strokeWidth={2.25} aria-hidden />
                     ) : f.value === 'promo' ? (
                       <Percent size={14} strokeWidth={2.25} aria-hidden />
+                    ) : f.value === 'checkin' ? (
+                      <QrCode size={14} strokeWidth={2.25} aria-hidden />
                     ) : undefined,
                 }))}
                 onChange={setTypeFilter}
@@ -1038,6 +1055,11 @@ function CampaignsPageContent() {
                           <Percent size={13} strokeWidth={2.25} aria-hidden />
                           Promoção
                         </span>
+                      ) : c.type === 'checkin' ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-primary-50)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-ink)] ring-1 ring-inset ring-[var(--color-hairline)]">
+                          <QrCode size={13} strokeWidth={2.25} aria-hidden />
+                          Check-in
+                        </span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--color-stamps-bg)] px-2.5 py-1 text-[12px] font-semibold text-[var(--color-stamps)] ring-1 ring-inset ring-[var(--color-stamps-ring)]">
                           <Stamp size={13} strokeWidth={2.25} aria-hidden />
@@ -1072,10 +1094,12 @@ function CampaignsPageContent() {
                             ? `Cashback ${c.cashbackPercent ?? 0}% · válido no caixa`
                             : c.type === 'promo'
                               ? promoHint(c)
+                              : c.type === 'checkin'
+                                ? `A cada ${c.stampsNeeded ?? 1} check-in${c.stampsNeeded === 1 ? '' : 's'}`
                               : c.redeemMax != null
                                 ? `${c.stampsNeeded} carimbos · ${promoFrequencyHint(c)}`
                                 : `${c.stampsNeeded} carimbos`}
-                      {c.type !== 'promo' && campaignValidityLine(c)
+                      {c.type !== 'promo' && c.type !== 'checkin' && campaignValidityLine(c)
                         ? ` · ${campaignValidityLine(c)}`
                         : ''}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
@@ -1099,6 +1123,15 @@ function CampaignsPageContent() {
                       />
                     )}
                     <div className="flex flex-wrap gap-2">
+                    {c.type === 'checkin' && c.checkInToken ? (
+                      <Link
+                        href={`/campaigns/cartaz?id=${encodeURIComponent(c.id)}`}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-[10px] bg-[var(--color-primary-500)] px-3.5 text-[13px] font-semibold text-[var(--color-on-primary)] shadow-[var(--shadow-cta)]"
+                      >
+                        <Printer size={15} strokeWidth={2.4} aria-hidden />
+                        Imprimir cartaz
+                      </Link>
+                    ) : null}
                     {c.status !== 'archived' && (
                       <button
                         type="button"

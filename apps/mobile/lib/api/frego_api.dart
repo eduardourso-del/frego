@@ -220,6 +220,16 @@ Future<Map<String, dynamic>> redeemCampaign({
   return _decode(res);
 }
 
+Future<Map<String, dynamic>> recordCheckIn(String token) async {
+  final headers = await customerAuthHeaders();
+  final res = await apiClient.post(
+    Uri.parse('$apiBaseUrl/me/check-in'),
+    headers: headers,
+    body: jsonEncode({'token': token}),
+  );
+  return _decode(res);
+}
+
 Future<Map<String, dynamic>> fetchMyHistory({int limit = 50}) async {
   final headers = await customerAuthHeaders();
   final res = await apiClient.get(

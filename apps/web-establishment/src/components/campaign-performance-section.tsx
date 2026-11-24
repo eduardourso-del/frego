@@ -28,6 +28,9 @@ export type DashboardCampaign = {
   expiredVouchers?: number;
   redeemRevenueCents?: number;
   revenueCoverage?: RevenueCoverage;
+  checkIns?: number;
+  checkInCustomers?: number;
+  checkInsDeltaPct?: number | null;
 };
 
 type Spotlight = {
@@ -41,6 +44,7 @@ type Spotlight = {
   redeemRevenueCents?: number;
   revenueCoverage?: RevenueCoverage;
   openVouchers?: number;
+  checkIns?: number;
 } | null;
 
 function campaignReturnHint(
@@ -157,8 +161,11 @@ export function CampaignPerformanceSection({
   returnDeltaPct: number | null;
   redeemsDeltaPct?: number | null;
 }) {
+  const activity = (c: DashboardCampaign) =>
+    c.type === 'checkin' ? (c.checkIns ?? 0) : (c.redeems ?? 0);
   const ranked = [...campaigns].sort(
-    (a, b) => (b.redeems ?? 0) - (a.redeems ?? 0) || a.name.localeCompare(b.name, 'pt-BR'),
+    (a, b) =>
+      activity(b) - activity(a) || a.name.localeCompare(b.name, 'pt-BR'),
   );
   const totalRedeems = ranked.reduce((s, c) => s + (c.redeems ?? 0), 0);
   const openVouchers = ranked.reduce(
@@ -176,7 +183,7 @@ export function CampaignPerformanceSection({
   const voucherTotal = openVouchers + usedVouchers + expiredVouchers;
   const fulfillPct =
     voucherTotal === 0 ? null : Math.round((usedVouchers / voucherTotal) * 100);
-  const idle = ranked.filter((c) => (c.redeems ?? 0) === 0).length;
+  const idle = ranked.filter((c) => activity(c) === 0).length;
 
   const showWeak =
     weakCampaign != null && weakCampaign.id !== topCampaign?.id;
@@ -244,7 +251,9 @@ export function CampaignPerformanceSection({
                 {topCampaign.name}
               </p>
               <p className="mt-1 text-[13px] text-[var(--color-neutral-500)]">
-                {topCampaign.type === 'cashback'
+                {topCampaign.type === 'checkin'
+                  ? `${(topCampaign.checkIns ?? 0).toLocaleString('pt-BR')} ${(topCampaign.checkIns ?? 0) === 1 ? 'check-in' : 'check-ins'} · ${redeemCountLabel('stamps', topCampaign.redeems)}`
+                  : topCampaign.type === 'cashback'
                   ? redeemCountLabel('cashback', topCampaign.redeems)
                   : redeemCountLabel('stamps', topCampaign.redeems)}
                 {topCampaign.type !== 'cashback'
@@ -279,6 +288,9 @@ export function CampaignPerformanceSection({
                   ? `${weakCampaign.openVouchers} voucher${
                       (weakCampaign.openVouchers ?? 0) === 1 ? '' : 's'
                     } à espera no caixa`
+                  : weakCampaign.type === 'checkin' &&
+                      (weakCampaign.checkIns ?? 0) === 0
+                    ? 'Nenhum check-in neste período'
                   : weakCampaign.redeems === 0
                     ? 'Nenhum resgate neste período'
                     : `${redeemCountLabel(
@@ -367,6 +379,9 @@ export function CampaignPerformanceSection({
                       <div className="truncate text-[11px] text-[var(--color-neutral-400)]">
                         {campaignTypeLabel(c.type)}
                         {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
+                        {c.type === 'checkin'
+                          ? ` · ${(c.checkIns ?? 0).toLocaleString('pt-BR')} ${(c.checkIns ?? 0) === 1 ? 'check-in' : 'check-ins'}`
+                          : ''}
                       </div>
                     </div>
                     <Metric

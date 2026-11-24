@@ -9,6 +9,9 @@ int campaignUnits(
   if (type == 'cashback') {
     return (campaign['cashbackBalanceCents'] as num?)?.toInt() ?? cashbackCents;
   }
+  if (type == 'checkin') {
+    return (campaign['balance'] as num?)?.toInt() ?? 0;
+  }
   final explicit = campaign['balance'];
   if (explicit is num && (type == 'stamps' || type == 'spend')) {
     return explicit.toInt();

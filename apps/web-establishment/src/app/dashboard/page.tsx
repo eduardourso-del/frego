@@ -55,6 +55,10 @@ type DashboardData = {
     campaignRedeems?: Kpi;
     campaignReturnCents?: Kpi;
   };
+  checkIn?: {
+    checkIns: Kpi;
+    customers: Kpi;
+  } | null;
   funnel?: {
     base: number;
     active: number;
@@ -108,11 +112,13 @@ type DashboardData = {
     prevDate?: string;
     prevVisits?: number;
     prevRedeems?: number;
+    checkIns?: number;
+    prevCheckIns?: number;
   }>;
   weekDeltaPct?: number | null;
   live: Array<{
     id: string;
-    type: 'stamp' | 'redeem';
+    type: 'stamp' | 'redeem' | 'checkin';
     text: string;
     initials: string;
     locationName: string;
@@ -142,6 +148,9 @@ type DashboardData = {
     expiredVouchers?: number;
     redeemRevenueCents?: number;
     revenueCoverage?: { withAmount: number; used: number };
+    checkIns?: number;
+    checkInCustomers?: number;
+    checkInsDeltaPct?: number | null;
   }>;
 };
 
@@ -261,6 +270,12 @@ function KpiCard({
   );
 }
 
+function checkInTitle(checkIns: number | undefined, previous: number | undefined) {
+  if (checkIns == null) return '';
+  const label = checkIns === 1 ? 'check-in' : 'check-ins';
+  return ` · ${checkIns} ${label} · período anterior ${previous ?? 0}`;
+}
+
 function slashDay(ymd: string) {
   const [, month, day] = ymd.split('-');
   return `${Number(day)}/${Number(month)}`;
@@ -282,7 +297,7 @@ function visitBars(series: DashboardData['weekSeries']) {
         series.length <= 8 ? d.day : slashDay(d.date),
         d.visits,
         d.prevVisits ?? 0,
-        `${slashDay(d.date)}: ${d.visits} visitas · período anterior ${d.prevVisits ?? 0}`,
+        `${slashDay(d.date)}: ${d.visits} visitas · período anterior ${d.prevVisits ?? 0}${checkInTitle(d.checkIns, d.prevCheckIns)}`,
       ),
     );
   }
@@ -295,6 +310,14 @@ function visitBars(series: DashboardData['weekSeries']) {
     const last = slice[slice.length - 1]!;
     const visits = slice.reduce((sum, d) => sum + d.visits, 0);
     const prevVisits = slice.reduce((sum, d) => sum + (d.prevVisits ?? 0), 0);
+    const checkIns = slice.reduce((sum, d) => sum + (d.checkIns ?? 0), 0);
+    const prevCheckIns = slice.reduce(
+      (sum, d) => sum + (d.prevCheckIns ?? 0),
+      0,
+    );
+    const checkInNote = slice.some((d) => d.checkIns != null)
+      ? checkInTitle(checkIns, prevCheckIns)
+      : '';
     const span =
       first.date === last.date
         ? slashDay(first.date)
@@ -305,7 +328,7 @@ function visitBars(series: DashboardData['weekSeries']) {
         slashDay(first.date),
         visits,
         prevVisits,
-        `${span}: ${visits} visitas · período anterior ${prevVisits}`,
+        `${span}: ${visits} visitas · período anterior ${prevVisits}${checkInNote}`,
       ),
     );
   }
@@ -740,6 +763,25 @@ export default function DashboardPage() {
                   )}
                 </div>
 
+              {data.checkIn ? (
+                <div className="mb-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <KpiCard
+                    label="Check-ins"
+                    value={data.checkIn.checkIns.value}
+                    deltaPct={data.checkIn.checkIns.deltaPct ?? null}
+                    previous={formatCount(data.checkIn.checkIns.previous ?? 0)}
+                    hint="leituras do QR no período"
+                  />
+                  <KpiCard
+                    label="Pessoas no check-in"
+                    value={data.checkIn.customers.value}
+                    deltaPct={data.checkIn.customers.deltaPct ?? null}
+                    previous={formatCount(data.checkIn.customers.previous ?? 0)}
+                    hint="ao menos um check-in"
+                  />
+                </div>
+              ) : null}
+
               <div className="grid items-start gap-4 lg:grid-cols-2">
                 <WeekChart
                   series={data.weekSeries}
@@ -908,7 +950,7 @@ export default function DashboardPage() {
                     </Link>
                   </div>
                   <p className="mb-4 text-[13px] text-[var(--color-neutral-500)]">
-                    Últimas movimentações no balcão.
+                    Últimas movimentações.
                   </p>
                   {data.live.length === 0 ? (
                     <p className="text-[13px] text-[var(--color-neutral-500)]">

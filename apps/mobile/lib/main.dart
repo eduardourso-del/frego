@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart'
@@ -11,6 +13,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'analytics/frego_telemetry.dart';
 import 'firebase_options.dart';
 import 'config/app_config.dart';
+import 'notifications/check_in_links.dart';
 import 'notifications/push_service.dart';
 import 'theme/frego_theme.dart';
 import 'features/auth/auth_gate.dart';
@@ -34,6 +37,7 @@ Future<void> main() async {
   PushService.registerBackground();
   await FregoTelemetry.attach();
   PushService.attachNative();
+  unawaited(CheckInLinks.attach());
   runApp(FregoApp(analyticsObserver: FregoTelemetry.observer));
 }
 

@@ -313,6 +313,7 @@ class ExploreCampaignCard extends StatelessWidget {
                         needed: campaign.progressNeeded!,
                         complete: campaign.canRedeem,
                         accent: accent,
+                        checkIn: campaign.type == 'checkin',
                       ),
                       const SizedBox(height: 6),
                       Text(
@@ -406,12 +407,14 @@ class _StampProgress extends StatelessWidget {
     required this.needed,
     required this.complete,
     required this.accent,
+    this.checkIn = false,
   });
 
   final int filled;
   final int needed;
   final bool complete;
   final Color accent;
+  final bool checkIn;
 
   @override
   Widget build(BuildContext context) {
@@ -429,6 +432,7 @@ class _StampProgress extends StatelessWidget {
             filled: complete || i < shown,
             gift: i == count - 1,
             accent: accent,
+            checkIn: checkIn,
           ),
       ],
     );
@@ -440,11 +444,13 @@ class _StampDot extends StatelessWidget {
     required this.filled,
     required this.gift,
     required this.accent,
+    this.checkIn = false,
   });
 
   final bool filled;
   final bool gift;
   final Color accent;
+  final bool checkIn;
 
   @override
   Widget build(BuildContext context) {
@@ -453,7 +459,8 @@ class _StampDot extends StatelessWidget {
       height: 18,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: checkIn ? BoxShape.rectangle : BoxShape.circle,
+        borderRadius: checkIn ? BorderRadius.circular(5) : null,
         color: filled ? accent : Colors.transparent,
         border: filled
             ? null
@@ -466,11 +473,13 @@ class _StampDot extends StatelessWidget {
               color: filled ? FregoColors.white : FregoColors.neutral400,
             )
           : filled
-          ? const Icon(
-              FregoIcons.stampCheck,
-              size: 11,
-              color: FregoColors.white,
-            )
+          ? checkIn
+              ? FregoIcons.checkIn(size: 11, color: FregoColors.white)
+              : const Icon(
+                  FregoIcons.stampCheck,
+                  size: 11,
+                  color: FregoColors.white,
+                )
           : null,
     );
   }
@@ -493,6 +502,7 @@ class _CampaignKindChip extends StatelessWidget {
     final isBirthday = type == 'birthday';
     final isCashback = type == 'cashback';
     final isPromo = type == 'promo';
+    final isCheckIn = type == 'checkin';
     final bg = isSpend
         ? const Color(0xFFFFF8E8)
         : isBirthday
@@ -519,6 +529,8 @@ class _CampaignKindChip extends StatelessWidget {
         ? FregoIcons.cashback(size: 11, color: fg)
         : isPromo
         ? FregoIcons.promo(size: 11, color: fg)
+        : isCheckIn
+        ? FregoIcons.checkIn(size: 11, color: fg)
         : FregoIcons.stamp(size: 11, color: fg);
 
     return Container(

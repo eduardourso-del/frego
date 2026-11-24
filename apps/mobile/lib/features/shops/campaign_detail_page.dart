@@ -11,6 +11,7 @@ import '../../ui/shop_summary_card.dart';
 import '../../ui/skeleton.dart';
 import '../../ui/stamp_balance.dart';
 import '../../ui/voucher_sheet.dart';
+import 'check_in_scan_page.dart';
 import 'shop_detail_page.dart';
 
 /// Full campaign for a shop — opened from a push or a card tap.
@@ -152,6 +153,16 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
     } finally {
       if (mounted) setState(() => _redeeming = false);
     }
+  }
+
+  Future<void> _openCheckIn() async {
+    await openCheckInScanner(
+      context,
+      onRecorded: () {
+        if (mounted) _load();
+      },
+    );
+    if (mounted) _load();
   }
 
   Future<void> _openShop() async {
@@ -326,6 +337,18 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
         statusHint = 'O saldo é descontado no caixa da loja';
       }
       buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
+    } else if (type == 'checkin') {
+      final quotaHint = stampQuotaStatusLine(
+        lockedReason: lockedReason,
+        unlocksAt: unlocksAt,
+      );
+      statusHint = quotaHint ??
+          'A cada $needed check-in${needed == 1 ? '' : 's'} · um por dia';
+      buttonLabel = lockedReason == 'quota_exhausted'
+          ? 'Já resgatado'
+          : canRedeem
+              ? 'Resgatar e mostrar'
+              : 'Fazer check-in';
     } else if (audienceLocked) {
       statusHint = 'Promo exclusiva para outro perfil de cliente';
       buttonLabel = 'Indisponível pra você';
@@ -407,9 +430,13 @@ class _CampaignDetailPageState extends State<CampaignDetailPage> {
             split: stampRows.length > 1,
           ),
           fullText: true,
-          onRedeem: isCashback || !canRedeem || _redeeming
-              ? null
-              : () => _redeem(campaign),
+          onRedeem: type == 'checkin' &&
+                  !canRedeem &&
+                  lockedReason != 'quota_exhausted'
+              ? () => _openCheckIn()
+              : isCashback || !canRedeem || _redeeming
+                  ? null
+                  : () => _redeem(campaign),
         ),
       if (isPromo) ...[
         const SizedBox(height: 12),

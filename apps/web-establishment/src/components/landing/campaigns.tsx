@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   PauseCircle,
+  QrCode,
   SlidersHorizontal,
   Stamp,
   Target,
@@ -28,7 +29,7 @@ const types: Array<{
   card: string;
   iconWrap: string;
   kickerClass: string;
-  motif: 'stamps' | 'points' | 'cashback' | 'birthday';
+  motif: 'stamps' | 'points' | 'cashback' | 'birthday' | 'checkin';
 }> = [
   {
     title: 'Carimbos',
@@ -78,6 +79,18 @@ const types: Array<{
     kickerClass: 'text-[var(--color-primary-600)]',
     motif: 'birthday',
   },
+  {
+    title: 'Check-in',
+    kicker: 'Presença',
+    body: 'O cliente aponta a câmera para o QR e o dia conta — no máximo um check-in por dia. Você escolhe a meta e o prêmio. O mesmo cartaz vale em todas as unidades.',
+    example:
+      'No café, no salão ou na academia, o cartaz fica à vista. Sem passar pelo caixa para registrar que esteve ali.',
+    Icon: QrCode,
+    card: 'border-[var(--color-hairline)] bg-[var(--color-card)]',
+    iconWrap: 'bg-[var(--color-mostarda)] text-[var(--color-grafite)]',
+    kickerClass: 'text-[var(--color-ink)]',
+    motif: 'checkin',
+  },
 ];
 
 const assemble: Array<{
@@ -90,14 +103,14 @@ const assemble: Array<{
   {
     n: '01',
     title: 'O tipo',
-    body: 'Carimbos, pontos, cashback ou aniversário: o formato que combina com a sua operação.',
+    body: 'Carimbos, pontos, cashback, aniversário ou check-in: o formato que combina com a sua operação.',
     Icon: SlidersHorizontal,
     wrap: 'bg-[var(--color-primary-500)] text-white',
   },
   {
     n: '02',
     title: 'A meta',
-    body: 'Quantos carimbos, quantos pontos ou qual porcentagem. Você calibra o esforço e o presente.',
+    body: 'Quantos carimbos, quantos pontos, qual porcentagem ou a cada quantos check-ins. Você calibra o esforço e o presente.',
     Icon: Target,
     wrap: 'bg-[var(--color-stamps)] text-white',
   },
@@ -125,7 +138,7 @@ const levers: Array<{
 }> = [
   {
     title: 'Várias ao mesmo tempo',
-    body: 'Carimbos no pão, pontos no almoço, cashback no fim de semana e aniversário o ano todo. Cada campanha tem o próprio prêmio, a própria meta e o próprio ritmo.',
+    body: 'Carimbos no pão, pontos no almoço, cashback no fim de semana, aniversário o ano todo e o check-in no cartaz. Cada campanha tem o próprio prêmio, a própria meta e o próprio ritmo.',
     Icon: Layers,
     wrap: 'bg-[var(--color-primary-50)] text-[var(--color-primary-600)]',
   },
@@ -216,6 +229,39 @@ function TypeMotif({ kind }: { kind: (typeof types)[number]['motif'] }) {
         <span className="text-[13px] font-medium text-[var(--color-cashback)]">
           volta em reais na próxima visita
         </span>
+      </div>
+    );
+  }
+  if (kind === 'checkin') {
+    const filled = 5;
+    const needed = 8;
+    return (
+      <div className="mt-5" aria-hidden>
+        <div className="flex flex-wrap gap-1.5">
+          {Array.from({ length: needed }).map((_, i) => {
+            const isGift = i === needed - 1;
+            const isFilled = i < filled;
+            return (
+              <span
+                key={i}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-[6px] ${
+                  isFilled
+                    ? 'bg-[var(--color-mostarda)] text-[var(--color-grafite)]'
+                    : 'bg-white/80 text-[var(--color-neutral-400)] ring-1 ring-inset ring-[var(--color-grafite)]/15'
+                }`}
+              >
+                {isGift ? (
+                  <Gift size={14} strokeWidth={2.4} />
+                ) : isFilled ? (
+                  <QrCode size={14} strokeWidth={2.4} />
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] font-semibold text-[var(--color-ink)]">
+          A cada {needed} check-ins
+        </p>
       </div>
     );
   }

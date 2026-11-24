@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react';
 
-const APP_STORE_URL =
+export const APP_STORE_URL =
   'https://apps.apple.com/br/app/frego-clube-de-benef%C3%ADcios/id6799090522';
 
-const PLAY_STORE_URL =
+export const PLAY_STORE_URL =
   'https://play.google.com/store/apps/details?id=com.bearlabs.frego';
+
+export const APP_STORE_ID = '6799090522';
 
 function AppleMark() {
   return (

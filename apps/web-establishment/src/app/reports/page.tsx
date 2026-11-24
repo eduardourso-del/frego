@@ -44,6 +44,8 @@ type ReportsData = {
     cashbackSpentCents?: KpiNum;
     repeatRate: KpiNum;
     base: number;
+    checkIns?: KpiNum;
+    checkInCustomers?: KpiNum;
   };
   seriesDeltaPct?: number | null;
   series: Array<{
@@ -54,6 +56,8 @@ type ReportsData = {
     redeems: number;
     customers: number;
     prevCustomers?: number;
+    checkIns?: number;
+    prevCheckIns?: number;
   }>;
   cohorts: Array<{
     month: string;
@@ -105,6 +109,10 @@ type ReportsData = {
     expiredVouchers: number;
     revenueFromRedeemersCents: number;
     revenueCoverage?: { withAmount: number; used: number };
+    checkIns?: number;
+    checkInCustomers?: number;
+    previousCheckIns?: number;
+    checkInsDeltaPct?: number | null;
   }>;
 };
 
@@ -122,6 +130,7 @@ const TYPE_LABEL: Record<string, string> = {
   visits: 'Visitas',
   cashback: 'Cashback',
   promo: 'Promoção',
+  checkin: 'Check-in',
 };
 
 function formatMoney(cents: number) {
@@ -326,6 +335,7 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       redeems: d.redeems,
       customers: d.customers,
       prevCustomers: d.prevCustomers ?? 0,
+      checkIns: d.checkIns ?? 0,
       from: d.date,
       to: d.date,
     }));
@@ -340,6 +350,7 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       redeems: number;
       customers: number;
       prevCustomers: number;
+      checkIns: number;
       from: string;
       to: string;
     }
@@ -356,6 +367,7 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
       existing.redeems += d.redeems;
       existing.customers += d.customers;
       existing.prevCustomers += d.prevCustomers ?? 0;
+      existing.checkIns += d.checkIns ?? 0;
       existing.to = d.date;
     } else {
       buckets.set(key, {
@@ -365,6 +377,7 @@ function aggregateSeries(series: SeriesRow[], grain: ChartGrain) {
         redeems: d.redeems,
         customers: d.customers,
         prevCustomers: d.prevCustomers ?? 0,
+        checkIns: d.checkIns ?? 0,
         from: d.date,
         to: d.date,
       });
@@ -494,6 +507,9 @@ function ActivityChart({
               d.stamps > 0 ? `${d.stamps} carimbos` : null,
               d.points > 0 ? `${d.points} pontos` : null,
               d.redeems > 0 ? `${d.redeems} resgates` : null,
+              d.checkIns > 0
+                ? `${d.checkIns} ${d.checkIns === 1 ? 'check-in' : 'check-ins'}`
+                : null,
             ]
               .filter(Boolean)
               .join(' · ');
@@ -643,15 +659,33 @@ function downloadCsv(data: ReportsData) {
   lines.push(
     `Taxa de retorno (%);${data.kpis.repeatRate.value};${data.kpis.repeatRate.deltaPct ?? ''}`,
   );
+  if (data.kpis.checkIns) {
+    lines.push(
+      `Check-ins;${data.kpis.checkIns.value};${data.kpis.checkIns.deltaPct ?? ''}`,
+    );
+    lines.push(
+      `Pessoas no check-in;${data.kpis.checkInCustomers?.value ?? ''};${data.kpis.checkInCustomers?.deltaPct ?? ''}`,
+    );
+  }
   lines.push(`Base total;${data.kpis.base}`);
   lines.push('');
-  lines.push('Data;Carimbos;Pontos;Resgates;Clientes;Clientes período anterior');
+  const seriesHasCheckIn = data.series.some((row) => row.checkIns != null);
+  lines.push(
+    seriesHasCheckIn
+      ? 'Data;Carimbos;Pontos;Resgates;Clientes;Clientes período anterior;Check-ins'
+      : 'Data;Carimbos;Pontos;Resgates;Clientes;Clientes período anterior',
+  );
   for (const row of data.series) {
-    lines.push(
-      [row.date, row.stamps, row.points, row.redeems, row.customers, row.prevCustomers ?? '']
-        .map(csvEscape)
-        .join(';'),
-    );
+    const cells = [
+      row.date,
+      row.stamps,
+      row.points,
+      row.redeems,
+      row.customers,
+      row.prevCustomers ?? '',
+    ];
+    if (seriesHasCheckIn) cells.push(row.checkIns ?? 0);
+    lines.push(cells.map(csvEscape).join(';'));
   }
   lines.push('');
   lines.push('Unidade;Visitas;Variação %;Carimbos;Pontos;Resgates');
@@ -672,10 +706,14 @@ function downloadCsv(data: ReportsData) {
     );
   }
   lines.push('');
-  lines.push('Campanha;Tipo;Resgates;Variação %;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados');
+  const campaignsHaveCheckIn = data.campaigns.some((c) => c.type === 'checkin');
+  lines.push(
+    campaignsHaveCheckIn
+      ? 'Campanha;Tipo;Resgates;Variação %;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados;Check-ins;Pessoas no check-in;Check-ins período anterior'
+      : 'Campanha;Tipo;Resgates;Variação %;Quem resgatou;Elegíveis;Engajamento %;Confirmados %;Receita no resgate;Com valor;Usados',
+  );
   for (const c of data.campaigns) {
-    lines.push(
-      [
+    const cells = [
         c.name,
         c.type,
         c.redeems,
@@ -687,10 +725,11 @@ function downloadCsv(data: ReportsData) {
         c.revenueFromRedeemersCents,
         c.revenueCoverage?.withAmount ?? '',
         c.revenueCoverage?.used ?? '',
-      ]
-        .map(csvEscape)
-        .join(';'),
-    );
+    ];
+    if (campaignsHaveCheckIn) {
+      cells.push(c.checkIns ?? 0, c.checkInCustomers ?? 0, c.previousCheckIns ?? 0);
+    }
+    lines.push(cells.map(csvEscape).join(';'));
   }
 
   const blob = new Blob([lines.join('\n')], {
@@ -899,6 +938,25 @@ export default function ReportsPage() {
               )}
             </div>
 
+            {kpis.checkIns ? (
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+                <KpiCard
+                  label="Check-ins"
+                  value={formatCount(kpis.checkIns.value)}
+                  hint="leituras do QR no período"
+                  deltaPct={kpis.checkIns.deltaPct ?? null}
+                  previous={formatCount(kpis.checkIns.previous ?? 0)}
+                />
+                <KpiCard
+                  label="Pessoas no check-in"
+                  value={formatCount(kpis.checkInCustomers?.value ?? 0)}
+                  hint="ao menos um check-in"
+                  deltaPct={kpis.checkInCustomers?.deltaPct ?? null}
+                  previous={formatCount(kpis.checkInCustomers?.previous ?? 0)}
+                />
+              </div>
+            ) : null}
+
             <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <ActivityChart
                 series={data.series}
@@ -1058,6 +1116,9 @@ export default function ReportsPage() {
                           {TYPE_LABEL[c.type] ?? c.type}
                           {c.audienceName ? ` · ${c.audienceName}` : ''}
                           {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
+                          {c.type === 'checkin'
+                            ? ` · ${(c.checkIns ?? 0).toLocaleString('pt-BR')} ${(c.checkIns ?? 0) === 1 ? 'check-in' : 'check-ins'} · ${(c.checkInCustomers ?? 0).toLocaleString('pt-BR')} ${(c.checkInCustomers ?? 0) === 1 ? 'pessoa' : 'pessoas'}`
+                            : ''}
                         </div>
                       </div>
                       <CampaignMetric
@@ -1072,12 +1133,23 @@ export default function ReportsPage() {
                             </span>
                           </span>
                         }
-                        hint={peopleHint(c.redeemers, c.eligible)}
+                        hint={
+                          c.type === 'checkin'
+                            ? `${formatCount(c.checkInCustomers ?? 0)} ${(c.checkInCustomers ?? 0) === 1 ? 'pessoa' : 'pessoas'} no check-in`
+                            : peopleHint(c.redeemers, c.eligible)
+                        }
                       />
                       <CampaignMetric
-                        label="Engajamento"
-                        info={TERM.engajamento}
+                        label={c.type === 'checkin' ? 'Check-ins' : 'Engajamento'}
+                        info={c.type === 'checkin' ? undefined : TERM.engajamento}
                         value={
+                          c.type === 'checkin' ? (
+                            <span className="inline-flex flex-wrap items-baseline gap-x-1.5 font-semibold text-[var(--color-ink)]">
+                              {formatCount(c.checkIns ?? 0)}{' '}
+                              {(c.checkIns ?? 0) === 1 ? 'check-in' : 'check-ins'}
+                              <Delta value={c.checkInsDeltaPct ?? null} />
+                            </span>
+                          ) : (
                           <span
                             className={`font-semibold ${
                               c.engagePct >= 20
@@ -1087,6 +1159,12 @@ export default function ReportsPage() {
                           >
                             {c.engagePct}%
                           </span>
+                          )
+                        }
+                        hint={
+                          c.type === 'checkin'
+                            ? `antes ${formatCount(c.previousCheckIns ?? 0)}`
+                            : undefined
                         }
                       />
                       <CampaignMetric

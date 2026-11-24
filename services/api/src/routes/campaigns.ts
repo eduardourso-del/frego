@@ -16,6 +16,7 @@ import {
   nextActivatedAt,
   resolveCartelaWrite,
 } from '../lib/stamp-destination.js';
+import { endOpenCheckIns, newCheckInToken, publicCheckIn, removeOneCheckIn, rotateCheckInToken } from '../lib/check-in.js';
 
 function startOfDay(d: Date) {
   const x = new Date(d);
@@ -41,7 +42,7 @@ const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const campaignFields = z.object({
   name: z.string().min(1).max(80),
   type: z
-    .enum(['stamps', 'spend', 'birthday', 'cashback', 'promo'])
+    .enum(['stamps', 'spend', 'birthday', 'cashback', 'promo', 'checkin'])
     .default('stamps'),
   status: z.nativeEnum(CampaignStatus).optional(),
   stampsNeeded: z.number().int().positive().max(10_000).optional(),
@@ -139,7 +140,9 @@ function promoError(
   const start = body.startsOn ?? null;
   const end = body.endsOn ?? null;
   if (start && end && start > end) return 'INVALID_PROMO_DATES';
-  if (body.type !== 'promo' && body.type !== 'stamps') return null;
+  if (body.type !== 'promo' && body.type !== 'stamps' && body.type !== 'checkin') {
+    return null;
+  }
   if (body.redeemMax != null && !body.redeemPeriod) {
     return 'REDEEM_PERIOD_REQUIRED';
   }
@@ -172,7 +175,8 @@ function stampQuotaWrite(
     redeemPeriod: string | null;
   },
 ) {
-  const treatAsCreate = !existing || existing.type !== 'stamps';
+  const treatAsCreate =
+    !existing || (existing.type !== 'stamps' && existing.type !== 'checkin');
   if (body.redeemMax === null) {
     return { redeemMax: null as number | null, redeemPeriod: null as RedeemPeriod | null };
   }
@@ -232,8 +236,17 @@ function promoWriteData(
 ) {
   const type = body.type ?? existing?.type ?? 'stamps';
   const dates = scheduleDates(body, existing);
-  if (type === 'stamps') {
+  if (type === 'stamps' || type === 'checkin') {
     const quota = stampQuotaWrite(body, existing);
+    if (type === 'checkin') {
+      return {
+        startsOn: null,
+        endsOn: null,
+        weekdays: [] as number[],
+        redeemMax: quota.redeemMax,
+        redeemPeriod: quota.redeemPeriod,
+      };
+    }
     return {
       ...dates,
       weekdays: [] as number[],
@@ -301,7 +314,7 @@ async function assertSingleActiveOfType(
   businessId: string,
   status: CampaignStatus | string | undefined,
   type: string,
-  onlyType: 'birthday' | 'cashback',
+  onlyType: 'birthday' | 'cashback' | 'checkin',
   excludeId?: string,
 ) {
   if (type !== onlyType || status !== 'active') return null;
@@ -437,6 +450,94 @@ export async function patchBusinessCampaign(input: {
     };
   }
 
+  if (
+    existing.activatedAt &&
+    existing.type === 'checkin' &&
+    nextType !== 'checkin'
+  ) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: { error: 'CHECKIN_PROMISE_LOCKED' },
+    };
+  }
+  if (existing.activatedAt && nextType === 'checkin') {
+    const nextNeeded = body.stampsNeeded ?? existing.stampsNeeded;
+    const nextTitle =
+      body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
+    const nextDescription =
+      body.rewardDescription !== undefined
+        ? body.rewardDescription
+        : existing.rewardDescription;
+    const nextImage =
+      body.rewardImageUrl !== undefined
+        ? body.rewardImageUrl
+        : existing.rewardImageUrl;
+    if (
+      nextNeeded !== existing.stampsNeeded ||
+      (nextTitle ?? '') !== (existing.rewardTitle ?? '') ||
+      (nextDescription ?? null) !== (existing.rewardDescription ?? null) ||
+      (nextImage ?? null) !== (existing.rewardImageUrl ?? null)
+    ) {
+      return {
+        ok: false as const,
+        status: 409,
+        body: { error: 'CHECKIN_PROMISE_LOCKED' },
+      };
+    }
+  }
+  if (nextType === 'checkin') {
+    const audience =
+      body.audienceSegmentId !== undefined
+        ? body.audienceSegmentId
+        : existing.audienceSegmentId;
+    if (audience) {
+      return {
+        ok: false as const,
+        status: 400,
+        body: { error: 'CHECKIN_NO_AUDIENCE' },
+      };
+    }
+    if (nextStatus === 'active') {
+      const title =
+        body.rewardTitle !== undefined ? body.rewardTitle : existing.rewardTitle;
+      const needed = body.stampsNeeded ?? existing.stampsNeeded;
+      if (!title?.trim()) {
+        return {
+          ok: false as const,
+          status: 400,
+          body: { error: 'REWARD_TITLE_REQUIRED' },
+        };
+      }
+      if (!needed || needed < 1) {
+        return {
+          ok: false as const,
+          status: 400,
+          body: { error: 'CHECKIN_COUNT_REQUIRED' },
+        };
+      }
+    }
+  }
+
+  const dupCheckIn = await assertSingleActiveOfType(
+    input.businessId,
+    nextStatus,
+    nextType,
+    'checkin',
+    input.campaignId,
+  );
+  if (dupCheckIn) {
+    return {
+      ok: false as const,
+      status: 409,
+      body: {
+        error: 'CHECKIN_CAMPAIGN_EXISTS',
+        existingId: dupCheckIn.id,
+        existingName: dupCheckIn.name,
+      },
+    };
+  }
+
   const {
     locationIds,
     audienceSegmentId,
@@ -469,11 +570,12 @@ export async function patchBusinessCampaign(input: {
   const promo = promoWriteData({ ...body, type: nextType }, existing);
   const birthday = birthdayWindowWrite({ ...body, type: nextType }, existing);
   const campaign = await prisma.$transaction(async (tx) => {
-    if (locationIds) {
+    const clearLocations = nextType === 'checkin';
+    if (locationIds || clearLocations) {
       await tx.campaignLocation.deleteMany({
         where: { campaignId: input.campaignId },
       });
-      if (locationIds.length) {
+      if (!clearLocations && locationIds?.length) {
         await tx.campaignLocation.createMany({
           data: locationIds.map((locationId: string) => ({
             campaignId: input.campaignId,
@@ -481,6 +583,13 @@ export async function patchBusinessCampaign(input: {
           })),
         });
       }
+    }
+    if (
+      nextType === 'checkin' &&
+      nextStatus === 'archived' &&
+      existing.status !== 'archived'
+    ) {
+      await endOpenCheckIns(tx, input.campaignId);
     }
     return tx.campaign.update({
       where: { id: input.campaignId },
@@ -494,7 +603,8 @@ export async function patchBusinessCampaign(input: {
           nextType === 'stamps' ||
           nextType === 'birthday' ||
           nextType === 'cashback' ||
-          nextType === 'promo'
+          nextType === 'promo' ||
+          nextType === 'checkin'
             ? null
             : (data.pointsPerReal ?? existing.pointsPerReal ?? 1),
         cashbackPercent:
@@ -507,7 +617,14 @@ export async function patchBusinessCampaign(input: {
         redeemMax: promo.redeemMax,
         redeemPeriod: promo.redeemPeriod,
         ...(birthday ?? {}),
-        ...(audienceSegmentId !== undefined ? { audienceSegmentId } : {}),
+        ...(nextType === 'checkin'
+          ? { audienceSegmentId: null }
+          : audienceSegmentId !== undefined
+            ? { audienceSegmentId }
+            : {}),
+        ...(nextType === 'checkin' && !existing.checkInToken
+          ? { checkInToken: newCheckInToken() }
+          : {}),
         cartela: cartelaWrite.cartela,
         activatedAt: nextActivatedAt(existing.activatedAt, nextStatus),
       },
@@ -644,6 +761,30 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
         existingName: dupBirthday.name,
       });
     }
+    if (body.type === 'checkin' && body.audienceSegmentId) {
+      return reply.code(400).send({ error: 'CHECKIN_NO_AUDIENCE' });
+    }
+    if (body.type === 'checkin' && status === 'active') {
+      if (!body.rewardTitle?.trim()) {
+        return reply.code(400).send({ error: 'REWARD_TITLE_REQUIRED' });
+      }
+      if (!body.stampsNeeded || body.stampsNeeded < 1) {
+        return reply.code(400).send({ error: 'CHECKIN_COUNT_REQUIRED' });
+      }
+    }
+    const dupCheckIn = await assertSingleActiveOfType(
+      auth.businessId,
+      status,
+      body.type,
+      'checkin',
+    );
+    if (dupCheckIn) {
+      return reply.code(409).send({
+        error: 'CHECKIN_CAMPAIGN_EXISTS',
+        existingId: dupCheckIn.id,
+        existingName: dupCheckIn.name,
+      });
+    }
 
     const stampsNeeded = noMetaType(body.type)
       ? 1
@@ -679,18 +820,21 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
         rewardDescription: body.rewardDescription,
         rewardImageUrl:
           body.rewardImageUrl === undefined ? undefined : body.rewardImageUrl,
-        audienceSegmentId: body.audienceSegmentId ?? null,
+        audienceSegmentId:
+          body.type === 'checkin' ? null : (body.audienceSegmentId ?? null),
+        checkInToken: body.type === 'checkin' ? newCheckInToken() : null,
         startsOn: promo.startsOn,
         endsOn: promo.endsOn,
         weekdays: promo.weekdays,
         redeemMax: promo.redeemMax,
         redeemPeriod: promo.redeemPeriod,
         ...(birthday ?? {}),
-        locations: body.locationIds?.length
-          ? {
-              create: body.locationIds.map((locationId) => ({ locationId })),
-            }
-          : undefined,
+        locations:
+          body.type === 'checkin' || !body.locationIds?.length
+            ? undefined
+            : {
+                create: body.locationIds.map((locationId) => ({ locationId })),
+              },
       },
       include: {
         locations: true,
@@ -757,5 +901,53 @@ export const campaignRoutes: FastifyPluginAsync = async (app) => {
     }
     await prisma.campaign.delete({ where: { id } });
     return { ok: true };
+  });
+
+  app.post('/campaigns/:id/check-in-token', async (request, reply) => {
+    const auth = requireAuth(request);
+    if (auth.role === 'employee') {
+      return reply.code(403).send({ error: 'FORBIDDEN' });
+    }
+    const { id } = request.params as { id: string };
+    const existing = await prisma.campaign.findFirst({
+      where: { id, businessId: auth.businessId, type: 'checkin' },
+      select: { id: true },
+    });
+    if (!existing) return reply.code(404).send({ error: 'NOT_FOUND' });
+    return rotateCheckInToken(id);
+  });
+
+  app.post('/campaigns/:id/check-ins/remove', async (request, reply) => {
+    const auth = requireAuth(request);
+    const { id } = request.params as { id: string };
+    const body = z
+      .object({ membershipId: z.string().min(1) })
+      .parse(request.body);
+    const campaign = await prisma.campaign.findFirst({
+      where: { id, businessId: auth.businessId, type: 'checkin' },
+      select: { id: true },
+    });
+    if (!campaign) return reply.code(404).send({ error: 'NOT_FOUND' });
+    const membership = await prisma.membership.findFirst({
+      where: { id: body.membershipId, businessId: auth.businessId },
+      select: { id: true },
+    });
+    if (!membership) {
+      return reply.code(404).send({ error: 'MEMBERSHIP_NOT_FOUND' });
+    }
+    const removed = await removeOneCheckIn({
+      businessId: auth.businessId,
+      campaignId: id,
+      membershipId: membership.id,
+    });
+    if (!removed) return reply.code(404).send({ error: 'NOTHING_TO_REMOVE' });
+    return removed;
+  });
+
+  app.get('/public/check-ins/:token', async (request, reply) => {
+    const { token } = request.params as { token: string };
+    const card = await publicCheckIn(token);
+    if (!card) return reply.code(404).send({ error: 'NOT_FOUND' });
+    return card;
   });
 };

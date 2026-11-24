@@ -187,6 +187,8 @@ class ExploreCampaign {
         return 'Cashback';
       case 'promo':
         return 'Promoção';
+      case 'checkin':
+        return 'Check-in';
       case 'visits':
         return 'Visitas';
       default:
@@ -196,6 +198,11 @@ class ExploreCampaign {
 
   /// One extra line when the prize title does not say what the Campanha is.
   String? get detailLine {
+    if (type == 'checkin') {
+      final n = unitsNeeded;
+      if (n == null || n <= 0) return null;
+      return 'A cada $n check-in${n == 1 ? '' : 's'}';
+    }
     if (type == 'birthday') {
       return canRedeem
           ? 'Disponível agora · 1× ao ano'
@@ -225,19 +232,24 @@ class ExploreCampaign {
     final needed = progressNeeded;
     if (needed == null || balance == null) return null;
     if (canRedeem) return needed;
+    if (type == 'checkin' && balance! >= needed) return needed;
     return balance! % needed;
   }
 
-  bool get showsStamps => type == 'stamps' || type == 'visits';
+  bool get showsStamps => type == 'stamps' || type == 'visits' || type == 'checkin';
 
   String? get progressLabel {
     final current = progressCurrent;
     final needed = progressNeeded;
     if (current == null || needed == null) return null;
     if (canRedeem) return 'Pronto para resgatar';
+    if (type == 'checkin' && balance != null && balance! >= needed && !canRedeem) {
+      return 'Limite de resgate atingido';
+    }
     final unit = switch (type) {
       'spend' || 'points' => 'pontos',
       'visits' => 'visitas',
+      'checkin' => 'check-ins',
       _ => 'carimbos',
     };
     return '$current de $needed $unit';

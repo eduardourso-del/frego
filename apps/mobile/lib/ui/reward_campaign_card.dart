@@ -76,11 +76,13 @@ class RewardCampaignCard extends StatelessWidget {
           canRedeem: canRedeem,
           unlocksAt: campaign['unlocksAt'] as String?,
         ),
-      if (type == 'stamps')
+      if (type == 'stamps' || type == 'checkin')
         stampQuotaStatusLine(
           lockedReason: campaign['lockedReason'] as String?,
           unlocksAt: campaign['unlocksAt'] as String?,
         ),
+      if (type == 'checkin' && campaign['lockedReason'] != 'quota_exhausted')
+        'A cada $needed check-in${needed == 1 ? '' : 's'} · um por dia',
       if (type == 'stamps' &&
           campaign['lockedReason'] != 'quota_exhausted' &&
           campaign['lockedReason'] != 'outside_dates')
@@ -88,6 +90,7 @@ class RewardCampaignCard extends StatelessWidget {
       if (!audienceLocked &&
           type != 'promo' &&
           type != 'birthday' &&
+          type != 'checkin' &&
           campaign['lockedReason'] != 'outside_dates')
         _expireHint(type),
     ]);

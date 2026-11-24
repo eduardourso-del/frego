@@ -16,6 +16,7 @@ import '../../ui/voucher_sheet.dart';
 import '../explore/device_location.dart';
 import '../explore/explore_feed.dart';
 import 'campaign_detail_page.dart';
+import 'check_in_scan_page.dart';
 import 'earn_detail_page.dart';
 import 'pesquisa_page.dart';
 import 'shop_balance_page.dart';
@@ -184,6 +185,16 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
     } finally {
       if (mounted) setState(() => _redeeming = false);
     }
+  }
+
+  Future<void> _openCheckIn() async {
+    await openCheckInScanner(
+      context,
+      onRecorded: () {
+        if (mounted) _load();
+      },
+    );
+    if (mounted) _load();
   }
 
   @override
@@ -717,6 +728,18 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 ? 'Promo exclusiva para outro perfil de cliente'
                 : (unlockMessage ?? 'O saldo é descontado no caixa da loja');
             buttonLabel = audienceLocked ? 'Indisponível pra você' : 'Use no caixa';
+          } else if (type == 'checkin') {
+            final quotaHint = stampQuotaStatusLine(
+              lockedReason: lockedReason,
+              unlocksAt: unlocksAt,
+            );
+            statusHint = quotaHint ??
+                'A cada $needed check-in${needed == 1 ? '' : 's'} · um por dia';
+            buttonLabel = lockedReason == 'quota_exhausted'
+                ? 'Já resgatado'
+                : canRedeem
+                    ? 'Resgatar e mostrar'
+                    : 'Fazer check-in';
           } else if (audienceLocked) {
             statusHint = 'Promo exclusiva para outro perfil de cliente';
             buttonLabel = 'Indisponível pra você';
@@ -795,9 +818,13 @@ class _ShopDetailPageState extends State<ShopDetailPage> {
                 c,
                 split: stampRows.length > 1,
               ),
-              onRedeem: isCashback || !canRedeem || _redeeming
-                  ? null
-                  : () => _redeem(c),
+              onRedeem: type == 'checkin' &&
+                      !canRedeem &&
+                      lockedReason != 'quota_exhausted'
+                  ? () => _openCheckIn()
+                  : isCashback || !canRedeem || _redeeming
+                      ? null
+                      : () => _redeem(c),
               onOpen: campaignId.isEmpty
                   ? null
                   : () async {
