@@ -365,7 +365,7 @@ export function GuideView() {
               icon={Target}
               title="Campanhas"
               href="/campaigns"
-              lede="Três escolhas: o tipo, o prêmio e para quem. O cartão ao lado do formulário mostra como o cliente vê no app. “Ativar agora” mostra a campanha no app. Desligar esconde a campanha, e ela fica inativa. A lista filtra por ativas e inativas, por tipo e por audiência."
+              lede="Três escolhas: o tipo, o prêmio e para quem. O cartão ao lado do formulário mostra como o cliente vê no app. “Ativar agora” mostra a campanha no app. Desligar esconde a campanha, e ela fica inativa. A lista filtra por ativas e inativas, por tipo e por audiência. Quem administra cria e altera. A equipe do balcão só consulta."
             >
               <div className="flex flex-col gap-3">
                 <TypeCard

@@ -124,7 +124,8 @@ function parseTypeFilter(raw: string | null): TypeFilter {
     raw === 'spend' ||
     raw === 'birthday' ||
     raw === 'cashback' ||
-    raw === 'promo'
+    raw === 'promo' ||
+    raw === 'checkin'
   ) {
     return raw;
   }
@@ -250,6 +251,7 @@ export default function CampaignsPage() {
 
 function CampaignsPageContent() {
   const { authHeaders, business } = useBusiness();
+  const canManage = business?.role !== 'employee';
   const router = useRouter();
   const searchParams = useSearchParams();
   const statusFilter = parseStatusFilter(searchParams.get('status'));
@@ -268,9 +270,7 @@ function CampaignsPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showForm, setShowForm] = useState(() =>
-    Boolean(urlAudienceId || fromAudience || compose),
-  );
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(() => ({
     ...emptyForm,
@@ -346,6 +346,21 @@ function CampaignsPageContent() {
     return { all: inTypeAudience.length, active, inactive };
   }, [campaigns, typeFilter, audienceFilter]);
 
+  const audienceOptions = useMemo(() => {
+    if (audiences.length > 0) return audiences;
+    const byId = new Map<string, AudienceOption>();
+    for (const c of campaigns) {
+      const id = c.audienceSegment?.id || c.audienceSegmentId;
+      if (!id || byId.has(id)) continue;
+      byId.set(id, {
+        id,
+        name: c.audienceSegment?.name || 'Audiência',
+        memberCount: c.audienceMemberCount ?? c.audienceSegment?.memberCount ?? 0,
+      });
+    }
+    return [...byId.values()];
+  }, [audiences, campaigns]);
+
   function replaceCampaignsQuery(mutate: (params: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString());
     mutate(params);
@@ -389,10 +404,12 @@ function CampaignsPageContent() {
       const headers = await authHeaders();
       const [campRes, audRes] = await Promise.all([
         fetch(`${API_URL}/campaigns`, { headers }),
-        fetch(`${API_URL}/audiences`, { headers }),
+        canManage
+          ? fetch(`${API_URL}/audiences`, { headers })
+          : Promise.resolve(null),
       ]);
       const campJson = await campRes.json().catch(() => ({}));
-      const audJson = await audRes.json().catch(() => ({}));
+      const audJson = audRes ? await audRes.json().catch(() => ({})) : {};
       if (!campRes.ok) {
         throw new Error(
           (campJson as { error?: string }).error ??
@@ -401,38 +418,44 @@ function CampaignsPageContent() {
       }
       setCampaigns(campJson.campaigns ?? []);
       setAudiences(
-        (audJson.audiences ?? []).map(
-          (a: { id: string; name: string; memberCount: number }) => ({
-            id: a.id,
-            name: a.name,
-            memberCount: a.memberCount,
-          }),
-        ),
+        canManage
+          ? (audJson.audiences ?? []).map(
+              (a: { id: string; name: string; memberCount: number }) => ({
+                id: a.id,
+                name: a.name,
+                memberCount: a.memberCount,
+              }),
+            )
+          : [],
       );
 
-      const withHistory = (campJson.campaigns ?? []).filter(
-        (c: Campaign) => c.status === 'active' || c.status === 'paused',
-      ) as Campaign[];
-      const perfEntries = await Promise.all(
-        withHistory.slice(0, 12).map(async (c) => {
-          try {
-            const res = await fetch(
-              `${API_URL}/campaigns/${c.id}/performance?range=30d`,
-              { headers },
-            );
-            const json = await res.json();
-            if (!res.ok) return null;
-            return [c.id, json.performance as CampaignPerformance] as const;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      const next: Record<string, CampaignPerformance> = {};
-      for (const entry of perfEntries) {
-        if (entry) next[entry[0]] = entry[1];
+      if (!canManage) {
+        setPerfById({});
+      } else {
+        const withHistory = (campJson.campaigns ?? []).filter(
+          (c: Campaign) => c.status === 'active' || c.status === 'paused',
+        ) as Campaign[];
+        const perfEntries = await Promise.all(
+          withHistory.slice(0, 12).map(async (c) => {
+            try {
+              const res = await fetch(
+                `${API_URL}/campaigns/${c.id}/performance?range=30d`,
+                { headers },
+              );
+              const json = await res.json();
+              if (!res.ok) return null;
+              return [c.id, json.performance as CampaignPerformance] as const;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const next: Record<string, CampaignPerformance> = {};
+        for (const entry of perfEntries) {
+          if (entry) next[entry[0]] = entry[1];
+        }
+        setPerfById(next);
       }
-      setPerfById(next);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro';
       setError(
@@ -446,7 +469,7 @@ function CampaignsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders]);
+  }, [authHeaders, canManage]);
 
   useEffect(() => {
     void load();
@@ -459,6 +482,7 @@ function CampaignsPageContent() {
   // Open create form immediately when arriving from Painel/Relatórios/Clientes.
   // Audience create can finish after the form is already on screen.
   useEffect(() => {
+    if (!canManage) return;
     if (!urlAudienceId && !fromAudience && !compose) return;
     if (audienceBootstrapped.current === audienceBootstrapKey) return;
 
@@ -576,6 +600,7 @@ function CampaignsPageContent() {
       cancelled = true;
     };
   }, [
+    canManage,
     audienceBootstrapKey,
     urlAudienceId,
     urlAudienceName,
@@ -860,17 +885,20 @@ function CampaignsPageContent() {
               Campanhas
             </h1>
             <p className="mt-1.5 max-w-xl text-[14px] leading-relaxed text-[var(--color-neutral-500)] md:text-[15px]">
-              O cliente vê e resgata no aplicativo. Cada campanha tem um
-              prêmio e, se quiser, uma audiência.
+              {canManage
+                ? 'O cliente vê e resgata no aplicativo. Cada campanha tem um prêmio e, se quiser, uma audiência.'
+                : 'As campanhas disponíveis neste estabelecimento. A equipe consulta; quem administra cria e altera.'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => (showForm ? closeForm() : openCreate())}
-            className="min-h-11 w-full rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] transition-[transform,background] enabled:active:scale-[0.98] sm:w-auto"
-          >
-            {showForm ? 'Cancelar' : 'Nova campanha'}
-          </button>
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => (showForm ? closeForm() : openCreate())}
+              className="min-h-11 w-full rounded-[12px] bg-[var(--color-primary-500)] px-4 text-[15px] font-semibold text-white shadow-[var(--shadow-cta)] transition-[transform,background] enabled:active:scale-[0.98] sm:w-auto"
+            >
+              {showForm ? 'Cancelar' : 'Nova campanha'}
+            </button>
+          ) : null}
         </header>
 
         {error && (
@@ -881,64 +909,40 @@ function CampaignsPageContent() {
 
         {!showForm && (
           <div className="mb-5 flex flex-col gap-2">
-            <div
-              className="flex gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1"
-              role="tablist"
-              aria-label="Filtrar por status"
-            >
-              {FILTERS.map((f) => {
-                const selected = statusFilter === f.key;
-                const count = filterCounts[f.key];
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={selected}
-                    onClick={() => setStatusFilter(f.key)}
-                    className={`min-h-9 shrink-0 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
-                      selected
-                        ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
-                        : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
-                    }`}
-                  >
-                    {f.label}
-                    {!loading && (
-                      <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
-                        {count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <SegmentedControl
-                value={typeFilter}
-                options={TYPE_FILTERS.map((f) => ({
-                  value: f.value,
-                  label: f.label,
-                  icon:
-                    f.value === 'stamps' ? (
-                      <Stamp size={14} strokeWidth={2.25} aria-hidden />
-                    ) : f.value === 'spend' ? (
-                      <Coins size={14} strokeWidth={2.25} aria-hidden />
-                    ) : f.value === 'birthday' ? (
-                      <Cake size={14} strokeWidth={2.25} aria-hidden />
-                    ) : f.value === 'cashback' ? (
-                      <Banknote size={14} strokeWidth={2.25} aria-hidden />
-                    ) : f.value === 'promo' ? (
-                      <Percent size={14} strokeWidth={2.25} aria-hidden />
-                    ) : f.value === 'checkin' ? (
-                      <QrCode size={14} strokeWidth={2.25} aria-hidden />
-                    ) : undefined,
-                }))}
-                onChange={setTypeFilter}
-                ariaLabel="Filtrar por tipo"
-                className="min-w-0 flex-1"
-              />
-              <div className="flex shrink-0 items-center gap-2 sm:w-auto">
-                <label className="block sm:w-[220px]">
+              <div
+                className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-[14px] bg-[var(--color-neutral-100)] p-1"
+                role="tablist"
+                aria-label="Filtrar por status"
+              >
+                {FILTERS.map((f) => {
+                  const selected = statusFilter === f.key;
+                  const count = filterCounts[f.key];
+                  return (
+                    <button
+                      key={f.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => setStatusFilter(f.key)}
+                      className={`min-h-9 shrink-0 rounded-[11px] px-3.5 text-[13px] font-semibold transition-all ${
+                        selected
+                          ? 'bg-[var(--color-card)] text-[var(--color-ink)] shadow-[0_1px_3px_rgba(16,24,40,0.08)]'
+                          : 'text-[var(--color-neutral-500)] hover:text-[var(--color-ink)]'
+                      }`}
+                    >
+                      {f.label}
+                      {!loading && (
+                        <span className="ml-1.5 font-medium text-[var(--color-neutral-400)]">
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <label className="block w-full sm:w-[220px]">
                   <span className="sr-only">Audiência</span>
                   <select
                     value={audienceFilter}
@@ -948,24 +952,50 @@ function CampaignsPageContent() {
                   >
                     <option value="">Todas as audiências</option>
                     <option value="none">Todo o estabelecimento</option>
-                    {audiences.map((a) => (
+                    {audienceOptions.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.name} ({a.memberCount})
+                        {a.name}
+                        {canManage ? ` (${a.memberCount})` : ''}
                       </option>
                     ))}
                   </select>
                 </label>
-                <Link
-                  href="/audiences"
-                  className="shrink-0 text-[12px] font-semibold text-[var(--color-primary-500)]"
-                >
-                  Gerenciar
-                </Link>
+                {canManage ? (
+                  <Link
+                    href="/audiences"
+                    className="shrink-0 text-[12px] font-semibold text-[var(--color-primary-500)]"
+                  >
+                    Gerenciar
+                  </Link>
+                ) : null}
               </div>
             </div>
+            <SegmentedControl
+              value={typeFilter}
+              options={TYPE_FILTERS.map((f) => ({
+                value: f.value,
+                label: f.label,
+                icon:
+                  f.value === 'stamps' ? (
+                    <Stamp size={14} strokeWidth={2.25} aria-hidden />
+                  ) : f.value === 'spend' ? (
+                    <Coins size={14} strokeWidth={2.25} aria-hidden />
+                  ) : f.value === 'birthday' ? (
+                    <Cake size={14} strokeWidth={2.25} aria-hidden />
+                  ) : f.value === 'cashback' ? (
+                    <Banknote size={14} strokeWidth={2.25} aria-hidden />
+                  ) : f.value === 'promo' ? (
+                    <Percent size={14} strokeWidth={2.25} aria-hidden />
+                  ) : f.value === 'checkin' ? (
+                    <QrCode size={14} strokeWidth={2.25} aria-hidden />
+                  ) : undefined,
+              }))}
+              onChange={setTypeFilter}
+              ariaLabel="Filtrar por tipo"
+            />
           </div>
         )}
-        {showForm && (
+        {canManage && showForm && (
           <div ref={formSectionRef}>
             <CampaignCreateForm
               form={form}
@@ -982,15 +1012,16 @@ function CampaignsPageContent() {
           </div>
         )}
 
-        {!showForm && (loading ? (
+        {!(canManage && showForm) && (loading ? (
           <p className="text-[15px] text-[var(--color-neutral-500)]">
             Carregando…
           </p>
         ) : campaigns.length === 0 ? (
           <div className="rounded-[16px] border border-dashed border-[var(--color-neutral-200)] p-8 text-center">
             <p className="text-[15px] text-[var(--color-neutral-500)]">
-              Nenhuma campanha ainda. Crie carimbos, pontos, cashback ou um
-              presente de aniversário.
+              {canManage
+                ? 'Nenhuma campanha ainda. Crie carimbos, pontos, cashback ou um presente de aniversário.'
+                : 'Nenhuma campanha disponível.'}
             </p>
           </div>
         ) : filteredCampaigns.length === 0 ? (
@@ -1008,7 +1039,7 @@ function CampaignsPageContent() {
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {compareRows.length > 1 && (
+            {canManage && compareRows.length > 1 && (
               <CampaignCompareChart
                 compact
                 campaigns={compareRows}
@@ -1104,7 +1135,7 @@ function CampaignsPageContent() {
                         : ''}
                       {c.rewardTitle ? ` · ${c.rewardTitle}` : ''}
                     </p>
-                    {perfById[c.id] && (
+                    {canManage && perfById[c.id] && (
                       <CampaignPerfStrip
                         type={c.type}
                         perf={perfById[c.id]}
@@ -1132,7 +1163,7 @@ function CampaignsPageContent() {
                         Imprimir cartaz
                       </Link>
                     ) : null}
-                    {c.status !== 'archived' && (
+                    {canManage && c.status !== 'archived' && (
                       <button
                         type="button"
                         disabled={busy}
@@ -1142,7 +1173,7 @@ function CampaignsPageContent() {
                         Editar
                       </button>
                     )}
-                    {c.status !== 'active' && c.status !== 'archived' && (
+                    {canManage && c.status !== 'active' && c.status !== 'archived' && (
                       <button
                         type="button"
                         disabled={busy}
@@ -1152,7 +1183,7 @@ function CampaignsPageContent() {
                         Ativar
                       </button>
                     )}
-                    {c.status === 'active' && (
+                    {canManage && c.status === 'active' && (
                       <button
                         type="button"
                         disabled={busy}
@@ -1162,7 +1193,7 @@ function CampaignsPageContent() {
                         Pausar
                       </button>
                     )}
-                    {c.status !== 'archived' && (
+                    {canManage && c.status !== 'archived' && (
                       <button
                         type="button"
                         disabled={busy}
@@ -1172,14 +1203,16 @@ function CampaignsPageContent() {
                         Arquivar
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => deleteCampaign(c.id, c.name)}
-                      className="min-h-10 rounded-[10px] px-3 text-[13px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
-                    >
-                      Excluir
-                    </button>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => deleteCampaign(c.id, c.name)}
+                        className="min-h-10 rounded-[10px] px-3 text-[13px] font-semibold text-[var(--color-danger)] disabled:opacity-60"
+                      >
+                        Excluir
+                      </button>
+                    ) : null}
                     </div>
                   </div>
                 </div>

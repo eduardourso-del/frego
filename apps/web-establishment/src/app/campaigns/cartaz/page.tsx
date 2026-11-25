@@ -23,6 +23,7 @@ function Cartaz() {
   const id = params.get('id') ?? '';
   const router = useRouter();
   const { business, authHeaders, loading } = useBusiness();
+  const canManage = business?.role !== 'employee';
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [url, setUrl] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -172,14 +173,16 @@ function Cartaz() {
           >
             Imprimir
           </button>
-          <button
-            type="button"
-            disabled={busy || !campaign}
-            onClick={() => void rotate()}
-            className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold disabled:opacity-60"
-          >
-            Novo QR
-          </button>
+          {canManage ? (
+            <button
+              type="button"
+              disabled={busy || !campaign}
+              onClick={() => void rotate()}
+              className="min-h-10 rounded-[10px] border border-[var(--color-hairline)] px-3 text-[13px] font-semibold disabled:opacity-60"
+            >
+              Novo QR
+            </button>
+          ) : null}
         </div>
         {error ? (
           <p className="mb-3 text-[13px] text-[var(--color-danger)]">{error}</p>

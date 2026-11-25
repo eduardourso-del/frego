@@ -234,7 +234,9 @@ export function AppShell({
   const balcao = business?.role === 'employee';
 
   const visibleMain = balcao
-    ? mainNav.filter((item) => item.href === '/customers')
+    ? mainNav.filter(
+        (item) => item.href === '/customers' || item.href === '/campaigns',
+      )
     : mainNav;
 
   const visibleUtility = (businessBlocked
@@ -245,7 +247,13 @@ export function AppShell({
   const visibleMobileTabs = (businessBlocked
     ? mobileTabs.filter((item) => item.href !== '/counter')
     : mobileTabs
-  ).filter((item) => !balcao || item.href === '/customers' || item.href === '/counter');
+  ).filter(
+    (item) =>
+      !balcao ||
+      item.href === '/customers' ||
+      item.href === '/counter' ||
+      item.href === '/campaigns',
+  );
 
   const moreActive =
     isActivePath(pathname, '/settings') ||
@@ -264,7 +272,6 @@ export function AppShell({
     const donoOnly = [
       '/dashboard',
       '/audiences',
-      '/campaigns',
       '/pesquisas',
       '/reports',
       '/settings',
